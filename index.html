@@ -1,436 +1,1446 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/me/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Rohan Tandel – Senior Backend Architect</title>
-    <style>body{background-color:#0d1117;margin:0;overflow-x:hidden}.falling-letter{-webkit-user-select:none;user-select:none;pointer-events:none;z-index:2;color:#58a6ff;text-shadow:0 0 8px #58a6ff88;font-family:Courier New,monospace;font-weight:700;animation:linear forwards fall;position:fixed}.falling-letter.pinned{pointer-events:auto;z-index:9999;cursor:grab;animation:none!important;transform:none!important}.falling-letter.pinned:hover{color:#a5d6ff;text-shadow:0 0 18px #58a6ffcc}.falling-letter.dragging{cursor:grabbing!important}@keyframes fall{0%{opacity:.7;transform:translateY(0)rotate(0)}to{opacity:0;transform:translateY(105vh)rotate(360deg)}}.boat{z-index:10;cursor:ew-resize;-webkit-user-select:none;user-select:none;flex-direction:column;align-items:center;gap:2px;transition:filter .3s;display:flex;position:fixed;bottom:18px}.boat-cargo{color:#58a6ff;flex-wrap:wrap;justify-content:center;gap:1px;max-width:110px;min-height:16px;font-family:Courier New,monospace;font-size:9px;font-weight:700;line-height:1;display:flex}.boat-body{filter:drop-shadow(0 2px 6px #58a6ff44);font-size:38px;line-height:1;transition:filter .3s}.boat-bar-wrap{background:#30363d;border-radius:2px;width:70px;height:4px;overflow:hidden}.boat-bar{background:#3fb950;border-radius:2px;height:100%;transition:width .2s,background .2s}.boat.sinking .boat-body{filter:grayscale()drop-shadow(0 2px 6px #f7816688)}.boat.sinking .boat-bar{background:#f78166}.boat.broken{cursor:pointer;opacity:.55;animation:1.8s ease-in-out infinite bob}.boat.broken .boat-body{filter:grayscale();font-size:28px}.boat-repair-badge{color:#0d1117;background:#f78166;border-radius:50%;justify-content:center;align-items:center;width:16px;height:16px;font-family:sans-serif;font-size:9px;font-weight:800;display:flex;position:absolute;top:-8px;right:-8px}@keyframes bob{0%,to{transform:translateY(0)rotate(-6deg)}50%{transform:translateY(6px)rotate(6deg)}}@keyframes sinkAnim{0%{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(60px)}}.boat.sinking-anim{animation:1.1s ease-in forwards sinkAnim}.bullet{pointer-events:none;z-index:5;background:#f1e05a;border-radius:2px;width:3px;height:10px;position:fixed;box-shadow:0 0 6px #f1e05a}.boat-ammo{gap:2px;height:5px;display:flex}.ammo-pip{opacity:.8;background:#f1e05a;border-radius:1px;width:4px;height:5px}.ammo-pip.empty{opacity:.5;background:#30363d}</style>
-    <script type="module" crossorigin src="/me/assets/index-DE4qg3Rz.js"></script>
-    <link rel="stylesheet" crossorigin href="/me/assets/index-UP399MKZ.css">
-  </head>
-  <body>
-    <div id="root"></div>
-    <script>
-    (function () {
-      /* ── config ─────────────────────────────────────── */
-      var CFG = {
-        letters: { enabled: true, catchOnClick: true, drag: true, interval: 150 },
-        boats:   { enabled: true, capacity: 15, repairClicks: 5 },
-        bullets: { enabled: true, max: 10, reloadMs: 2000, speedPx: 6 }
-      };
-      /* ──────────────────────────────────────────────── */
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rohan Tandel · Senior Backend Architect</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <meta name="description" content="Rohan Tandel – Senior Backend Architect specializing in AI-augmented distributed systems, event-driven SaaS, and high-throughput architectures.">
+  <style>
+    :root {
+      --bg: #090a0c;
+      --panel: #111318;
+      --panel-hover: #161a22;
+      --panel-subtle: #151820;
+      --line: #222630;
+      --line-light: #2e3442;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-dim: #6b7280;
+      --accent: #d8ff61;
+      --accent-dim: rgba(216, 255, 97, 0.12);
+      --accent-glow: rgba(216, 255, 97, 0.25);
+      --emerald: #34d399;
+      --emerald-dim: rgba(52, 211, 153, 0.12);
+      --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    }
 
-      var LETTERS = [
-  // 0-9
-  '0','1','2','3','4','5','6','7','8','9',
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  // A-Z
-  'A','B','C','D','E','F','G','H','I','J','K','L','M',
-  'N','O','P','Q','R','S','T','U','V','W','X','Y','Z',
+    html {
+      scroll-behavior: smooth;
+    }
 
-  // Gen Z / Internet shortcuts
-  // 'LOL','LMAO','LMFAO','ROFL',
-  // 'OMG','OMFG','WTF','WTH','WYD','WYA','HBU',
-  // 'IDK','IDC','IK','IKR','IMO','IMHO',
-  // 'TBH','TBF','NGL','FR','FRFR','ISTG',
-  // 'BTW','FYI','FYA',
-  // 'BRB','BBS','AFK','GTG','G2G',
-  // 'TTYL','TTYS','DM','PM',
-  // 'RN','ATM','ASAP',
-  // 'IRL','POV','FYP','GRWM',
-  // 'ICYMI','IYKYK','TLDR','TMI',
-  // 'GOAT','GOATED','W','L','MVP',
-  // 'SUS','CAP','NO CAP','BET',
-  // 'BASED','MID','REAL','VALID',
-  // 'SLAY','ATE','ATE THAT','SERVE',
-  // 'RIZZ','W RIZZ','NPC',
-  // 'GOAT','OP','CLUTCH',
-  // 'LOWKEY','HIGHKEY',
-  // 'DEADASS','PERIOD','PERIODT',
-  // 'SHEESH','YEET','VIBE','VIBES',
-  // 'BAE','BESTIE','BRO','BRUH','DUDE',
-  // 'BFF','ILY','ILYS','XOXO',
-  // 'TY','THX','TYSM','YW','NP',
-  // 'PLS','PLZ','THO','BC','CUZ',
-  // 'WBU','HBU','SUP','HMU',
-  // 'LMAO','HAHA','HEHE','XD','XDDD',
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      overflow-x: hidden;
+      padding-bottom: 40px;
+    }
 
-  // Reactions / chat
-  // 'HI','HEY','HELLO','HII','HEYYY',
-  // 'OK','OKAY','K','KK','BET',
-  // 'YES','YESS','NO','NOPE','NAH',
-  // 'YEAH','YEAHH','YUP','YEP',
-  // 'WOW','OMG','OHH','AWWW',
-  // 'HMM','HM','BRUH','BROOO',
-  // 'HAHAHA','LMFAOO','HELP',
-  // 'STOPP','BYEEE','PLSSS',
+    /* Ambient background gradient glow */
+    body::before {
+      content: "";
+      position: fixed;
+      top: -20vh;
+      left: 10vw;
+      width: 80vw;
+      height: 60vh;
+      background: radial-gradient(circle, rgba(216, 255, 97, 0.045) 0%, rgba(17, 19, 24, 0) 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
 
-  // Text emoticons
-  //':)', ':D', ':P', ':(', ';)',';P',
-  //':/', ':|', ':O', 'XD','xD','<3',
-  //'</3','T_T','-_-','._.','^_^',
+    .container {
+      width: min(1080px, calc(100% - 36px));
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
 
-  // Emojis
-  '😀','😃','😄','😁','😆','😅','😂','🤣',
- // '😊','😇','🙂','🙃','😉','😍','🥰','😘',
-  //'😎','🥳','😏','😭','😂','🤣','💀','☠️',
- // '🤡','👀','🤨','🤔','😐','🙄','😮','😱',
- // '😤','😡','🤬','🤯','🥺','😩','😫','😴',
-  //'🤭','🤫','🫠','🫡','🗿',
+    a {
+      color: inherit;
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
 
-  // Hearts / reactions
- // '❤️','🧡','💛','💚','💙','💜','🖤','🤍',
- // '🤎','💔','💕','💖','💗','💓','💯',
-  '🔥','✨','⭐','🌟',
-  '👍','👎','👏','🙌','🙏','🤝','👌',
- // '🤌','✌️','🤞','🫶','💅',
-//  '🎉','🎊','🥶','🥵'
-];
+    /* Header Nav */
+    nav.top-nav {
+      position: sticky;
+      top: 14px;
+      z-index: 50;
+      margin-top: 14px;
+      margin-bottom: 24px;
+      background: rgba(17, 19, 24, 0.85);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 10px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
 
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
 
-      var letDragged = null, offX = 0, offY = 0;
+    .brand-avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--panel-subtle);
+      border: 1px solid var(--line-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 13px;
+      color: var(--accent);
+      letter-spacing: -0.03em;
+    }
 
-      /* ════════════════════════════════════════════════
-         BOAT SYSTEM
-         ════════════════════════════════════════════════ */
-      var boats = [];   // [{el, x, cargo[], broken, repairCount, dragging}]
+    .brand-name {
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: -0.02em;
+    }
 
-      function makBoat(initX) {
-        var wrap   = document.createElement('div');
-        wrap.className = 'boat';
-        wrap.style.left = initX + 'px';
+    .brand-title {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-left: 4px;
+    }
 
-        var cargo  = document.createElement('div');
-        cargo.className = 'boat-cargo';
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
 
-        var hull   = document.createElement('div');
-        hull.className = 'boat-body';
-        hull.innerText = '⛵';
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--emerald-dim);
+      border: 1px solid rgba(52, 211, 153, 0.25);
+      color: var(--emerald);
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 12.5px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
 
-        var barWrap = document.createElement('div');
-        barWrap.className = 'boat-bar-wrap';
-        var bar = document.createElement('div');
-        bar.className = 'boat-bar';
-        bar.style.width = '0%';
-        barWrap.appendChild(bar);
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--emerald);
+      box-shadow: 0 0 8px var(--emerald);
+      animation: pulse 2s infinite ease-in-out;
+    }
 
-        var badge = document.createElement('div');
-        badge.className = 'boat-repair-badge';
-        badge.style.display = 'none';
-        wrap.appendChild(badge);
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.45; transform: scale(0.85); }
+    }
 
-        wrap.appendChild(cargo);
-        wrap.appendChild(hull);
-        wrap.appendChild(barWrap);
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: var(--text);
+      padding: 8px 16px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
 
-        var ammoRow = document.createElement('div');
-        ammoRow.className = 'boat-ammo';
-        wrap.appendChild(ammoRow);
+    .btn:hover {
+      border-color: var(--line-light);
+      background: var(--panel-hover);
+      color: #fff;
+    }
 
-        document.body.appendChild(wrap);
+    .btn-accent {
+      background: var(--accent);
+      color: #090a0c;
+      border-color: var(--accent);
+      font-weight: 700;
+    }
 
-        var state = {
-          el: wrap, cargoEl: cargo, hullEl: hull, barEl: bar, badgeEl: badge,
-          ammoEl: ammoRow,
-          x: initX,
-          cargo: [],        // letters caught
-          broken: false,
-          repairCount: 0,
-          dragging: false,
-          ammo: CFG.bullets.max,
-          lastShot: 0
-        };
-        boats.push(state);
+    .btn-accent:hover {
+      background: #e4ff85;
+      border-color: #e4ff85;
+      color: #000;
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
 
-        /* left-right drag */
-        wrap.addEventListener('mousedown', function(e) {
-          if (e.button !== 0) return;
-          e.preventDefault();
-          state.dragging = true;
-          offBoatX = e.clientX - state.x;
-        });
+    /* Hero Section */
+    .hero-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: clamp(28px, 4.5vw, 44px);
+      margin-bottom: 20px;
+      position: relative;
+      overflow: hidden;
+    }
 
-        /* repair on click when broken */
-        wrap.addEventListener('click', function(e) {
-          if (!state.broken) return;
-          state.repairCount++;
-          updateBoat(state);
-          if (state.repairCount >= CFG.boats.repairClicks) repairBoat(state);
-        });
+    .hero-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent);
+      margin-bottom: 14px;
+    }
 
-        return state;
+    .hero-heading {
+      font-size: clamp(32px, 5vw, 52px);
+      line-height: 1.08;
+      letter-spacing: -0.04em;
+      font-weight: 800;
+      margin-bottom: 12px;
+      max-width: 900px;
+    }
+
+    .hero-heading span.highlight {
+      color: var(--accent);
+    }
+
+    .hero-subheading {
+      font-size: clamp(17px, 2.2vw, 21px);
+      color: var(--text-muted);
+      line-height: 1.45;
+      max-width: 820px;
+      margin-bottom: 24px;
+      font-weight: 400;
+    }
+
+    .hero-pillars {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 26px;
+      padding-top: 26px;
+      border-top: 1px solid var(--line);
+    }
+
+    .pillar {
+      background: var(--panel-subtle);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px 20px;
+    }
+
+    .pillar-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .pillar-title span.dot {
+      color: var(--accent);
+    }
+
+    .pillar-desc {
+      font-size: 13.5px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Key Numbers Grid */
+    .metrics-bar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .metric-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 22px 24px;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    .metric-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--line-light);
+    }
+
+    .metric-num {
+      font-size: clamp(34px, 4vw, 44px);
+      font-weight: 850;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      color: var(--text);
+      margin-bottom: 6px;
+      font-feature-settings: "tnum";
+    }
+
+    .metric-num.accent {
+      color: var(--accent);
+    }
+
+    .metric-label {
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    /* Segmented Navigation Tabs */
+    .tabs-nav {
+      display: flex;
+      gap: 8px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px;
+      margin-bottom: 20px;
+      overflow-x: auto;
+    }
+
+    .tab-trigger {
+      flex: 1;
+      min-width: 150px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 12px 20px;
+      border-radius: 999px;
+      font-family: var(--font);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .tab-trigger:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .tab-trigger.active {
+      background: var(--accent);
+      color: #090a0c;
+      font-weight: 750;
+      box-shadow: 0 4px 20px var(--accent-glow);
+    }
+
+    /* Tab Content Panes */
+    .view-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: clamp(24px, 4vw, 36px);
+      margin-bottom: 20px;
+    }
+
+    .tab-panel {
+      display: none;
+      animation: viewFade 0.25s ease-out forwards;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    @keyframes viewFade {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* TAB 1: Experience Split View */
+    .exp-split {
+      display: grid;
+      grid-template-columns: 290px 1fr;
+      gap: 28px;
+    }
+
+    .company-selector {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .company-option {
+      background: var(--panel-subtle);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px 18px;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      color: var(--text);
+    }
+
+    .company-option:hover {
+      border-color: var(--line-light);
+      background: var(--panel-hover);
+    }
+
+    .company-option.active {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .company-option-name {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .company-option.active .company-option-name {
+      color: var(--accent);
+    }
+
+    .company-option-date {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+
+    .company-option-type {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    .exp-content-box {
+      background: var(--panel-subtle);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 26px 28px;
+    }
+
+    .exp-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .exp-title {
+      font-size: 21px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -0.02em;
+    }
+
+    .exp-date-badge {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      background: rgba(216, 255, 97, 0.08);
+      border: 1px solid rgba(216, 255, 97, 0.2);
+      padding: 4px 12px;
+      border-radius: 999px;
+    }
+
+    .exp-company-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 18px;
+    }
+
+    .tech-stack-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 20px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .tag-badge {
+      font-size: 13px;
+      font-weight: 500;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid var(--line);
+      color: #e5e7eb;
+    }
+
+    .tag-badge.featured {
+      background: var(--accent-dim);
+      border-color: rgba(216, 255, 97, 0.3);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .bullet-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .bullet-list li {
+      position: relative;
+      padding-left: 24px;
+      font-size: 15px;
+      color: #d1d5db;
+      line-height: 1.6;
+    }
+
+    .bullet-list li::before {
+      content: "→";
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+      font-weight: 800;
+    }
+
+    .bullet-list li strong {
+      color: #fff;
+      font-weight: 700;
+    }
+
+    /* TAB 2: Skills Grid */
+    .skills-filter-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 22px;
+    }
+
+    .filter-chip {
+      background: var(--panel-subtle);
+      border: 1px solid var(--line);
+      color: var(--text-muted);
+      padding: 8px 16px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .filter-chip:hover {
+      color: #fff;
+      border-color: var(--line-light);
+    }
+
+    .filter-chip.active {
+      background: #fff;
+      color: #090a0c;
+      border-color: #fff;
+      font-weight: 750;
+    }
+
+    .skills-masonry {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .skill-block {
+      background: var(--panel-subtle);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 22px;
+      transition: border-color 0.2s ease;
+    }
+
+    .skill-block:hover {
+      border-color: var(--line-light);
+    }
+
+    .skill-block-title {
+      font-size: 15px;
+      font-weight: 750;
+      color: #fff;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .skill-block-title span.indicator {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .skill-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .skill-pill {
+      font-size: 13px;
+      color: #d1d5db;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--line);
+      padding: 6px 12px;
+      border-radius: 999px;
+      transition: all 0.15s ease;
+    }
+
+    .skill-pill:hover {
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    /* TAB 3: Architecture Diagram & Flow */
+    .arch-intro {
+      margin-bottom: 22px;
+    }
+
+    .arch-intro h3 {
+      font-size: 20px;
+      font-weight: 750;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+
+    .arch-intro p {
+      font-size: 14.5px;
+      color: var(--text-muted);
+    }
+
+    .pipeline-container {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+
+    .pipe-step {
+      background: var(--panel-subtle);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px 16px;
+      text-align: center;
+      position: relative;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .pipe-step:hover, .pipe-step.active {
+      border-color: var(--accent);
+      background: var(--panel-hover);
+    }
+
+    .pipe-step-num {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 6px;
+    }
+
+    .pipe-step-name {
+      font-size: 14px;
+      font-weight: 750;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    .pipe-step-detail {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .arch-live-box {
+      background: #0b0d12;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 20px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .arch-stat {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .arch-stat-val {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--accent);
+    }
+
+    .arch-stat-lbl {
+      font-size: 12.5px;
+      color: var(--text-muted);
+    }
+
+    /* TAB 4: Case Studies */
+    .cases-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+
+    .case-item {
+      background: var(--panel-subtle);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .case-badge {
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+
+    .case-title {
+      font-size: 18px;
+      font-weight: 750;
+      color: #fff;
+      line-height: 1.3;
+      margin-bottom: 12px;
+    }
+
+    .case-body {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 18px;
+      flex-grow: 1;
+    }
+
+    .case-stats {
+      background: rgba(216, 255, 97, 0.06);
+      border: 1px solid rgba(216, 255, 97, 0.18);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 13.5px;
+      color: #f3f4f6;
+    }
+
+    .case-stats strong {
+      color: var(--accent);
+    }
+
+    /* TAB 5: Education & Credentials */
+    .edu-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .edu-card {
+      background: var(--panel-subtle);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 24px 28px;
+    }
+
+    .edu-card h4 {
+      font-size: 17px;
+      font-weight: 750;
+      color: #fff;
+      margin-bottom: 16px;
+    }
+
+    .info-line {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+    }
+
+    .info-line:last-child {
+      border-bottom: none;
+    }
+
+    .info-line span.label {
+      color: var(--text-muted);
+    }
+
+    .info-line span.val {
+      color: #fff;
+      font-weight: 600;
+      text-align: right;
+    }
+
+    /* Footer Dock */
+    footer.dock {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 20px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .dock-contacts {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .contact-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--panel-subtle);
+      border: 1px solid var(--line);
+      padding: 8px 16px;
+      border-radius: 999px;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .contact-badge:hover {
+      border-color: var(--accent);
+      color: #fff;
+      background: var(--panel-hover);
+    }
+
+    /* Toast */
+    .toast-popup {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      background: #111318;
+      border: 1px solid var(--accent);
+      color: #fff;
+      padding: 12px 22px;
+      border-radius: 999px;
+      font-size: 13.5px;
+      font-weight: 600;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 20px var(--accent-glow);
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.25s ease;
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    .toast-popup.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    /* Responsive */
+    @media (max-width: 960px) {
+      .hero-pillars { grid-template-columns: 1fr; }
+      .metrics-bar { grid-template-columns: repeat(2, 1fr); }
+      .exp-split { grid-template-columns: 1fr; }
+      .skills-masonry { grid-template-columns: repeat(2, 1fr); }
+      .pipeline-container { grid-template-columns: 1fr; }
+      .cases-grid { grid-template-columns: 1fr; }
+      .edu-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 640px) {
+      nav.top-nav { border-radius: 20px; }
+      .brand-title { display: none; }
+      .metrics-bar { grid-template-columns: 1fr; }
+      .skills-masonry { grid-template-columns: 1fr; }
+      footer.dock { flex-direction: column; align-items: stretch; }
+      .dock-contacts { justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+
+    <!-- Top Sticky Bar -->
+    <nav class="top-nav">
+      <a href="../" class="brand" title="View Personal Story">
+        <div class="brand-avatar">RT</div>
+        <div class="brand-name">Rohan Tandel <span class="brand-title">/ Backend Architect</span></div>
+      </a>
+
+      <div class="nav-right">
+        <div class="status-pill">
+          <span class="status-dot"></span>
+          <span>Open to Roles · 30d Notice</span>
+        </div>
+        <a href="resume.html" class="btn" title="View & Download PDF Resume" target="_blank">
+          <span>📄 Resume</span>
+        </a>
+        <a href="study/index.html" class="btn" title="Study notes and flashcards">
+          <span>📚 Study Notes</span>
+        </a>
+        <a href="mailto:r9591343@gmail.com" class="btn btn-accent">
+          <span>Get in Touch</span>
+        </a>
+      </div>
+    </nav>
+
+    <!-- Hero Card -->
+    <section class="hero-card">
+      <div class="hero-tag">Senior Backend Architect</div>
+      <h1 class="hero-heading">
+        Designing <span class="highlight">fault-tolerant, event-driven</span> systems that scale to millions.
+      </h1>
+      <p class="hero-subheading">
+        8+ years architecting high-throughput distributed architectures, asynchronous message pipelines, 
+        and cloud infrastructure across European TaxTech SaaS, British Telecommunications, and EdTech.
+      </p>
+
+      <div class="hero-pillars">
+        <div class="pillar">
+          <div class="pillar-title"><span class="dot">●</span> Accelerated Delivery</div>
+          <p class="pillar-desc">
+            Pioneering AI pair-programming (Cursor, Copilot) to reduce integration boilerplate by 35–40% and ship complex authority APIs 65% faster.
+          </p>
+        </div>
+        <div class="pillar">
+          <div class="pillar-title"><span class="dot">●</span> Production Resilience</div>
+          <p class="pillar-desc">
+            Architecting idempotent pipelines (SQS/DLQ), distributed locking (Redis), and multi-layer caching sustaining 99.95% enterprise uptime.
+          </p>
+        </div>
+        <div class="pillar">
+          <div class="pillar-title"><span class="dot">●</span> Modernization & Scale</div>
+          <p class="pillar-desc">
+            Leading migrations of legacy PHP monoliths into modular Laravel, Go, and TypeScript microservices with zero downtime rollouts.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Key Metrics Strip -->
+    <section class="metrics-bar">
+      <div class="metric-card">
+        <div class="metric-num accent" data-count="8" data-suffix="+">8+</div>
+        <div class="metric-label">Years Backend Experience</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-num" data-count="2" data-suffix="M+">2M+</div>
+        <div class="metric-label">Daily Requests Processed</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-num accent" data-count="99.95" data-suffix="%" data-float="true">99.95%</div>
+        <div class="metric-label">Production SLA Uptime</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-num" data-count="65" data-suffix="%">65%</div>
+        <div class="metric-label">Faster Integration Turnaround</div>
+      </div>
+    </section>
+
+    <!-- Segmented Navigation Tabs -->
+    <nav class="tabs-nav" role="tablist">
+      <button class="tab-trigger active" data-view="view-exp">
+        <span>💼 Experience & Impact</span>
+      </button>
+      <button class="tab-trigger" data-view="view-skills">
+        <span>⚡ Tech Stack & Skills</span>
+      </button>
+      <button class="tab-trigger" data-view="view-arch">
+        <span>🔄 Architecture & Pipelines</span>
+      </button>
+      <button class="tab-trigger" data-view="view-cases">
+        <span>🏆 Key Case Studies</span>
+      </button>
+      <button class="tab-trigger" data-view="view-edu">
+        <span>🎓 Education & Credentials</span>
+      </button>
+    </nav>
+
+    <!-- Dynamic Content View Area -->
+    <main class="view-card">
+
+      <!-- VIEW 1: Experience -->
+      <section class="tab-panel active" id="view-exp">
+        <div class="exp-split">
+          <div class="company-selector">
+            <button class="company-option active" data-id="fintua">
+              <div class="company-option-name">
+                <span>Fintua Pvt Ltd</span>
+                <span style="font-size:12px; color:var(--accent);">Current</span>
+              </div>
+              <div class="company-option-date">Jan 2022 – Present</div>
+              <div class="company-option-type">European TaxTech SaaS</div>
+            </button>
+
+            <button class="company-option" data-id="techm">
+              <div class="company-option-name">
+                <span>Tech Mahindra</span>
+              </div>
+              <div class="company-option-date">Jun 2019 – Dec 2021</div>
+              <div class="company-option-type">Telecom & EdTech Consulting</div>
+            </button>
+
+            <button class="company-option" data-id="scriptbees">
+              <div class="company-option-name">
+                <span>Scriptbees</span>
+              </div>
+              <div class="company-option-date">Jun 2018 – May 2019</div>
+              <div class="company-option-type">Data Sync Startup</div>
+            </button>
+          </div>
+
+          <div class="exp-content-box" id="exp-display">
+            <!-- Rendered by JavaScript -->
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 2: Skills Matrix -->
+      <section class="tab-panel" id="view-skills">
+        <div class="skills-filter-row">
+          <button class="filter-chip active" data-category="all">All Skills</button>
+          <button class="filter-chip" data-category="cloud">Cloud & Distributed</button>
+          <button class="filter-chip" data-category="backend">Languages & Frameworks</button>
+          <button class="filter-chip" data-category="data">Databases & Cache</button>
+          <button class="filter-chip" data-category="ai">AI-Augmented Dev</button>
+          <button class="filter-chip" data-category="devops">DevOps & Observability</button>
+        </div>
+
+        <div class="skills-masonry" id="skills-masonry">
+          <!-- Rendered by JavaScript -->
+        </div>
+      </section>
+
+      <!-- VIEW 3: Architecture & System Flow -->
+      <section class="tab-panel" id="view-arch">
+        <div class="arch-intro">
+          <h3>High-Throughput Event-Driven Architecture</h3>
+          <p>
+            Standard enterprise integration pipeline designed by Rohan for high-volume transactions with strict idempotency, 
+            zero-duplicate guarantees, and automated Dead-Letter Queue (DLQ) recovery.
+          </p>
+        </div>
+
+        <div class="pipeline-container">
+          <div class="pipe-step active" data-step="0">
+            <div class="pipe-step-num">Step 01</div>
+            <div class="pipe-step-name">API Gateway</div>
+            <div class="pipe-step-detail">Ingestion, rate limiting & token validation</div>
+          </div>
+          <div class="pipe-step" data-step="1">
+            <div class="pipe-step-num">Step 02</div>
+            <div class="pipe-step-name">EventBridge / SQS</div>
+            <div class="pipe-step-detail">Decoupled FIFO queue with deduplication IDs</div>
+          </div>
+          <div class="pipe-step" data-step="2">
+            <div class="pipe-step-num">Step 03</div>
+            <div class="pipe-step-name">Workers / Lambda</div>
+            <div class="pipe-step-detail">Concurrency control & exponential retry</div>
+          </div>
+          <div class="pipe-step" data-step="3">
+            <div class="pipe-step-num">Step 04</div>
+            <div class="pipe-step-name">Redis Locking</div>
+            <div class="pipe-step-detail">Distributed locks preventing race conditions</div>
+          </div>
+          <div class="pipe-step" data-step="4">
+            <div class="pipe-step-num">Step 05</div>
+            <div class="pipe-step-name">Postgres / DLQ</div>
+            <div class="pipe-step-detail">ACID persistence or safe DLQ audit storage</div>
+          </div>
+        </div>
+
+        <div class="arch-live-box">
+          <div class="arch-stat">
+            <div class="arch-stat-val">320ms</div>
+            <div class="arch-stat-lbl">p95 Latency Achieved (Down from 1.2s)</div>
+          </div>
+          <div class="arch-stat">
+            <div class="arch-stat-val">99.95%</div>
+            <div class="arch-stat-lbl">Uptime SLA Guaranteed</div>
+          </div>
+          <div class="arch-stat">
+            <div class="arch-stat-val">0 Findings</div>
+            <div class="arch-stat-lbl">Across 3 External Security & GDPR Audits</div>
+          </div>
+          <div class="arch-stat">
+            <div class="arch-stat-val">12 Mins</div>
+            <div class="arch-stat-lbl">MTTD via Datadog (Reduced from 45 mins)</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 4: Case Studies -->
+      <section class="tab-panel" id="view-cases">
+        <div class="cases-grid">
+          <div class="case-item">
+            <div>
+              <div class="case-badge">Fintech · European TaxTech</div>
+              <h3 class="case-title">Multi-Country Tax Authority Integration</h3>
+              <p class="case-body">
+                Integrated 10+ country-specific tax authorities across Europe, each with unique schemas, auth models, and error behaviors. 
+                Constructed a unified PHP + TypeScript microservice engine with shared exponential retry mechanisms and Datadog monitoring.
+              </p>
+            </div>
+            <div class="case-stats">
+              <strong>Outcome:</strong> Lead time slashed from 3 weeks to 10 days (65% drop). Latency reduced to 320ms. Zero audit findings.
+            </div>
+          </div>
+
+          <div class="case-item">
+            <div>
+              <div class="case-badge">Telecom · British Telecom (Plusnet)</div>
+              <h3 class="case-title">Legacy Onboarding Modernization</h3>
+              <p class="case-body">
+                Migrated a brittle customer-onboarding monolith to modern Laravel and Angular, orchestrating seamless communication 
+                with 10+ upstream Java Spring Boot microservices while maintaining strict backward-compatibility and zero downtime.
+              </p>
+            </div>
+            <div class="case-stats">
+              <strong>Outcome:</strong> 99.9% consistency across 10+ upstream services. CI/CD build cut from 25 min to 8 min.
+            </div>
+          </div>
+
+          <div class="case-item">
+            <div>
+              <div class="case-badge">EdTech · 2M+ Daily Questions</div>
+              <h3 class="case-title">Mindspark Personalization Scalability</h3>
+              <p class="case-body">
+                Profiled high-throughput traffic and query patterns with Apache JMeter under peak classroom hours. 
+                Eliminated Elasticsearch indexing bottlenecks and implemented JSON-schema validation across all incoming API payloads.
+              </p>
+            </div>
+            <div class="case-stats">
+              <strong>Outcome:</strong> Dramatically increased search query throughput and eliminated peak-hour indexing timeouts.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 5: Education & Credentials -->
+      <section class="tab-panel" id="view-edu">
+        <div class="edu-grid">
+          <div class="edu-card">
+            <h4>🎓 Formal Education</h4>
+            <div class="info-line">
+              <span class="label">Degree</span>
+              <span class="val">Bachelor of Engineering (B.E.)</span>
+            </div>
+            <div class="info-line">
+              <span class="label">Major</span>
+              <span class="val">Computer Science Engineering</span>
+            </div>
+            <div class="info-line">
+              <span class="label">University</span>
+              <span class="val">University of Mumbai</span>
+            </div>
+            <div class="info-line">
+              <span class="label">Graduation</span>
+              <span class="val">2014 – 2018</span>
+            </div>
+          </div>
+
+          <div class="edu-card">
+            <h4>💼 Professional Availability</h4>
+            <div class="info-line">
+              <span class="label">Notice Period</span>
+              <span class="val" style="color:var(--accent);">30 Days</span>
+            </div>
+            <div class="info-line">
+              <span class="label">Preferred Locations</span>
+              <span class="val">Pune · Bengaluru · Hyderabad · Remote</span>
+            </div>
+            <div class="info-line">
+              <span class="label">Engagement Types</span>
+              <span class="val">Full-time · Contract · Architecture Advisory</span>
+            </div>
+            <div class="info-line">
+              <span class="label">Direct Email</span>
+              <span class="val">
+                <a href="mailto:r9591343@gmail.com" style="color:var(--accent);">r9591343@gmail.com</a>
+              </span>
+            </div>
+          </div>
+
+          <div class="edu-card" style="grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+            <div>
+              <h4 style="margin-bottom: 4px;">📄 Official Curriculum Vitae / Resume</h4>
+              <p style="font-size: 13.5px; color: var(--text-muted);">ATS-friendly formatting. Print directly or save as clean PDF.</p>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <a href="resume.html" target="_blank" class="btn btn-accent">
+                <span>View & Save PDF</span>
+              </a>
+              <a href="resume.html" download="Rohan_Tandel_Resume.html" class="btn">
+                <span>Download HTML</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Bottom Action Dock -->
+    <footer class="dock">
+      <div class="dock-contacts">
+        <a href="resume.html" target="_blank" class="contact-badge" title="View & Download Resume">
+          <span>📄</span>
+          <span>Resume (PDF)</span>
+        </a>
+        <div class="contact-badge" id="btn-copy-email" title="Click to copy email">
+          <span>📧</span>
+          <span>r9591343@gmail.com</span>
+        </div>
+        <div class="contact-badge" id="btn-copy-phone" title="Click to copy phone number">
+          <span>📞</span>
+          <span>+91 63604 25981</span>
+        </div>
+        <a href="https://www.linkedin.com/in/rohan-tandel" target="_blank" rel="noopener noreferrer" class="contact-badge">
+          <span>🔗</span>
+          <span>LinkedIn</span>
+        </a>
+        <a href="https://github.com/ROHAN-TANDEL" target="_blank" rel="noopener noreferrer" class="contact-badge">
+          <span>🐙</span>
+          <span>GitHub</span>
+        </a>
+      </div>
+
+      <div>
+        <a href="mailto:r9591343@gmail.com?subject=Opportunity%20for%20Rohan%20Tandel" class="btn btn-accent">
+          <span>Connect with Rohan →</span>
+        </a>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Toast Confirmation Popup -->
+  <div class="toast-popup" id="toast-popup">Copied to clipboard!</div>
+
+  <!-- Interactive JavaScript Logic -->
+  <script>
+    const EXPERIENCES = {
+      fintua: {
+        title: "Sr. Integration & Backend Engineer / Senior Software Engineer",
+        company: "Fintua Pvt Ltd · European Fintech & TaxTech SaaS",
+        dates: "Jan 2022 – Present · Pune / Remote",
+        tags: ["PHP", "TypeScript", "AWS Lambda", "SQS", "EventBridge", "Redis", "PostgreSQL", "Docker", "Datadog", "Golang", "JMeter", "Angular"],
+        bullets: [
+          "<strong>AI-Assisted Engineering:</strong> Integrated Cursor and Copilot to generate boilerplate API clients, exponential retry engines, and TypeScript interfaces for 10+ European tax authorities — cut lead time from <strong>3 weeks to 10 days per country (65% reduction)</strong>.",
+          "<strong>Event-Driven Pipelines:</strong> Built resilient async workflows leveraging AWS Lambda, SQS, and EventBridge to decouple critical fiscal services, complete with automated Dead-Letter Queue (DLQ) recovery mechanisms.",
+          "<strong>Performance & Latency Tuning:</strong> Profiled high-throughput API traffic using Apache JMeter; deployed Redis caching and distributed locking to reduce p95 latency from <strong>1.2s to 320ms</strong> for high-volume tenants.",
+          "<strong>Security & Compliance:</strong> Enforced tenant isolation, SSO, and RBAC compliant with strict European GDPR mandates — passed <strong>3 external security audits with zero findings</strong>.",
+          "<strong>Observability:</strong> Structured Datadog dashboards and metrics for integration health and throughput, decreasing Mean Time to Detect (MTTD) from 45 minutes to 12 minutes.",
+          "<strong>Service Modernization:</strong> Led rewrite of legacy transaction bottlenecks into high-performance Golang microservices with backward-compatible versioning."
+        ]
+      },
+      techm: {
+        title: "Senior Software Engineer",
+        company: "Tech Mahindra Pvt Ltd · IT Services & Consulting",
+        dates: "Jun 2019 – Dec 2021",
+        tags: ["PHP", "Laravel", "Angular", "Java Spring Boot", "Elasticsearch", "PostgreSQL", "REST APIs", "JMeter"],
+        bullets: [
+          "<strong>British Telecom (Plusnet):</strong> Migrated legacy customer-onboarding application to PHP (Laravel) and Angular, sustaining <strong>99.9% data consistency</strong> across 10+ upstream Java Spring Boot microservices.",
+          "<strong>Engineering Leadership:</strong> Led a multidisciplinary team of 4 engineers across sprint planning, technical design reviews, and architectural alignment; delivered all milestones on schedule for 3 consecutive quarters.",
+          "<strong>Mindspark (EdTech, 2M+ Daily Questions):</strong> Profiled traffic patterns and query bottlenecks with Apache JMeter; resolved Elasticsearch query indexing bottlenecks to stabilize peak-hour throughput.",
+          "<strong>Input Validation Framework:</strong> Implemented server-side JSON-schema validator middleware, ensuring consistent data hygiene and resilience across all inbound API contracts."
+        ]
+      },
+      scriptbees: {
+        title: "Web Developer",
+        company: "Scriptbees Pvt Ltd · Product Startup",
+        dates: "Jun 2018 – May 2019",
+        tags: ["PHP", "JavaScript", "MySQL", "OfflineSync", "REST APIs"],
+        bullets: [
+          "<strong>OfflineSync Platform:</strong> Owned end-to-end architecture, implementation, and deployment of an offline data synchronization engine for field personnel operating under intermittent internet connectivity.",
+          "<strong>Technical Coordination:</strong> Guided a team of 4 engineers through database conflict resolution strategies and client-server state reconciliation."
+        ]
       }
+    };
 
-      var offBoatX = 0;
+    const SKILLS = [
+      {
+        category: "Cloud (AWS)",
+        filter: "cloud",
+        items: ["AWS Lambda", "SQS", "SNS", "EventBridge", "API Gateway", "EC2", "S3", "ECS", "Secrets Manager"]
+      },
+      {
+        category: "Distributed Systems",
+        filter: "cloud",
+        items: ["Redis", "Distributed Locking", "Idempotent Processing", "Concurrency Control", "Event-Driven Arch", "Microservices"]
+      },
+      {
+        category: "Languages & Frameworks",
+        filter: "backend",
+        items: ["PHP", "Laravel", "TypeScript", "Node.js", "Express.js", "Golang", "Angular", "Python Scripting", "REST APIs"]
+      },
+      {
+        category: "Databases & Storage",
+        filter: "data",
+        items: ["PostgreSQL", "MongoDB", "MySQL", "Database Design", "Indexing & Query Tuning", "Transactions"]
+      },
+      {
+        category: "AI-Augmented Development",
+        filter: "ai",
+        items: ["Cursor IDE", "Kiro IDE", "GitHub Copilot", "Prompt Engineering", "LLM-Assisted Refactoring", "Automated Test Generation"]
+      },
+      {
+        category: "DevOps & Observability",
+        filter: "devops",
+        items: ["Docker", "Nginx", "Bitbucket CI/CD", "Datadog", "JMeter Load Testing", "Structured Logging"]
+      }
+    ];
 
-      document.addEventListener('mousemove', function(e) {
-        boats.forEach(function(b) {
-          if (!b.dragging) return;
-          b.x = Math.max(0, Math.min(window.innerWidth - 120, e.clientX - offBoatX));
-          b.el.style.left = b.x + 'px';
-        });
+    /* 1. Tab Navigation */
+    const tabTriggers = document.querySelectorAll('.tab-trigger');
+    const tabPanels = document.querySelectorAll('.tab-panel');
+
+    tabTriggers.forEach(btn => {
+      btn.addEventListener('click', () => {
+        tabTriggers.forEach(t => t.classList.remove('active'));
+        tabPanels.forEach(p => p.classList.remove('active'));
+
+        btn.classList.add('active');
+        const viewId = btn.getAttribute('data-view');
+        const panel = document.getElementById(viewId);
+        if (panel) panel.classList.add('active');
       });
-      document.addEventListener('mouseup', function() {
-        boats.forEach(function(b) { b.dragging = false; });
+    });
+
+    /* 2. Experience Switcher */
+    const companyBtns = document.querySelectorAll('.company-option');
+    const expDisplay = document.getElementById('exp-display');
+
+    function renderExp(id) {
+      const data = EXPERIENCES[id];
+      if (!data) return;
+
+      const tagsHtml = data.tags.map(t => `<span class="tag-badge ${['AWS Lambda', 'SQS', 'Redis', 'PHP', 'Golang'].includes(t) ? 'featured' : ''}">${t}</span>`).join('');
+      const bulletsHtml = data.bullets.map(b => `<li>${b}</li>`).join('');
+
+      expDisplay.innerHTML = `
+        <div class="exp-header">
+          <h3 class="exp-title">${data.title}</h3>
+          <span class="exp-date-badge">${data.dates}</span>
+        </div>
+        <div class="exp-company-desc">${data.company}</div>
+        <div class="tech-stack-row">${tagsHtml}</div>
+        <ul class="bullet-list">${bulletsHtml}</ul>
+      `;
+    }
+
+    companyBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        companyBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderExp(btn.getAttribute('data-id'));
       });
+    });
 
-      function updateBoat(state) {
-        var pct = (state.cargo.length / CFG.boats.capacity) * 100;
-        state.barEl.style.width = Math.min(pct, 100) + '%';
-        state.barEl.style.background = pct >= 80 ? '#f78166' : pct >= 50 ? '#e3b341' : '#3fb950';
+    renderExp('fintua');
 
-        /* render cargo letters */
-        state.cargoEl.innerHTML = state.cargo.map(function(c){ return '<span>' + c + '</span>'; }).join('');
+    /* 3. Skills Filtering */
+    const skillsContainer = document.getElementById('skills-masonry');
+    const filterChips = document.querySelectorAll('.filter-chip');
 
-        /* ammo pips */
-        state.ammoEl.innerHTML = '';
-        for (var a = 0; a < CFG.bullets.max; a++) {
-          var pip = document.createElement('div');
-          pip.className = 'ammo-pip' + (a < state.ammo ? '' : ' empty');
-          state.ammoEl.appendChild(pip);
-        }
+    function renderSkills(category = 'all') {
+      skillsContainer.innerHTML = '';
+      const list = category === 'all' ? SKILLS : SKILLS.filter(s => s.filter === category);
 
-        /* repair badge */
-        if (state.broken && state.repairCount > 0) {
-          state.badgeEl.style.display = 'flex';
-          state.badgeEl.innerText = (CFG.boats.repairClicks - state.repairCount) + '';
-        } else {
-          state.badgeEl.style.display = 'none';
-        }
-      }
+      list.forEach(cat => {
+        const block = document.createElement('div');
+        block.className = 'skill-block';
+        const pills = cat.items.map(item => `<span class="skill-pill">${item}</span>`).join('');
+        block.innerHTML = `
+          <div class="skill-block-title">
+            <span class="indicator"></span>
+            <span>${cat.category}</span>
+          </div>
+          <div class="skill-pills">${pills}</div>
+        `;
+        skillsContainer.appendChild(block);
+      });
+    }
 
-      function sinkBoat(state) {
-        state.broken = true;
-        state.cargo  = [];
-        state.repairCount = 0;
-        state.el.classList.remove('sinking');
-        state.el.classList.add('sinking-anim');
-        setTimeout(function() {
-          state.el.classList.remove('sinking-anim');
-          state.el.classList.add('broken');
-          state.hullEl.innerText = '🚢';   /* broken wreck emoji */
-          updateBoat(state);
-        }, 1100);
-      }
+    filterChips.forEach(chip => {
+      chip.addEventListener('click', () => {
+        filterChips.forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        renderSkills(chip.getAttribute('data-category'));
+      });
+    });
 
-      function repairBoat(state) {
-        state.broken = false;
-        state.repairCount = 0;
-        state.cargo = [];
-        state.ammo  = CFG.bullets.max;
-        state.el.classList.remove('broken', 'sinking');
-        state.hullEl.innerText = '⛵';
-        updateBoat(state);
-        /* little flash */
-        state.el.style.filter = 'brightness(2)';
-        setTimeout(function(){ state.el.style.filter = ''; }, 400);
-      }
+    renderSkills('all');
 
-      function catchInBoat(state, letter) {
-        if (state.broken) return false;
-        state.cargo.push(letter);
-        if (state.cargo.length >= CFG.boats.capacity) {
-          state.el.classList.add('sinking');
-          setTimeout(function(){ sinkBoat(state); }, 600);
-        }
-        updateBoat(state);
-        return true;
-      }
+    /* 4. Interactive Pipeline Steps */
+    const pipeSteps = document.querySelectorAll('.pipe-step');
+    pipeSteps.forEach(step => {
+      step.addEventListener('click', () => {
+        pipeSteps.forEach(s => s.classList.remove('active'));
+        step.classList.add('active');
+      });
+    });
 
-      /* check if a falling letter hits a boat at the bottom */
-      function checkBoatCatch(el) {
-        var rect = el.getBoundingClientRect();
-        var letterBottom = rect.bottom;
-        /* only catch near the very bottom of viewport */
-        if (letterBottom < window.innerHeight - 80) return false;
+    /* 5. Copy Toast Notification */
+    const toast = document.getElementById('toast-popup');
 
-        for (var i = 0; i < boats.length; i++) {
-          var b = boats[i];
-          if (b.broken) continue;
-          var br = b.el.getBoundingClientRect();
-          /* horizontal overlap check */
-          if (rect.right >= br.left && rect.left <= br.right) {
-            catchInBoat(b, el.innerText);
-            return true;
-          }
-        }
-        return false;
-      }
+    function showToast(text) {
+      toast.innerText = text;
+      toast.classList.add('visible');
+      setTimeout(() => toast.classList.remove('visible'), 2200);
+    }
 
-      /* spawn boats */
-      if (CFG.boats.enabled) {
-        makBoat(window.innerWidth * 0.2);
-        makBoat(window.innerWidth * 0.65);
-      }
+    document.getElementById('btn-copy-email').addEventListener('click', () => {
+      navigator.clipboard.writeText('r9591343@gmail.com').then(() => {
+        showToast('Email copied: r9591343@gmail.com');
+      });
+    });
 
-      /* ════════════════════════════════════════════════
-         FALLING LETTERS
-         ════════════════════════════════════════════════ */
-      if (!CFG.letters.enabled) return;
-
-      function freeze(el) {
-        if (!el || el.classList.contains('pinned') || !el.isConnected) return;
-        var elapsed  = performance.now() - el._t0;
-        var progress = Math.min(elapsed / el._dur, 1);
-        var y        = -30 + (window.innerHeight * 1.05) * progress;
-        clearTimeout(el._timer);
-        el.style.animation = 'none';
-        el.style.transform = 'none';
-        el.style.top       = y + 'px';
-        el.style.opacity   = '1';
-        el.classList.add('pinned');
-      }
-
-      function release(el) {
-        if (!el || !el.classList.contains('pinned')) return;
-        el.classList.remove('pinned', 'dragging');
-        el.style.animation = '';
-        void el.offsetWidth;
-        var dur = Math.random() * 4 + 4;
-        el.style.animationDuration = dur + 's';
-        el._t0  = performance.now();
-        el._dur = dur * 1000;
-        setTimeout(function(){ if (el.isConnected) el.remove(); }, dur * 1000);
-      }
-
-      if (CFG.letters.catchOnClick) {
-        document.addEventListener('click', function(e) {
-          var all = document.querySelectorAll('.falling-letter:not(.pinned)');
-          for (var i = all.length - 1; i >= 0; i--) {
-            var el = all[i];
-            el.style.pointerEvents = 'auto';
-            var hit = (document.elementFromPoint(e.clientX, e.clientY) === el);
-            el.style.pointerEvents = '';
-            if (hit) { freeze(el); e.stopPropagation(); return; }
-          }
-        }, true);
-      }
-
-      if (CFG.letters.drag) {
-        document.addEventListener('mousedown', function(e) {
-          var el = e.target;
-          if (!el.classList || !el.classList.contains('pinned')) return;
-          e.preventDefault();
-          letDragged = el;
-          var r = el.getBoundingClientRect();
-          offX = e.clientX - r.left;
-          offY = e.clientY - r.top;
-          el.classList.add('dragging');
-        });
-        document.addEventListener('mousemove', function(e) {
-          if (!letDragged) return;
-          letDragged.style.left = (e.clientX - offX) + 'px';
-          letDragged.style.top  = (e.clientY - offY) + 'px';
-        });
-        document.addEventListener('mouseup', function() {
-          if (letDragged) { letDragged.classList.remove('dragging'); letDragged = null; }
-        });
-        document.addEventListener('dblclick', function(e) {
-          if (e.target.classList && e.target.classList.contains('pinned')) release(e.target);
-        });
-      }
-
-      function spawn() {
-        var el  = document.createElement('div');
-        var dur = Math.random() * 5 + 5;
-        el.className = 'falling-letter';
-        el.innerText = LETTERS[Math.floor(Math.random() * LETTERS.length)];
-        el.style.left              = (Math.random() * window.innerWidth) + 'px';
-        el.style.top               = '-30px';
-        el.style.fontSize          = (Math.random() * 18 + 10) + 'px';
-        el.style.opacity           = (Math.random() * 0.4 + 0.3) + '';
-        el.style.animationDuration = dur + 's';
-        el._t0  = performance.now();
-        el._dur = dur * 1000;
-
-        /* poll position during fall to detect boat collision */
-        var pollId = setInterval(function() {
-          if (!el.isConnected || el.classList.contains('pinned')) {
-            clearInterval(pollId);
-            return;
-          }
-          if (checkBoatCatch(el)) {
-            clearInterval(pollId);
-            clearTimeout(el._timer);
-            el.remove();
-          }
-        }, 120);
-
-        el._timer = setTimeout(function(){
-          clearInterval(pollId);
-          if (el.isConnected && !el.classList.contains('pinned')) el.remove();
-        }, dur * 1000);
-
-        document.body.appendChild(el);
-      }
-
-      /* ════════════════════════════════════════════════
-         BULLET ENGINE — fires when boat is idle
-         ════════════════════════════════════════════════ */
-      if (CFG.bullets.enabled) {
-        var activeBullets = []; // {el, x, y}
-
-        function fireBullet(boat) {
-          if (boat.broken || boat.dragging) return;
-          if (boat.ammo <= 0) return;
-          var now = performance.now();
-          if (now - boat.lastShot < CFG.bullets.reloadMs) return;
-          boat.lastShot = now;
-          boat.ammo--;
-          updateBoat(boat);
-
-          var br   = boat.el.getBoundingClientRect();
-          var bx   = br.left + br.width / 2;
-          var by   = br.top;
-
-          var bul  = document.createElement('div');
-          bul.className = 'bullet';
-          bul.style.left = (bx - 1.5) + 'px';
-          bul.style.top  = by + 'px';
-          document.body.appendChild(bul);
-          activeBullets.push({ el: bul, x: bx, y: by });
-        }
-
-        // auto-fire loop — fires only when boat is idle (not dragging, not broken)
-        boats.forEach(function(b) {
-          setInterval(function() { fireBullet(b); }, CFG.bullets.reloadMs);
-        });
-
-        // move bullets up, check hits
-        setInterval(function() {
-          for (var i = activeBullets.length - 1; i >= 0; i--) {
-            var bul = activeBullets[i];
-            bul.y -= CFG.bullets.speedPx;
-            bul.el.style.top = bul.y + 'px';
-
-            // off screen — remove
-            if (bul.y < -20) {
-              bul.el.remove();
-              activeBullets.splice(i, 1);
-              continue;
-            }
-
-            // hit detection against falling letters
-            var letters = document.querySelectorAll('.falling-letter:not(.pinned)');
-            var hit = false;
-            for (var j = 0; j < letters.length; j++) {
-              var lr = letters[j].getBoundingClientRect();
-              if (bul.x >= lr.left && bul.x <= lr.right &&
-                  bul.y >= lr.top  && bul.y <= lr.bottom) {
-                freeze(letters[j]);
-                bul.el.remove();
-                activeBullets.splice(i, 1);
-                hit = true;
-                break;
-              }
-            }
-          }
-        }, 16); // ~60fps
-      }
-
-      setInterval(spawn, CFG.letters.interval);
-    })();
-    </script>
-  </body>
+    document.getElementById('btn-copy-phone').addEventListener('click', () => {
+      navigator.clipboard.writeText('+916360425981').then(() => {
+        showToast('Phone number copied: +91 63604 25981');
+      });
+    });
+  </script>
+</body>
 </html>
