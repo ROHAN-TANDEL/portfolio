@@ -1,0 +1,245 @@
+{
+  "meta": {
+    "passwords": {
+      "admin": "rohan@admin",
+      "editor": "rohan@editor",
+      "recruiter": "rohan@recruiter"
+    }
+  },
+  "profile": {
+    "name": "Rohan Tandel",
+    "title": "Senior Backend Architect",
+    "subtitle": "AI-Augmented Distributed Systems & Event-Driven SaaS",
+    "avatar": "",
+    "bio": "Enterprise backend engineer with 8+ years of experience designing fault-tolerant, event-driven systems processing 2M+ daily requests across TaxTech, Telecommunications, and EdTech.",
+    "highlights": [
+      "Accelerates delivery: Integrates AI pair-programming (Cursor/Copilot) to cut boilerplate coding by 35–40% and ship complex integrations faster.",
+      "Specializes in resilience: Architects idempotent event pipelines (SQS/DLQ), distributed locking, and cache strategies that achieve 99.95% uptime for enterprise SaaS.",
+      "Leads with impact: Mentors cross-functional teams, modernizes legacy monoliths, and translates business requirements into scalable, observable backend architecture."
+    ],
+    "contact": {
+      "email": "r9591343@gmail.com",
+      "phone1": "+91 63604 25981",
+      "phone2": "+91 9591 343150",
+      "location": "Pune / Bengaluru / Hyderabad",
+      "linkedin": "https://www.linkedin.com/in/rohan-tandel",
+      "github": "https://github.com/ROHAN-TANDEL"
+    }
+  },
+  "availability": {
+    "published": true,
+    "noticePeriod": "30 days",
+    "currentSalary": "Confidential",
+    "expectedSalary": "Confidential",
+    "preferredLocations": ["Pune", "Bengaluru", "Hyderabad", "Remote"]
+  },
+  "skills": [
+    {
+      "category": "Languages & Frameworks",
+      "items": ["PHP", "Laravel", "TypeScript", "JavaScript", "Node.js", "Express.js", "Golang", "Angular", "Python Scripting", "REST APIs", "HTML5", "CSS3"]
+    },
+    {
+      "category": "Cloud (AWS)",
+      "items": ["EC2", "S3", "SQS", "SNS", "Lambda", "API Gateway", "ECS", "EventBridge", "Secret Manager"]
+    },
+    {
+      "category": "Databases",
+      "items": ["PostgreSQL", "MongoDB", "Database Design", "Indexing", "Query Optimization", "Transactions"]
+    },
+    {
+      "category": "DevOps & Observability",
+      "items": ["Docker", "Nginx", "Bitbucket CI/CD Pipelines", "Datadog", "JMeter"]
+    },
+    {
+      "category": "Distributed Systems & Messaging",
+      "items": ["Redis", "SQS", "SNS", "Distributed Locking", "Idempotent Processing", "Concurrency Control", "Event-Driven Architecture", "Microservices", "System Design", "Asynchronous Processing"]
+    },
+    {
+      "category": "Security & Compliance",
+      "items": ["SSO", "RBAC", "Tenant Isolation", "GDPR Compliance"]
+    },
+    {
+      "category": "AI-Augmented Dev",
+      "items": ["Cursor IDE", "Kiro IDE", "GitHub Copilot", "LLM-Assisted Refactoring", "Prompt Engineering", "Automated Test Generation"]
+    }
+  ],
+  "experience": [
+    {
+      "company": "Fintua Pvt Ltd",
+      "companyUrl": "",
+      "companyType": "European Fintech – TaxTech SaaS",
+      "companyDesc": "Enterprise TaxTech SaaS platform simplifying tax compliance across multiple countries.",
+      "from": "Jan 2022",
+      "to": "Present",
+      "roles": [
+        {
+          "title": "Sr. Integration & Backend Engineer",
+          "from": "Jan 2024",
+          "to": "Present",
+          "techStack": ["PHP", "TypeScript", "Angular", "AWS Lambda", "SQS", "EventBridge", "Redis", "PostgreSQL", "Docker", "Datadog", "JMeter"],
+          "responsibilities": [
+            "Leveraged AI-assisted development (Cursor/Copilot) to generate boilerplate API clients, retry-logic patterns, and TypeScript interfaces for 10+ country-specific tax authorities — cut integration lead time from 3 weeks to 10 days per module (65% reduction).",
+            "Designed and built robust backend microservices using PHP and TypeScript with fault-tolerant patterns: API design, advanced error handling, and exponential backoff retry logic for third-party tax authority integrations.",
+            "Developed and maintained Angular-based UI components that visualize complex integration workflows, allowing enterprise clients to configure connections, monitor data flow, and manage country-specific tax submission modules.",
+            "Implemented resilient async workflows using AWS Lambda, SQS, and EventBridge to decouple services — including DLQ setup and recovery mechanisms for failed transactions.",
+            "Instrumented services with structured logging and Datadog dashboards for integration health, throughput, and KPIs — reduced MTTD from 45 mins to 12 mins.",
+            "Performed API load testing with JMeter; implemented Redis caching and concurrency controls — reduced p95 latency from 1.2s to 320ms for high-volume tenants.",
+            "Applied tenant isolation, SSO, and RBAC across microservices ensuring full GDPR compliance — passed 3 external security audits with zero findings."
+          ]
+        },
+        {
+          "title": "Senior Software Engineer",
+          "from": "Jan 2022",
+          "to": "Dec 2023",
+          "techStack": ["PHP", "Golang", "FastAPI", "Docker", "Bitbucket CI/CD", "PostgreSQL", "MongoDB"],
+          "responsibilities": [
+            "Designed and implemented partner onboarding workflows with hierarchical account structures, supporting complex enterprise customer relationships for 200+ B2B clients.",
+            "Optimized Docker builds and modernized Bitbucket CI/CD pipelines — reduced deployment time from 25 mins to 8 mins and enabled zero-downtime rollbacks.",
+            "Led complete rewrite of the legacy transactions service into Golang while maintaining backwards compatibility through a robust versioning system.",
+            "Oversaw cross-team migration of vendor integrations from legacy PHP to FastAPI; established as key maintainer bridging functional and OOP paradigms for long-term code sustainability."
+          ]
+        }
+      ]
+    },
+    {
+      "company": "Tech Mahindra Pvt Ltd",
+      "companyUrl": "",
+      "companyType": "IT Services & Consulting",
+      "companyDesc": "Global IT services company delivering digital transformation projects.",
+      "from": "Jun 2019",
+      "to": "Dec 2021",
+      "roles": [
+        {
+          "title": "Senior Software Engineer",
+          "from": "Jun 2019",
+          "to": "Dec 2021",
+          "techStack": ["PHP", "Laravel", "Angular", "Java Spring Boot", "REST APIs", "PostgreSQL"],
+          "responsibilities": [
+            "Project – Plusnet (British Telecommunications / Broadband Services): Migrated a legacy PHP customer-onboarding application to PHP (Laravel) + Angular, maintaining full API versioning.",
+            "Integrated backend modules with internal Java Spring Boot services to support critical customer-facing telecom workflows — ensured 99.9% data consistency across 10+ upstream services.",
+            "Led a multidisciplinary team of 4 engineers across India through planning, technical design reviews, and UX testing for internal customer portals — delivered all milestones on time for 3 consecutive quarters.",
+            "Project – Mindspark (Personalized Learning, 2M+ daily questions): Profiled API traffic and database query patterns with JMeter; identified and resolved Elasticsearch indexing bottlenecks improving system throughput.",
+            "Implemented server-side API input validator using JSON-based schemas, improving consistency and security for high-volume request processing.",
+            "Developed and integrated RESTful APIs to support core platform features ensuring seamless microservice communication and scalable feature delivery."
+          ]
+        }
+      ]
+    },
+    {
+      "company": "Scriptbees Pvt Ltd",
+      "companyUrl": "",
+      "companyType": "Product Startup",
+      "companyDesc": "Data synchronization platform for field operations with intermittent connectivity.",
+      "from": "Jun 2018",
+      "to": "May 2019",
+      "roles": [
+        {
+          "title": "Web Developer",
+          "from": "Jun 2018",
+          "to": "May 2019",
+          "techStack": ["PHP", "JavaScript", "MySQL", "REST APIs"],
+          "responsibilities": [
+            "Product – OfflineSync (Data Synchronization Platform): Owned full lifecycle (requirements → design → implementation → testing → rollout) of an offline synchronization solution for field locations with intermittent connectivity.",
+            "Led a team of 4 engineers through architecture discussions and troubleshooting complex implementation challenges for large-scale deployments."
+          ]
+        }
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "Bachelor of Engineering – Computer Science",
+      "institution": "University of Mumbai",
+      "from": "2014",
+      "to": "2018"
+    }
+  ],
+  "githubUsername": "ROHAN-TANDEL",
+
+  "metrics": {
+    "published": true,
+    "items": [
+      { "value": "8+",     "label": "Years Experience" },
+      { "value": "2M+",    "label": "Daily Requests Handled" },
+      { "value": "99.95%", "label": "Uptime Achieved" },
+      { "value": "65%",    "label": "Faster Integrations" },
+      { "value": "10+",    "label": "Countries Integrated" },
+      { "value": "200+",   "label": "B2B Clients Served" }
+    ]
+  },
+
+  "openToWork": {
+    "published": true,
+    "active": true,
+    "status": "Open to opportunities",
+    "types": ["Full-time", "Contract", "Freelance"],
+    "hireMeEmail": "r9591343@gmail.com",
+    "hireMeSubject": "Opportunity for Rohan Tandel"
+  },
+
+  "services": {
+    "published": false,
+    "items": [
+      {
+        "icon": "🏗️",
+        "title": "API & Microservices Architecture",
+        "desc": "Design and build fault-tolerant, event-driven backend systems from scratch or modernize legacy monoliths into scalable microservices."
+      },
+      {
+        "icon": "☁️",
+        "title": "AWS Cloud & Serverless",
+        "desc": "End-to-end AWS solutions using Lambda, SQS, SNS, EventBridge, ECS — with observability, DLQs, and production-grade reliability."
+      },
+      {
+        "icon": "⚡",
+        "title": "Performance & Scalability Audits",
+        "desc": "Identify bottlenecks, optimize queries, implement caching strategies and concurrency controls for high-throughput systems."
+      },
+      {
+        "icon": "🔗",
+        "title": "Third-Party Integrations",
+        "desc": "Rapid integration with external APIs, tax authorities, payment gateways and telecom systems — with retry logic and error recovery."
+      },
+      {
+        "icon": "🤖",
+        "title": "AI-Augmented Development",
+        "desc": "Leverage Cursor/Copilot tooling to accelerate delivery — boilerplate generation, LLM-assisted refactoring, automated test scaffolding."
+      },
+      {
+        "icon": "🛡️",
+        "title": "Security & Compliance",
+        "desc": "Implement RBAC, SSO, tenant isolation and GDPR-compliant architectures. Audit-ready systems with zero-finding track record."
+      }
+    ]
+  },
+
+  "caseStudies": {
+    "published": false,
+    "items": [
+      {
+        "tag": "TaxTech SaaS",
+        "title": "Multi-Country Tax Integration Platform",
+        "problem": "A European fintech needed to integrate with 10+ country-specific tax authorities, each with unique APIs, auth flows, and error contracts. Lead time was 3 weeks per country.",
+        "solution": "Designed a decoupled integration framework using PHP + TypeScript microservices with a shared retry/backoff engine, AI-generated API client boilerplate, and an Angular dashboard for monitoring.",
+        "outcome": "Cut integration lead time from 3 weeks → 10 days (65% reduction). Reduced p95 latency from 1.2s → 320ms. Passed 3 external security audits with zero findings.",
+        "stack": ["PHP", "TypeScript", "Angular", "AWS Lambda", "SQS", "Redis", "Datadog"]
+      },
+      {
+        "tag": "Telecom",
+        "title": "Legacy Modernization — Plusnet Onboarding",
+        "problem": "A British telecom's customer onboarding app was a brittle legacy PHP monolith tightly coupled to 10+ upstream services, causing frequent failures and slow deployments.",
+        "solution": "Led full-stack migration to Laravel + Angular with API versioning, integrated with Java Spring Boot internal services and rebuilt CI/CD pipelines for zero-downtime deploys.",
+        "outcome": "Achieved 99.9% data consistency across 10+ upstream services. Reduced deployment time from 25 mins → 8 mins. Delivered all milestones on time for 3 consecutive quarters.",
+        "stack": ["PHP", "Laravel", "Angular", "Java Spring Boot", "Bitbucket CI/CD"]
+      },
+      {
+        "tag": "EdTech",
+        "title": "Search & API Performance — Mindspark",
+        "problem": "A personalized learning platform processing 2M+ daily questions was experiencing degraded search performance and API bottlenecks under peak load.",
+        "solution": "Profiled API traffic with JMeter, identified Elasticsearch indexing inefficiencies, implemented JSON-schema API validators, and redesigned RESTful API layer for microservice communication.",
+        "outcome": "Significant improvements in search throughput and system stability. Established consistent API validation patterns adopted across the platform.",
+        "stack": ["PHP", "Elasticsearch", "REST APIs", "JMeter", "PostgreSQL"]
+      }
+    ]
+  }
+}

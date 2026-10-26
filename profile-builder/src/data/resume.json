@@ -8,7 +8,7 @@
   },
   "profile": {
     "name": "Rohan Tandel",
-    "title": "Senior Backend Architect",
+    "title": "Senior Backend Engineer | Full Stack",
     "subtitle": "AI-Augmented Distributed Systems & Event-Driven SaaS",
     "avatar": "",
     "bio": "Enterprise backend engineer with 8+ years of experience designing fault-tolerant, event-driven systems processing 2M+ daily requests across TaxTech, Telecommunications, and EdTech.",
@@ -36,7 +36,7 @@
   "skills": [
     {
       "category": "Languages & Frameworks",
-      "items": ["PHP", "Laravel", "TypeScript", "JavaScript", "Node.js", "Express.js", "Golang", "Angular", "Python Scripting", "REST APIs", "HTML5", "CSS3"]
+      "items": ["TypeScript", "JavaScript", "Node.js", "Express.js", "Golang", "Angular", "Python Scripting", "REST APIs", "PHP", "Laravel", "HTML5", "CSS3"]
     },
     {
       "category": "Cloud (AWS)",
@@ -74,9 +74,9 @@
       "roles": [
         {
           "title": "Sr. Integration & Backend Engineer",
-          "from": "Jan 2024",
-          "to": "Present",
-          "techStack": ["PHP", "TypeScript", "Angular", "AWS Lambda", "SQS", "EventBridge", "Redis", "PostgreSQL", "Docker", "Datadog", "JMeter"],
+          "from": "Mar 2024",
+          "to": "Jul 2026",
+          "techStack": ["TypeScript", "Nodejs", "Angular", "AWS Lambda", "S3", "SQS", "EventBridge", "Redis", "PostgreSQL", "Docker", "Datadog"],
           "responsibilities": [
             "Leveraged AI-assisted development (Cursor/Copilot) to generate boilerplate API clients, retry-logic patterns, and TypeScript interfaces for 10+ country-specific tax authorities — cut integration lead time from 3 weeks to 10 days per module (65% reduction).",
             "Designed and built robust backend microservices using PHP and TypeScript with fault-tolerant patterns: API design, advanced error handling, and exponential backoff retry logic for third-party tax authority integrations.",
@@ -91,7 +91,7 @@
           "title": "Senior Software Engineer",
           "from": "Jan 2022",
           "to": "Dec 2023",
-          "techStack": ["PHP", "Golang", "FastAPI", "Docker", "Bitbucket CI/CD", "PostgreSQL", "MongoDB"],
+          "techStack": ["Express", "Nodejs","Golang", "FastAPI", "Docker", "Bitbucket CI/CD", "PostgreSQL", "MongoDB"],
           "responsibilities": [
             "Designed and implemented partner onboarding workflows with hierarchical account structures, supporting complex enterprise customer relationships for 200+ B2B clients.",
             "Optimized Docker builds and modernized Bitbucket CI/CD pipelines — reduced deployment time from 25 mins to 8 mins and enabled zero-downtime rollbacks.",
@@ -113,7 +113,7 @@
           "title": "Senior Software Engineer",
           "from": "Jun 2019",
           "to": "Dec 2021",
-          "techStack": ["PHP", "Laravel", "Angular", "Java Spring Boot", "REST APIs", "PostgreSQL"],
+          "techStack": ["Nodejs", "Express", "Angular", "Java Spring Boot", "REST APIs", "MySQL"],
           "responsibilities": [
             "Project – Plusnet (British Telecommunications / Broadband Services): Migrated a legacy PHP customer-onboarding application to PHP (Laravel) + Angular, maintaining full API versioning.",
             "Integrated backend modules with internal Java Spring Boot services to support critical customer-facing telecom workflows — ensured 99.9% data consistency across 10+ upstream services.",
@@ -137,7 +137,7 @@
           "title": "Web Developer",
           "from": "Jun 2018",
           "to": "May 2019",
-          "techStack": ["PHP", "JavaScript", "MySQL", "REST APIs"],
+          "techStack": ["Nodejs", "JavaScript", "MongoDB", "REST APIs"],
           "responsibilities": [
             "Product – OfflineSync (Data Synchronization Platform): Owned full lifecycle (requirements → design → implementation → testing → rollout) of an offline synchronization solution for field locations with intermittent connectivity.",
             "Led a team of 4 engineers through architecture discussions and troubleshooting complex implementation challenges for large-scale deployments."
@@ -149,9 +149,9 @@
   "education": [
     {
       "degree": "Bachelor of Engineering – Computer Science",
-      "institution": "University of Mumbai",
-      "from": "2014",
-      "to": "2018"
+      "institution": "University of Karnataka VTU",
+      "from": "2012",
+      "to": "2016"
     }
   ],
   "githubUsername": "ROHAN-TANDEL",
