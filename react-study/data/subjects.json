@@ -1,0 +1,100 @@
+[
+  {
+    "id": "javascript",
+    "name": "JavaScript *",
+    "icon": "JS",
+    "description": "Language fundamentals, runtime and browser concepts",
+    "dataFile": "javascript.json"
+  },
+  {
+    "id": "nodejs",
+    "name": "Nodejs *",
+    "icon": "nodejs",
+    "description": "NodeJs",
+    "dataFile": "nodejs.json"
+  },
+  {
+    "id": "angular",
+    "name": "angular",
+    "icon": "ANG",
+    "description": "Components, hooks, state and rendering",
+    "dataFile": "angular.json"
+  },
+  {
+    "id": "express",
+    "name": "express *",
+    "icon": "N",
+    "description": "Express Js",
+    "dataFile": "express.json"
+  },
+  {
+    "id": "sql",
+    "name": "sql *",
+    "icon": "sql",
+    "description": "Language fundamentals and backend development",
+    "dataFile": "sql.json"
+  },
+  {
+    "id": "pgsql",
+    "name": "pgsql *",
+    "icon": "pgsql",
+    "description": "Queries, joins, indexes and database concepts",
+    "dataFile": "pgsql.json"
+  },
+  {
+    "id": "vpciamsg",
+    "name": "AWS VPC IAM and SG *",
+    "icon": "VPC, IAM SG",
+    "description": "VPC IAM and SG",
+    "dataFile": "vpciamsg.json"
+  },
+  {
+    "id": "ec2lambda",
+    "name": "EC2 Lambda *",
+    "icon": "EC2 Lambda",
+    "description": "EC2 Lambda",
+    "dataFile": "ec2lambda.json"
+  },
+  {
+    "id": "apigatewaysns",
+    "name": "Gate and SNS *",
+    "icon": "Gate and SNS",
+    "description": "Gate and SNS",
+    "dataFile": "ec2lambda.json"
+  },
+  {
+    "id": "awsiam",
+    "name": "AWS IAM",
+    "icon": "IAM",
+    "description": "IAM",
+    "dataFile": "awsiam.json"
+  },
+  {
+    "id": "awss3",
+    "name": "AWS S3 *",
+    "icon": "S3",
+    "description": "Language fundamentals and backend development",
+    "dataFile": "awss3.json"
+  },
+  {
+    "id": "awssqs",
+    "name": "AWS SQS *",
+    "icon": "SQS",
+    "description": "Queries, joins, indexes and database concepts",
+    "dataFile": "awssqs.json"
+  },
+  {
+    "id": "awsapigateway",
+    "name": "AWS API Gateway",
+    "icon": "Gate",
+    "description": "Language fundamentals and backend development",
+    "dataFile": "awss3.json"
+  },
+  {
+    "id": "awssqs",
+    "name": "AWS Event Bridge",
+    "icon": "Bridge",
+    "description": "Queries, joins, indexes and database concepts",
+    "dataFile": "awssqs.json"
+  }
+]

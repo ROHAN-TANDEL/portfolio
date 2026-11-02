@@ -1,0 +1,322 @@
+[
+  {
+    "id": "aws-sqs-001",
+    "category": "aws-sqs",
+    "concept": "SQS Overview",
+    "priority": "must-know",
+    "question": "What is Amazon SQS and what are its key features?",
+    "answer": "Amazon SQS (Simple Queue Service) is a fully managed message queuing service that enables decoupling of application components. Key features: unlimited scalability, message retention up to 14 days, message size up to 256KB, dead-letter queues, and at-least-once delivery.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyQueue\": {\n      \"Type\": \"AWS::SQS::Queue\",\n      \"Properties\": {\n        \"QueueName\": \"my-queue\",\n        \"MessageRetentionPeriod\": 345600,\n        \"VisibilityTimeout\": 30,\n        \"MaximumMessageSize\": 262144,\n        \"DelaySeconds\": 0,\n        \"ReceiveMessageWaitTimeSeconds\": 0\n      }\n    },\n    \"FIFOQueue\": {\n      \"Type\": \"AWS::SQS::Queue\",\n      \"Properties\": {\n        \"QueueName\": \"my-fifo-queue.fifo\",\n        \"FifoQueue\": true,\n        \"ContentBasedDeduplication\": true,\n        \"DeduplicationScope\": \"messageGroup\",\n        \"FifoThroughputLimit\": \"perMessageGroupId\"\n      }\n    }\n  }\n}\n```",
+    "explanation": "SQS enables asynchronous communication between services. Producers send messages to the queue, and consumers poll and process them. This decoupling improves fault tolerance and scalability.",
+    "recallHint": "Fully managed queue, decoupling, at-least-once, 14-day retention.",
+    "practice": [
+      "What are the main features of SQS?",
+      "What is the maximum message size in SQS?",
+      "How long can messages be retained in SQS?"
+    ]
+  },
+  {
+    "id": "aws-sqs-002",
+    "category": "aws-sqs",
+    "concept": "Standard vs FIFO Queues",
+    "priority": "must-know",
+    "question": "What is the difference between Standard and FIFO queues?",
+    "answer": "Standard queues offer at-least-once delivery, high throughput (unlimited TPS), and best-effort ordering. FIFO queues offer exactly-once processing, guaranteed ordering, but limited throughput (300 TPS).",
+    "code": "```json\n{\n  \"Comparison\": {\n    \"Standard Queue\": {\n      \"Throughput\": \"Unlimited TPS\",\n      \"Ordering\": \"Best-effort\",\n      \"Delivery\": \"At-least-once\",\n      \"Deduplication\": \"Not supported\",\n      \"Use Cases\": \"Decoupling, buffering, background jobs\"\n    },\n    \"FIFO Queue\": {\n      \"Throughput\": \"300 TPS (or 3000 with batching)\",\n      \"Ordering\": \"Guaranteed\",\n      \"Delivery\": \"Exactly-once\",\n      \"Deduplication\": \"Content-based or ID-based\",\n      \"Use Cases\": \"Financial transactions, inventory, order processing\"\n    }\n  }\n}\n\n// Standard Queue\n{\n  \"Resources\": {\n    \"StandardQueue\": {\n      \"Type\": \"AWS::SQS::Queue\",\n      \"Properties\": {\n        \"QueueName\": \"standard-queue\",\n        \"FifoQueue\": false\n      }\n    }\n  }\n}\n\n// FIFO Queue\n{\n  \"Resources\": {\n    \"FIFOQueue\": {\n      \"Type\": \"AWS::SQS::Queue\",\n      \"Properties\": {\n        \"QueueName\": \"fifo-queue.fifo\",\n        \"FifoQueue\": true,\n        \"ContentBasedDeduplication\": true\n      }\n    }\n  }\n}\n```",
+    "explanation": "FIFO queues are 3x more expensive than Standard queues. Use FIFO only when ordering or exactly-once processing is required. For most workloads, Standard queues are sufficient.",
+    "recallHint": "Standard = high throughput, at-least-once. FIFO = limited throughput, exactly-once.",
+    "practice": [
+      "What are the key differences between Standard and FIFO queues?",
+      "When would you choose a FIFO queue over a Standard queue?",
+      "What is the throughput limit for FIFO queues?"
+    ]
+  },
+  {
+    "id": "aws-sqs-003",
+    "category": "aws-sqs",
+    "concept": "Visibility Timeout",
+    "priority": "must-know",
+    "question": "What is Visibility Timeout and how does it work?",
+    "answer": "Visibility Timeout is the period during which a message is invisible to other consumers after being received. The default is 30 seconds. If the message isn't deleted, it becomes visible again for reprocessing.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyQueue\": {\n      \"Type\": \"AWS::SQS::Queue\",\n      \"Properties\": {\n        \"QueueName\": \"my-queue\",\n        \"VisibilityTimeout\": 60\n      }\n    }\n  }\n}\n\n// Best practices\n// 1. Set visibility timeout > average processing time\n// 2. Use ChangeMessageVisibility to extend timeout\n// 3. Delete message after successful processing\n\n// Visibility timeout formula\n// Visibility Timeout >= (Average Processing Time * 2) + 10 seconds\n```",
+    "explanation": "If a consumer fails to process a message (crashes or timeout), the message reappears in the queue. Setting appropriate visibility timeout prevents duplicate processing. Extend timeout for long-running tasks.",
+    "recallHint": "Messages become invisible when received. Reappear if not deleted.",
+    "practice": [
+      "What is Visibility Timeout and why is it important?",
+      "How do you choose the right visibility timeout value?",
+      "What happens if a message is not deleted before the visibility timeout expires?"
+    ]
+  },
+  {
+    "id": "aws-sqs-004",
+    "category": "aws-sqs",
+    "concept": "Dead-Letter Queues",
+    "priority": "must-know",
+    "question": "What are Dead-Letter Queues (DLQs) and how do they work?",
+    "answer": "Dead-Letter Queues (DLQs) are queues that receive messages that failed processing after a configurable number of receives (maxReceiveCount). They help isolate problematic messages for analysis and reprocessing.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MainQueue\": {\n      \"Type\": \"AWS::SQS::Queue\",\n      \"Properties\": {\n        \"QueueName\": \"main-queue\",\n        \"RedrivePolicy\": {\n          \"deadLetterTargetArn\": { \"Fn::GetAtt\": [\"DLQueue\", \"Arn\"] },\n          \"maxReceiveCount\": 5\n        }\n      }\n    },\n    \"DLQueue\": {\n      \"Type\": \"AWS::SQS::Queue\",\n      \"Properties\": {\n        \"QueueName\": \"dl-queue\",\n        \"MessageRetentionPeriod\": 1209600\n      }\n    }\n  }\n}\n\n// Process DLQ messages with exponential backoff\n// 1. Monitor DLQ size\n// 2. Analyze messages\n// 3. Fix processing logic\n// 4. Re-drive messages to main queue\n// 5. Or process from DLQ directly\n```",
+    "explanation": "DLQs prevent messages from being lost and allow debugging of failed messages. maxReceiveCount determines after how many failed attempts a message moves to the DLQ.",
+    "recallHint": "Failed messages go to DLQ after maxReceiveCount attempts.",
+    "practice": [
+      "What is a Dead-Letter Queue and why is it important?",
+      "How do you configure a DLQ in SQS?",
+      "What happens to messages in a DLQ?"
+    ]
+  },
+  {
+    "id": "aws-sqs-005",
+    "category": "aws-sqs",
+    "concept": "Message Lifecycle",
+    "priority": "must-know",
+    "question": "What is the lifecycle of an SQS message?",
+    "answer": "1) Producer sends message to queue, 2) Message stored in queue, 3) Consumer polls and receives message, 4) Message becomes invisible (visibility timeout), 5) Consumer processes, 6) If successful, consumer deletes message, 7) If not deleted, message reappears for reprocessing.",
+    "code": "```python\n# Python example: SQS message lifecycle\nimport boto3\nfrom botocore.exceptions import ClientError\n\nsqs = boto3.client('sqs')\nqueue_url = 'https://sqs.us-east-1.amazonaws.com/123456789012/my-queue'\n\n# 1. Send message (Producer)\nresponse = sqs.send_message(\n    QueueUrl=queue_url,\n    MessageBody='Hello SQS',\n    DelaySeconds=0\n)\nmessage_id = response['MessageId']\n\n# 2. Receive message (Consumer)\nresponse = sqs.receive_message(\n    QueueUrl=queue_url,\n    MaxNumberOfMessages=1,\n    WaitTimeSeconds=10,\n    VisibilityTimeout=30\n)\n\nif 'Messages' in response:\n    for message in response['Messages']:\n        receipt_handle = message['ReceiptHandle']\n        message_body = message['Body']\n        \n        try:\n            # 3. Process message\n            process_message(message_body)\n            \n            # 4. Delete after successful processing\n            sqs.delete_message(\n                QueueUrl=queue_url,\n                ReceiptHandle=receipt_handle\n            )\n        except Exception as e:\n            # Failed - message will reappear after visibility timeout\n            print(f\"Processing failed: {e}\")\n```",
+    "explanation": "Messages are persistent in the queue until deleted. If not processed successfully, they reappear for re-processing. This ensures at-least-once delivery.",
+    "recallHint": "Send → Store → Receive → Process → Delete (or reappear).",
+    "practice": [
+      "Describe the lifecycle of an SQS message.",
+      "What happens if a consumer fails to delete a message?",
+      "How does SQS ensure at-least-once delivery?"
+    ]
+  },
+  {
+    "id": "aws-sqs-006",
+    "category": "aws-sqs",
+    "concept": "Long Polling vs Short Polling",
+    "priority": "must-know",
+    "question": "What is the difference between Long Polling and Short Polling in SQS?",
+    "answer": "Long Polling waits for messages to arrive (up to 20 seconds), reducing empty responses. Short Polling returns immediately, even if the queue is empty. Long Polling is preferred for cost and efficiency.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyQueue\": {\n      \"Type\": \"AWS::SQS::Queue\",\n      \"Properties\": {\n        \"QueueName\": \"my-queue\",\n        \"ReceiveMessageWaitTimeSeconds\": 20\n      }\n    }\n  }\n}\n\n// Enable Long Polling in code\nsqs.receive_message(\n    QueueUrl=queue_url,\n    MaxNumberOfMessages=10,\n    WaitTimeSeconds=20,  # Long polling\n    VisibilityTimeout=30\n)\n\n// Short Polling (default)\n# WaitTimeSeconds = 0\n\n// Recommendations\n# 1. Always use Long Polling\n# 2. Set WaitTimeSeconds to 20 (max)\n# 3. Reduces empty responses\n# 4. Lower costs (fewer API calls)\n```",
+    "explanation": "Long Polling reduces the number of empty responses, saving costs and improving efficiency. It's the recommended approach for all SQS implementations.",
+    "recallHint": "Long polling = waits for messages (20s), Short polling = returns immediately.",
+    "practice": [
+      "What is Long Polling and why is it beneficial?",
+      "How do you enable Long Polling in SQS?",
+      "What are the cost implications of Short Polling?"
+    ]
+  },
+  {
+    "id": "aws-sqs-007",
+    "category": "aws-sqs",
+    "concept": "SQS with Lambda",
+    "priority": "must-know",
+    "question": "How does Lambda integrate with SQS?",
+    "answer": "Lambda can poll SQS queues as an event source. Lambda automatically scales to process messages concurrently, handles retries, and manages visibility timeout. This enables serverless message processing.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyQueue\": {\n      \"Type\": \"AWS::SQS::Queue\",\n      \"Properties\": {\n        \"QueueName\": \"my-queue\"\n      }\n    },\n    \"EventSourceMapping\": {\n      \"Type\": \"AWS::Lambda::EventSourceMapping\",\n      \"Properties\": {\n        \"EventSourceArn\": { \"Fn::GetAtt\": [\"MyQueue\", \"Arn\"] },\n        \"FunctionName\": { \"Ref\": \"MyFunction\" },\n        \"BatchSize\": 10,\n        \"MaximumBatchingWindowInSeconds\": 5,\n        \"FunctionResponseTypes\": [\"ReportBatchItemFailures\"]\n      }\n    }\n  }\n}\n\n// Lambda handler for SQS\n\nexports.handler = async (event) => {\n    const failedMessageIds = [];\n    \n    for (const record of event.Records) {\n        try {\n            const message = JSON.parse(record.body);\n            await processMessage(message);\n        } catch (error) {\n            console.error('Failed to process message:', error);\n            failedMessageIds.push(record.messageId);\n        }\n    }\n    \n    // Return failed message IDs for batch handling\n    return {\n        batchItemFailures: failedMessageIds.map(id => ({ itemIdentifier: id }))\n    };\n};\n```",
+    "explanation": "Lambda automatically polls SQS queues. Use batchSize to process multiple messages at once. Return batchItemFailures to handle partial failures. Set maxRetries for failed messages.",
+    "recallHint": "Lambda polls SQS automatically, batch processing, partial failure handling.",
+    "practice": [
+      "How does Lambda process messages from SQS?",
+      "What is the Lambda SQS batch size limit?",
+      "How do you handle partial batch failures?"
+    ]
+  },
+  {
+    "id": "aws-sqs-008",
+    "category": "aws-sqs",
+    "concept": "SQS Message Batching",
+    "priority": "important",
+    "question": "What is message batching in SQS and how does it improve performance?",
+    "answer": "Batching allows sending or receiving multiple messages in a single API call (up to 10 messages). It reduces API calls, improves throughput, and lowers costs.",
+    "code": "```python\n# Send messages in batch\nimport boto3\n\nsqs = boto3.client('sqs')\nqueue_url = 'https://sqs.us-east-1.amazonaws.com/123456789012/my-queue'\n\nentries = [\n    {'Id': 'msg1', 'MessageBody': 'Message 1'},\n    {'Id': 'msg2', 'MessageBody': 'Message 2'},\n    {'Id': 'msg3', 'MessageBody': 'Message 3'},\n]\n\nresponse = sqs.send_message_batch(\n    QueueUrl=queue_url,\n    Entries=entries\n)\n\n# Lambda SQS batch processing\n{\n  \"Resources\": {\n    \"EventSourceMapping\": {\n      \"Type\": \"AWS::Lambda::EventSourceMapping\",\n      \"Properties\": {\n        \"BatchSize\": 10,\n        \"MaximumBatchingWindowInSeconds\": 5\n      }\n    }\n  }\n}\n\n# Batch delete messages\ndelete_entries = [\n    {'Id': 'msg1', 'ReceiptHandle': handle1},\n    {'Id': 'msg2', 'ReceiptHandle': handle2},\n]\n\nresponse = sqs.delete_message_batch(\n    QueueUrl=queue_url,\n    Entries=delete_entries\n)\n```",
+    "explanation": "Batching reduces the number of API calls. SendMessageBatch can send up to 10 messages per call. Lambda processes up to 10 messages per invocation. This reduces cost and improves throughput.",
+    "recallHint": "Up to 10 messages per API call, reduces costs, improves throughput.",
+    "practice": [
+      "What is message batching in SQS?",
+      "How do you send messages in batch?",
+      "What is the maximum batch size in SQS?"
+    ]
+  },
+  {
+    "id": "aws-sqs-009",
+    "category": "aws-sqs",
+    "concept": "SQS Pricing",
+    "priority": "important",
+    "question": "How is SQS pricing calculated and how do you optimize costs?",
+    "answer": "SQS pricing: $0.40 per million requests (Standard), $1.20 per million requests (FIFO). Data transfer costs apply for cross-region or cross-account traffic. First 1 million requests are free.",
+    "code": "```bash\n# SQS Pricing (us-east-1)\n# Standard Queue: $0.40 per million requests\n# FIFO Queue: $1.20 per million requests\n# Data transfer: $0.09 per GB (within AWS)\n\n# Cost calculation example\n# 10 million messages/month (Standard)\n# Cost = 10,000,000 × $0.40 / 1,000,000 = $4.00\n# Data transfer (10GB internal) = 10 × $0.09 = $0.90\n# Total = ~$4.90/month\n\n# Cost optimization\n# 1. Use Long Polling (reduces empty requests)\n# 2. Batch messages (10 per API call)\n# 3. Use Standard queues over FIFO if possible\n# 4. Delete messages promptly\n# 5. Use SQS with SNS for internal fan-out\n```",
+    "explanation": "The main cost driver is the number of API requests. Long polling and batching reduce the number of requests. Standard queues are cheaper than FIFO queues.",
+    "recallHint": "$0.40 per million standard requests, $1.20 per million FIFO requests.",
+    "practice": [
+      "What are the main cost drivers in SQS?",
+      "How do you optimize SQS costs?",
+      "What is the cost difference between Standard and FIFO queues?"
+    ]
+  },
+  {
+    "id": "aws-sqs-010",
+    "category": "aws-sqs",
+    "concept": "SQS with SNS (Fanout)",
+    "priority": "must-know",
+    "question": "How do you implement a fanout pattern with SNS and SQS?",
+    "answer": "Fanout pattern: Send one message to SNS, which distributes it to multiple SQS queues. Each queue can be processed independently by different consumers.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"OrderTopic\": {\n      \"Type\": \"AWS::SNS::Topic\",\n      \"Properties\": {\n        \"TopicName\": \"order-events\"\n      }\n    },\n    \"OrdersQueue\": {\n      \"Type\": \"AWS::SQS::Queue\"\n    },\n    \"InventoryQueue\": {\n      \"Type\": \"AWS::SQS::Queue\"\n    },\n    \"AnalyticsQueue\": {\n      \"Type\": \"AWS::SQS::Queue\"\n    },\n    \"OrdersSubscription\": {\n      \"Type\": \"AWS::SNS::Subscription\",\n      \"Properties\": {\n        \"TopicArn\": { \"Ref\": \"OrderTopic\" },\n        \"Protocol\": \"sqs\",\n        \"Endpoint\": { \"Fn::GetAtt\": [\"OrdersQueue\", \"Arn\"] }\n      }\n    },\n    \"InventorySubscription\": {\n      \"Type\": \"AWS::SNS::Subscription\",\n      \"Properties\": {\n        \"TopicArn\": { \"Ref\": \"OrderTopic\" },\n        \"Protocol\": \"sqs\",\n        \"Endpoint\": { \"Fn::GetAtt\": [\"InventoryQueue\", \"Arn\"] }\n      }\n    },\n    \"AnalyticsSubscription\": {\n      \"Type\": \"AWS::SNS::Subscription\",\n      \"Properties\": {\n        \"TopicArn\": { \"Ref\": \"OrderTopic\" },\n        \"Protocol\": \"sqs\",\n        \"Endpoint\": { \"Fn::GetAtt\": [\"AnalyticsQueue\", \"Arn\"] }\n      }\n    },\n    \"SQSQueuePolicy\": {\n      \"Type\": \"AWS::SQS::QueuePolicy\",\n      \"Properties\": {\n        \"Queues\": [\n          { \"Ref\": \"OrdersQueue\" },\n          { \"Ref\": \"InventoryQueue\" },\n          { \"Ref\": \"AnalyticsQueue\" }\n        ],\n        \"PolicyDocument\": {\n          \"Statement\": [\n            {\n              \"Effect\": \"Allow\",\n              \"Principal\": { \"Service\": \"sns.amazonaws.com\" },\n              \"Action\": \"sqs:SendMessage\",\n              \"Resource\": \"*\",\n              \"Condition\": {\n                \"ArnEquals\": {\n                  \"aws:SourceArn\": { \"Ref\": \"OrderTopic\" }\n                }\n              }\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "Fanout enables broadcasting to multiple consumers. SQS queues must have a policy allowing SNS to send messages. This pattern is used for decoupled, parallel processing.",
+    "recallHint": "SNS → multiple SQS queues → parallel processing.",
+    "practice": [
+      "What is the fanout pattern and when would you use it?",
+      "How do you configure SQS to receive messages from SNS?",
+      "What queue policy is required for SNS to send to SQS?"
+    ]
+  },
+  {
+    "id": "aws-sqs-011",
+    "category": "aws-sqs",
+    "concept": "SQS Security",
+    "priority": "must-know",
+    "question": "What are the security best practices for SQS?",
+    "answer": "Best practices: encryption at rest (SSE-SQS, SSE-KMS), encryption in transit (TLS), IAM policies, queue policies, VPC Endpoints, and audit logging.",
+    "code": "```json\n{\n  \"Resources\": {\n    // Encrypted Queue\n    \"EncryptedQueue\": {\n      \"Type\": \"AWS::SQS::Queue\",\n      \"Properties\": {\n        \"QueueName\": \"encrypted-queue\",\n        \"SqsManagedSseEnabled\": true,\n        \"KmsMasterKeyId\": \"arn:aws:kms:us-east-1:123456789012:key/my-key\"\n      }\n    },\n    // Queue Policy (resource-based)\n    \"QueuePolicy\": {\n      \"Type\": \"AWS::SQS::QueuePolicy\",\n      \"Properties\": {\n        \"Queues\": [{ \"Ref\": \"EncryptedQueue\" }],\n        \"PolicyDocument\": {\n          \"Statement\": [\n            {\n              \"Effect\": \"Allow\",\n              \"Principal\": { \"AWS\": \"arn:aws:iam::123456789012:role/app-role\" },\n              \"Action\": [\n                \"sqs:SendMessage\",\n                \"sqs:ReceiveMessage\",\n                \"sqs:DeleteMessage\"\n              ],\n              \"Resource\": { \"Fn::GetAtt\": [\"EncryptedQueue\", \"Arn\"] }\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "SQS queues support server-side encryption (SSE). Use VPC Endpoints to keep traffic within the VPC. IAM policies control who can send/receive messages.",
+    "recallHint": "Encryption at rest (KMS/SSE), IAM policies, VPC Endpoints.",
+    "practice": [
+      "How do you encrypt SQS messages at rest?",
+      "What is the difference between SSE-SQS and SSE-KMS?",
+      "How do you restrict who can send messages to a queue?"
+    ]
+  },
+  {
+    "id": "aws-sqs-012",
+    "category": "aws-sqs",
+    "concept": "SQS Monitoring and Metrics",
+    "priority": "important",
+    "question": "What metrics are available for SQS monitoring and how do you use them?",
+    "answer": "SQS publishes CloudWatch metrics: ApproximateNumberOfMessagesVisible, ApproximateNumberOfMessagesNotVisible, ApproximateAgeOfOldestMessage, NumberOfMessagesSent, NumberOfMessagesReceived, and NumberOfMessagesDeleted.",
+    "code": "```bash\n# CloudWatch metrics for SQS\naws cloudwatch get-metric-statistics --namespace AWS/SQS --metric-name ApproximateNumberOfMessagesVisible --statistics Average --period 60\n\n# Check queue backlog\naws cloudwatch get-metric-statistics --namespace AWS/SQS --metric-name ApproximateNumberOfMessagesVisible --statistics Maximum --period 300\n\n# Set up CloudWatch alarm for high backlog\n{\n  \"Resources\": {\n    \"SQSBacklogAlarm\": {\n      \"Type\": \"AWS::CloudWatch::Alarm\",\n      \"Properties\": {\n        \"AlarmName\": \"SQS-Backlog-Alert\",\n        \"AlarmDescription\": \"Alarm if SQS backlog exceeds 1000\",\n        \"MetricName\": \"ApproximateNumberOfMessagesVisible\",\n        \"Namespace\": \"AWS/SQS\",\n        \"Statistic\": \"Sum\",\n        \"Period\": 60,\n        \"EvaluationPeriods\": 5,\n        \"Threshold\": 1000,\n        \"ComparisonOperator\": \"GreaterThanThreshold\"\n      }\n    }\n  }\n}\n```",
+    "explanation": "Monitor queue depth to identify processing bottlenecks. ApproximateAgeOfOldestMessage indicates message processing delays. Set alarms for excessive backlog.",
+    "recallHint": "Queue depth, message age, received/deleted counts.",
+    "practice": [
+      "What SQS metrics are available in CloudWatch?",
+      "How do you monitor message processing delays?",
+      "What does ApproximateAgeOfOldestMessage indicate?"
+    ]
+  },
+  {
+    "id": "aws-sqs-013",
+    "category": "aws-sqs",
+    "concept": "SQS Message Attributes",
+    "priority": "important",
+    "question": "What are SQS message attributes and how do you use them?",
+    "answer": "SQS message attributes are structured metadata (key-value pairs) sent with the message. They enable selective processing, message filtering (with SNS), and consumer-specific handling.",
+    "code": "```javascript\n// Send message with attributes (AWS SDK v3)\nimport { SQSClient, SendMessageCommand } from \"@aws-sdk/client-sqs\";\n\nconst sqs = new SQSClient({ region: \"us-east-1\" });\n\nconst params = {\n    QueueUrl: \"https://sqs.us-east-1.amazonaws.com/123456789012/my-queue\",\n    MessageBody: JSON.stringify({\n        orderId: \"ORD-12345\",\n        customer: \"John Doe\"\n    }),\n    MessageAttributes: {\n        \"event_type\": {\n            DataType: \"String\",\n            StringValue: \"order_created\"\n        },\n        \"priority\": {\n            DataType: \"String\",\n            StringValue: \"high\"\n        },\n        \"version\": {\n            DataType: \"Number\",\n            StringValue: \"1.0\"\n        },\n        \"is_new_customer\": {\n            DataType: \"String\",\n            StringValue: \"true\"\n        }\n    },\n    DelaySeconds: 0\n};\n\nawait sqs.send(new SendMessageCommand(params));\n\n// Receive and process attributes\nconst { Messages } = await sqs.send(new ReceiveMessageCommand({\n    QueueUrl: queueUrl,\n    MessageAttributeNames: [\"All\"],\n    MaxNumberOfMessages: 10\n}));\n\nif (Messages) {\n    for (const message of Messages) {\n        const attributes = message.MessageAttributes;\n        const eventType = attributes.event_type.StringValue;\n        const priority = attributes.priority.StringValue;\n        \n        console.log(`Event Type: ${eventType}`);\n        console.log(`Priority: ${priority}`);\n        \n        // Process based on attributes\n        if (priority === 'high') {\n            await processHighPriority(message.Body);\n        } else {\n            await processRegular(message.Body);\n        }\n    }\n}\n```",
+    "explanation": "Message attributes support String, Number, and Binary data types. They're used with SNS message filtering. Should be used for routing/filtering metadata.",
+    "recallHint": "Key-value metadata, used for filtering and routing.",
+    "practice": [
+      "What are SQS message attributes used for?",
+      "What data types are supported for message attributes?",
+      "How do message attributes differ from the message body?"
+    ]
+  },
+  {
+    "id": "aws-sqs-014",
+    "category": "aws-sqs",
+    "concept": "SQS Exactly-Once Processing",
+    "priority": "advanced",
+    "question": "How do you achieve exactly-once processing with SQS?",
+    "answer": "Exactly-once processing requires: FIFO queue (guaranteed ordering and deduplication), idempotent consumers, and transaction management. Use message deduplication IDs and process with idempotency keys.",
+    "code": "```python\n# Idempotent message processing\n\nimport boto3\nimport hashlib\nimport json\n\nsqs = boto3.client('sqs')\ndynamodb = boto3.client('dynamodb')\n\nqueue_url = 'https://sqs.us-east-1.amazonaws.com/123456789012/my-fifo-queue.fifo'\n\ndef process_message(message_body):\n    message = json.loads(message_body)\n    message_id = message.get('id')\n    \n    # Generate deduplication ID\n    dedupe_id = hashlib.sha256(\n        f\"{message_id}:{message.get('event_type', 'unknown')}\".encode()\n    ).hexdigest()\n    \n    # Check if already processed (idempotency store)\n    try:\n        response = dynamodb.get_item(\n            TableName='ProcessedMessages',\n            Key={'message_id': {'S': message_id}}\n        )\n        if 'Item' in response:\n            print(f\"Message {message_id} already processed\")\n            return True\n    except Exception as e:\n        print(f\"Error checking processed status: {e}\")\n    \n    # Process message\n    result = process_business_logic(message)\n    \n    # Store processed status\n    try:\n        dynamodb.put_item(\n            TableName='ProcessedMessages',\n            Item={\n                'message_id': {'S': message_id},\n                'processed_at': {'S': datetime.now().isoformat()},\n                'result': {'S': str(result)}\n            }\n        )\n    except Exception as e:\n        print(f\"Error storing processed status: {e}\")\n        return False\n    \n    return True\n\n# Send message with deduplication ID\nresponse = sqs.send_message(\n    QueueUrl=queue_url,\n    MessageBody=json.dumps(message_data),\n    MessageDeduplicationId=dedupe_id,\n    MessageGroupId='order-group'\n)\n```",
+    "explanation": "Exactly-once is achieved by combining FIFO queues (deduplication) with idempotent consumers. Store processed message IDs in a database to handle duplicate deliveries.",
+    "recallHint": "FIFO queue + deduplication + idempotent processing = exactly-once.",
+    "practice": [
+      "How do you achieve exactly-once processing with SQS?",
+      "What is the role of idempotency in SQS processing?",
+      "How does FIFO queue deduplication work?"
+    ]
+  },
+  {
+    "id": "aws-sqs-015",
+    "category": "aws-sqs",
+    "concept": "SQS Message Large Payloads",
+    "priority": "advanced",
+    "question": "How do you handle messages larger than the 256KB limit in SQS?",
+    "answer": "Use the Extended Client Library that stores large messages in S3 and passes a reference in SQS. This allows messages up to 2GB. Alternatively, compress messages before sending.",
+    "code": "```javascript\n// Extended Client Library (Java)\n// Using Amazon SQS Extended Client Library\n\nimport com.amazon.sqs.javamessaging.AmazonSQSExtendedClient;\nimport com.amazon.sqs.javamessaging.ExtendedClientConfiguration;\n\nExtendedClientConfiguration config = new ExtendedClientConfiguration()\n    .withPayloadSupportEnabled(new AmazonS3Client(), \"my-sqs-payload-bucket\")\n    .withPayloadSizeThreshold(256 * 1024);\n\nAmazonSQS sqsExtended = new AmazonSQSExtendedClient(new AmazonSQSClient(), config);\n\n// Send message (automatically stores in S3 if >256KB)\nString messageBody = \"Large message content...\";\nsqsExtended.sendMessage(new SendMessageRequest(queueUrl, messageBody));\n\n// Receive message (automatically retrieves from S3)\nReceiveMessageResult result = sqsExtended.receiveMessage(queueUrl);\n\n// Python alternative: manual S3 + SQS\nimport boto3\nimport json\n\ns3 = boto3.client('s3')\nsqs = boto3.client('sqs')\n\nlarge_message = {\n    'data': 'x' * 1024 * 1024  # 1MB message\n}\n\n# Store in S3\ns3.put_object(\n    Bucket='my-payload-bucket',\n    Key='message-12345',\n    Body=json.dumps(large_message)\n)\n\n# Send reference in SQS\nsqs.send_message(\n    QueueUrl=queue_url,\n    MessageBody=json.dumps({\n        's3_bucket': 'my-payload-bucket',\n        's3_key': 'message-12345'\n    })\n)\n```",
+    "explanation": "The SQS Extended Client Library handles large messages automatically. Manual approach: store in S3, send S3 reference in SQS. Consumer retrieves from S3 using the reference.",
+    "recallHint": "S3 for payload >256KB, store reference in SQS.",
+    "practice": [
+      "How do you send messages larger than 256KB in SQS?",
+      "What is the SQS Extended Client Library?",
+      "How do you implement large message handling manually?"
+    ]
+  },
+  {
+    "id": "aws-sqs-016",
+    "category": "aws-sqs",
+    "concept": "SQS Ordered Processing",
+    "priority": "important",
+    "question": "How do you ensure ordered processing of SQS messages?",
+    "answer": "Use FIFO queues for strict ordering. For Standard queues, implement client-side ordering using sequence numbers or timestamps and process messages in order.",
+    "code": "```python\n# FIFO Queue - Guaranteed ordering\n# Message Group ID ensures order within a group\n\n# Send with MessageGroupId\nsqs.send_message(\n    QueueUrl='https://sqs.us-east-1.amazonaws.com/123456789012/my-fifo-queue.fifo',\n    MessageBody=json.dumps(message),\n    MessageDeduplicationId=dedupe_id,\n    MessageGroupId='user-123'  # All messages for this user are ordered\n)\n\n# Standard Queue - Client-side ordering\nimport time\n\nclass OrderedMessageQueue:\n    def __init__(self):\n        self.last_sequence = {}\n        self.buffer = {}\n    \n    def send_message(self, queue_url, message, group_id):\n        sequence = self.last_sequence.get(group_id, 0) + 1\n        self.last_sequence[group_id] = sequence\n        \n        message['_sequence'] = sequence\n        message['_group_id'] = group_id\n        \n        return sqs.send_message(\n            QueueUrl=queue_url,\n            MessageBody=json.dumps(message),\n            DelaySeconds=0\n        )\n    \n    def receive_ordered_messages(self, queue_url, group_id):\n        response = sqs.receive_message(\n            QueueUrl=queue_url,\n            MaxNumberOfMessages=10,\n            WaitTimeSeconds=20\n        )\n        \n        # Sort by sequence number\n        messages = []\n        for msg in response.get('Messages', []):\n            body = json.loads(msg['Body'])\n            messages.append((body['_sequence'], msg))\n        \n        messages.sort(key=lambda x: x[0])\n        \n        # Process in order\n        for seq, msg in messages:\n            yield msg\n```",
+    "explanation": "FIFO queues guarantee ordering within a message group. For Standard queues, implement client-side ordering using sequence numbers or timestamps.",
+    "recallHint": "FIFO = guaranteed order, Standard = client-side ordering needed.",
+    "practice": [
+      "How do you ensure ordered processing in SQS?",
+      "What is the role of MessageGroupId in FIFO queues?",
+      "How do you implement client-side ordering for Standard queues?"
+    ]
+  },
+  {
+    "id": "aws-sqs-017",
+    "category": "aws-sqs",
+    "concept": "SQS with EC2",
+    "priority": "important",
+    "question": "How do you process SQS messages with EC2 instances?",
+    "answer": "EC2 instances poll SQS queues, receive and process messages, then delete them. Use Auto Scaling Groups to scale consumers based on queue depth. Implement graceful shutdown for instance termination.",
+    "code": "```python\n# EC2 consumer script\nimport boto3\nimport time\nimport signal\nimport sys\n\nsqs = boto3.client('sqs')\nqueue_url = 'https://sqs.us-east-1.amazonaws.com/123456789012/my-queue'\n\nrunning = True\n\ndef signal_handler(sig, frame):\n    global running\n    print('Shutting down gracefully...')\n    running = False\n\nsignal.signal(signal.SIGINT, signal_handler)\n\ndef process_messages():\n    while running:\n        try:\n            response = sqs.receive_message(\n                QueueUrl=queue_url,\n                MaxNumberOfMessages=10,\n                WaitTimeSeconds=20,\n                VisibilityTimeout=60\n            )\n            \n            if 'Messages' not in response:\n                continue\n            \n            for message in response['Messages']:\n                try:\n                    # Process message\n                    process_message(message['Body'])\n                    \n                    # Delete after success\n                    sqs.delete_message(\n                        QueueUrl=queue_url,\n                        ReceiptHandle=message['ReceiptHandle']\n                    )\n                except Exception as e:\n                    print(f'Processing failed: {e}')\n                    # Message will reappear after visibility timeout\n                    \n        except Exception as e:\n            print(f'Polling error: {e}')\n            time.sleep(5)\n\n# Auto Scaling integration\n# CloudWatch alarm on ApproximateNumberOfMessagesVisible\n# Scale up/out based on queue depth\n```",
+    "explanation": "EC2 consumers should use Long Polling, handle graceful shutdown, and implement error handling. Use ASG to scale with queue depth. Implement health checks to restart failed consumers.",
+    "recallHint": "EC2 polls SQS, processes, deletes. ASG scales with queue depth.",
+    "practice": [
+      "How do you process SQS messages with EC2?",
+      "How do you scale EC2 consumers based on queue depth?",
+      "What is the graceful shutdown process for EC2 consumers?"
+    ]
+  },
+  {
+    "id": "aws-sqs-018",
+    "category": "aws-sqs",
+    "concept": "SQS Queue Types Comparison",
+    "priority": "advanced",
+    "question": "What are the different types of SQS queues and how do they compare?",
+    "answer": "SQS offers Standard and FIFO queues. Additionally, there are specific configurations: High Throughput FIFO (3000 TPS with batching), FIFO with messageGroupId, and Standard with content-based deduplication (via message attributes).",
+    "code": "```json\n{\n  \"Comparison\": {\n    \"Standard Queue\": {\n      \"Throughput\": \"Unlimited\",\n      \"Ordering\": \"Best-effort\",\n      \"Delivery\": \"At-least-once\",\n      \"Deduplication\": \"Client-side\",\n      \"Cost\": \"$\",\n      \"Use Cases\": \"Background jobs, decoupling\"\n    },\n    \"FIFO Queue\": {\n      \"Throughput\": \"300 TPS (without batching), 3000 TPS (with batching)\",\n      \"Ordering\": \"Guaranteed\",\n      \"Delivery\": \"Exactly-once\",\n      \"Deduplication\": \"Automatic\",\n      \"Cost\": \"$$$\",\n      \"Use Cases\": \"Transactions, inventory\"\n    },\n    \"High Throughput FIFO\": {\n      \"Throughput\": \"3000 TPS (with batching)\",\n      \"Ordering\": \"Guaranteed per group\",\n      \"Delivery\": \"Exactly-once\",\n      \"Deduplication\": \"Automatic\",\n      \"Cost\": \"$$$\",\n      \"Use Cases\": \"High volume ordered processing\"\n    }\n  }\n}\n\n// High Throughput FIFO configuration\n{\n  \"Resources\": {\n    \"HighThroughputFIFO\": {\n      \"Type\": \"AWS::SQS::Queue\",\n      \"Properties\": {\n        \"QueueName\": \"high-throughput-queue.fifo\",\n        \"FifoQueue\": true,\n        \"DeduplicationScope\": \"messageGroup\",\n        \"FifoThroughputLimit\": \"perMessageGroupId\"\n      }\n    }\n  }\n}\n```",
+    "explanation": "Standard queues are suitable for most workloads. FIFO queues are for ordered, exactly-once processing. High throughput FIFO is for high-volume ordered processing.",
+    "recallHint": "Standard = high volume, FIFO = ordered/exactly-once.",
+    "practice": [
+      "What are the different types of SQS queues?",
+      "When would you use High Throughput FIFO?",
+      "What are the throughput limits for each queue type?"
+    ]
+  },
+  {
+    "id": "aws-sqs-019",
+    "category": "aws-sqs",
+    "concept": "SQS Temporary Queues",
+    "priority": "advanced",
+    "question": "What are temporary queues and when would you use them?",
+    "answer": "Temporary queues are created on-demand for short-lived tasks (e.g., request-response patterns, temporary work queues). They can be Standard or FIFO and are deleted after processing.",
+    "code": "```python\n# Create temporary queue for request-response\nimport boto3\nimport uuid\n\nsqs = boto3.client('sqs')\n\n# Create temporary queue\nresponse = sqs.create_queue(\n    QueueName=f'temp-queue-{uuid.uuid4()}',\n    Attributes={\n        'MessageRetentionPeriod': '300',  # 5 minutes\n        'VisibilityTimeout': '60'\n    }\n)\ntemp_queue_url = response['QueueUrl']\n\ntry:\n    # Use queue for processing\n    process_temporary_queue(temp_queue_url)\nfinally:\n    # Clean up\n    sqs.delete_queue(QueueUrl=temp_queue_url)\n\n# Request-response pattern\n# 1. Create temp queue\n# 2. Send request with ReplyTo = temp queue URL\n# 3. Wait for response on temp queue\n# 4. Delete temp queue\n\n# Temporary queue with Lambda\n# Lambda creates queue for each invocation\n# Processes messages, deletes queue on completion\n# Use for isolated processing\n```",
+    "explanation": "Temporary queues reduce clutter and costs. Use for request-response patterns, temporary workloads, or isolated processing. Ensure cleanup to avoid orphaned queues.",
+    "recallHint": "On-demand queues, request-response, cleanup needed.",
+    "practice": [
+      "What are temporary queues and when would you use them?",
+      "How do you implement a request-response pattern with temporary queues?",
+      "How do you ensure temporary queues are cleaned up?"
+    ]
+  },
+  {
+    "id": "aws-sqs-020",
+    "category": "aws-sqs",
+    "concept": "SQS Best Practices",
+    "priority": "advanced",
+    "question": "What are the best practices for implementing SQS?",
+    "answer": "Best practices: use Long Polling, set appropriate visibility timeout, configure DLQs, use batch operations, monitor queue depth, use message attributes, encrypt messages, and implement idempotent consumers.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"BestPracticeQueue\": {\n      \"Type\": \"AWS::SQS::Queue\",\n      \"Properties\": {\n        \"QueueName\": \"best-practice-queue\",\n        \"VisibilityTimeout\": 60,\n        \"MessageRetentionPeriod\": 345600,\n        \"ReceiveMessageWaitTimeSeconds\": 20,\n        \"RedrivePolicy\": {\n          \"deadLetterTargetArn\": { \"Fn::GetAtt\": [\"DLQueue\", \"Arn\"] },\n          \"maxReceiveCount\": 3\n        },\n        \"SqsManagedSseEnabled\": true\n      }\n    }\n  }\n}\n\n// Best Practices Checklist\n// 1. Long Polling: WaitTimeSeconds = 20\n// 2. Visibility Timeout: > processing time\n// 3. DLQ: maxReceiveCount = 3-5\n// 4. Batch operations: up to 10 messages\n// 5. Monitoring: CloudWatch alarms\n// 6. Encryption: SSE-SQS\n// 7. Idempotent consumers\n// 8. Graceful shutdown\n// 9. Error handling and retry\n// 10. Message versioning\n```",
+    "explanation": "Implementing these best practices ensures reliable, scalable, and cost-effective message processing. Monitor queue depth and set up alerts for backlog.",
+    "recallHint": "Long polling, DLQs, encryption, idempotent consumers.",
+    "practice": [
+      "What are the best practices for SQS implementation?",
+      "How do you handle message processing failures?",
+      "What is the recommended visibility timeout strategy?"
+    ]
+  }
+]

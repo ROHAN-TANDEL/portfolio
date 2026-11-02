@@ -1,0 +1,482 @@
+[
+  {
+    "id": "pgsql-001",
+    "category": "postgresql",
+    "concept": "PostgreSQL Overview",
+    "priority": "must-know",
+    "question": "What is PostgreSQL and what are its key features?",
+    "answer": "PostgreSQL is a powerful, open-source object-relational database system with advanced features: ACID compliance, MVCC, extensive data types (JSON/JSONB, arrays, GIS), extensibility via plugins, full SQL standard support, and strong community backing.",
+    "code": "-- PostgreSQL features in action\n-- JSONB storage\nCREATE TABLE users (metadata JSONB);\nCREATE INDEX ON users USING GIN(metadata);\n\n-- Arrays\nCREATE TABLE products (tags TEXT[]);\n\n-- Custom types\nCREATE TYPE user_status AS ENUM ('active', 'inactive');\n\n-- Extensions\nCREATE EXTENSION IF NOT EXISTS pgvector;",
+    "explanation": "PostgreSQL excels in complex queries, data warehousing, AI workloads (pgvector), and mission-critical applications requiring strong consistency and integrity guarantees [citation:8].",
+    "recallHint": "ACID, MVCC, JSONB, extensible, open-source.",
+    "practice": [
+      "Explain PostgreSQL's feature set.",
+      "When would you choose PostgreSQL over MySQL?",
+      "List the main data types PostgreSQL supports."
+    ]
+  },
+  {
+    "id": "pgsql-002",
+    "category": "postgresql",
+    "concept": "PostgreSQL Architecture",
+    "priority": "must-know",
+    "question": "How does PostgreSQL architecture work?",
+    "answer": "PostgreSQL uses a process-per-connection architecture (not thread-based). Each connection spawns a backend process. The architecture includes: Postmaster (listener), Background Writer, WAL Writer, Autovacuum, Checkpointer, and Statistics Collector.",
+    "code": "-- Check active connections\nSELECT pid, usename, application_name, state, query\nFROM pg_stat_activity;\n\n-- View processes\n-- ps aux | grep postgres\n\n-- Configuration parameters\nSHOW max_connections;\nSHOW shared_buffers;\nSHOW work_mem;",
+    "explanation": "Each PostgreSQL connection consumes ~10-20MB of memory. This is why connection pooling (PgBouncer) is critical for high-concurrency applications [citation:10]. The process-based model provides strong isolation but has higher overhead than thread-based databases.",
+    "recallHint": "Process-per-connection, Postmaster, background processes.",
+    "practice": [
+      "Explain the process model.",
+      "Why does connection pooling matter for PostgreSQL?",
+      "Describe each background process."
+    ]
+  },
+  {
+    "id": "pgsql-003",
+    "category": "postgresql",
+    "concept": "MVCC",
+    "priority": "must-know",
+    "question": "What is MVCC and how does it work in PostgreSQL?",
+    "answer": "MVCC (Multi-Version Concurrency Control) allows concurrent transactions to see consistent snapshots without locking. PostgreSQL implements this by storing multiple versions of each row. Read operations see the version valid at the start of their transaction.",
+    "code": "-- Check dead tuples\nSELECT schemaname, tablename, n_dead_tup, n_live_tup\nFROM pg_stat_user_tables;\n\n-- Visibility checks\n-- Each tuple has xmin (creating transaction) and xmax (deleting transaction)\n\n-- VACUUM cleans dead tuples\nVACUUM ANALYZE;",
+    "explanation": "MVCC eliminates read-write contention. Updates create new row versions; old versions remain until vacuumed. This is why PostgreSQL handles high concurrency well but requires regular VACUUM maintenance [citation:1].",
+    "recallHint": "Multiple row versions, no read locks, VACUUM needed.",
+    "practice": [
+      "Explain MVCC benefits.",
+      "Why does VACUUM matter?",
+      "What are dead tuples?"
+    ]
+  },
+  {
+    "id": "pgsql-004",
+    "category": "postgresql",
+    "concept": "Query Planner",
+    "priority": "must-know",
+    "question": "How does the PostgreSQL query planner work?",
+    "answer": "The query planner is a cost-based optimizer (CBO). It parses the query, rewrites it, explores possible execution plans, assigns costs based on I/O and CPU estimates, and chooses the plan with the lowest estimated cost.",
+    "code": "-- Show query plan\nEXPLAIN ANALYZE SELECT * FROM users WHERE email = 'test@example.com';\n\n-- Check statistics accuracy\nSELECT tablename, n_tup_ins, n_tup_upd, n_tup_del\nFROM pg_stat_user_tables;\n\n-- Force statistics update\nANALYZE users;\n\n-- Show planner parameters\nSHOW effective_cache_size;\nSHOW work_mem;",
+    "explanation": "The planner relies on accurate table statistics (updated by ANALYZE/autovacuum). Key cost parameters: seq_page_cost, random_page_cost, cpu_tuple_cost, effective_cache_size, work_mem [citation:2].",
+    "recallHint": "Cost-based optimizer, statistics, execution plans.",
+    "practice": [
+      "Explain the query planning phases.",
+      "How does the optimizer choose a plan?",
+      "What happens if statistics are stale?"
+    ]
+  },
+  {
+    "id": "pgsql-005",
+    "category": "postgresql",
+    "concept": "VACUUM and Autovacuum",
+    "priority": "must-know",
+    "question": "What is VACUUM and why is it critical for PostgreSQL performance?",
+    "answer": "VACUUM reclaims storage occupied by dead tuples (old row versions created by updates/deletes). It prevents table bloat, updates statistics, and allows reuse of disk space. Autovacuum runs automatically based on configurable thresholds.",
+    "code": "-- Manual VACUUM\nVACUUM; -- Standard cleanup\nVACUUM ANALYZE; -- Cleanup + update stats\nVACUUM FULL; -- Compact (locks table, use sparingly)\n\n-- Check table bloat\nSELECT schemaname, tablename, n_dead_tup, n_live_tup,\n       round(n_dead_tup::numeric / n_live_tup * 100, 2) AS dead_ratio\nFROM pg_stat_user_tables\nWHERE n_live_tup > 0\nORDER BY dead_ratio DESC;\n\n-- Autovacuum settings\nSHOW autovacuum;\nSHOW autovacuum_vacuum_scale_factor;\nSHOW autovacuum_vacuum_threshold;",
+    "explanation": "Without VACUUM, tables bloat, query performance degrades, and transaction ID wraparound can occur. Autovacuum is essential in production but may need tuning for large tables [citation:1].",
+    "recallHint": "Reclaims dead tuples, prevents bloat, autovacuum.",
+    "practice": [
+      "Explain why VACUUM is needed.",
+      "What's the difference between VACUUM and VACUUM FULL?",
+      "How do you tune autovacuum?"
+    ]
+  },
+  {
+    "id": "pgsql-006",
+    "category": "postgresql",
+    "concept": "WAL and Point-in-Time Recovery",
+    "priority": "must-know",
+    "question": "What is WAL and how does Point-in-Time Recovery work?",
+    "answer": "WAL (Write-Ahead Logging) records all changes before they are written to data files. It enables crash recovery and Point-in-Time Recovery (PITR). PITR restores a base backup then replays WAL files to a specific time.",
+    "code": "-- WAL configuration\nSHOW wal_level;\nSHOW archive_mode;\nSHOW archive_command;\n\n-- Check WAL files\n-- ls -la $PGDATA/pg_wal/\n\n-- Recovery configuration (recovery.conf)\nrestore_command = 'cp /archive/%f %p'\nrecovery_target_time = '2024-01-01 12:00:00'\n\n-- Check WAL size\nSELECT pg_walfile_name(pg_current_wal_lsn());",
+    "explanation": "WAL is the foundation of PostgreSQL reliability. It ensures durability and enables replication. For production, use replication slots and proper WAL archiving [citation:9].",
+    "recallHint": "WAL = Write-Ahead Logging, PITR = base backup + WAL replay.",
+    "practice": [
+      "Explain WAL and its purpose.",
+      "Describe Point-in-Time Recovery.",
+      "How does WAL enable replication?"
+    ]
+  },
+  {
+    "id": "pgsql-007",
+    "category": "postgresql",
+    "concept": "PostgreSQL Indexes",
+    "priority": "must-know",
+    "question": "What index types are available in PostgreSQL and when do you use each?",
+    "answer": "PostgreSQL supports: B-tree (default, equality/range), Hash (equality only), GiST (geospatial, range), GIN (full-text, JSON, arrays), BRIN (large ordered tables), and SP-GiST (clustered data).",
+    "code": "-- B-tree (default)\nCREATE INDEX idx_users_email ON users(email);\n\n-- GIN (full-text search)\nCREATE INDEX idx_articles_tsv ON articles USING GIN (to_tsvector('english', content));\n\n-- JSONB indexing\nCREATE INDEX idx_users_metadata ON users USING GIN (metadata);\n\n-- BRIN (large tables, ordered data)\nCREATE INDEX idx_orders_created ON orders USING BRIN (created_at);\n\n-- Partial index\nCREATE INDEX idx_active_users ON users(email) WHERE status = 'active';\n\n-- Covering index\nCREATE INDEX idx_orders_cover ON orders(user_id) INCLUDE (amount, created_at);",
+    "explanation": "Index choice dramatically affects query performance. B-tree is best for most cases. GIN is optimized for containment and full-text. BRIN is excellent for very large tables with sequential data [citation:6].",
+    "recallHint": "B-tree (general), GIN (text/JSON), BRIN (large tables).",
+    "practice": [
+      "Explain each index type.",
+      "When would you use GIN vs GiST?",
+      "What is a covering index?"
+    ]
+  },
+  {
+    "id": "pgsql-008",
+    "category": "postgresql",
+    "concept": "PostgreSQL Isolation Levels",
+    "priority": "must-know",
+    "question": "What isolation levels does PostgreSQL support and what anomalies do they prevent?",
+    "answer": "PostgreSQL supports: READ UNCOMMITTED (same as READ COMMITTED), READ COMMITTED (default), REPEATABLE READ, and SERIALIZABLE. It prevents dirty reads but non-repeatable reads and phantom reads depend on the level.",
+    "code": "-- Check current level\nSHOW transaction_isolation;\n\n-- Set isolation level\nSET TRANSACTION ISOLATION LEVEL REPEATABLE READ;\n\n-- SERIALIZABLE with retry logic\nBEGIN;\nSET TRANSACTION ISOLATION LEVEL SERIALIZABLE;\n-- ... operations ...\nCOMMIT; -- May fail with serialization error\n\n-- Handle serialization failure\n-- Retry with exponential backoff",
+    "explanation": "PostgreSQL's default READ COMMITTED prevents dirty reads but allows non-repeatable reads. SERIALIZABLE provides full isolation but may fail with serialization errors requiring retry logic [citation:2].",
+    "recallHint": "READ COMMITTED (default), REPEATABLE READ, SERIALIZABLE.",
+    "practice": [
+      "Explain each isolation level.",
+      "What anomalies does each prevent?",
+      "How do you handle serialization errors?"
+    ]
+  },
+  {
+    "id": "pgsql-009",
+    "category": "postgresql",
+    "concept": "PostgreSQL Replication",
+    "priority": "must-know",
+    "question": "How does PostgreSQL replication work and what are the types?",
+    "answer": "PostgreSQL uses streaming replication: the primary sends WAL changes to standby(s). Types: Physical (binary copy, full database), Logical (row-level changes, selective), Synchronous (wait for standby), and Asynchronous (fire-and-forget).",
+    "code": "-- Check replication status\nSELECT * FROM pg_stat_replication;\n\n-- Create replication slot\nSELECT pg_create_physical_replication_slot('replica_slot');\n\n-- Check replication lag\nSELECT \n    pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn) AS lag_bytes,\n    replay_lsn\nFROM pg_stat_replication;",
+    "explanation": "Replication is critical for high availability and read scaling. Synchronous replication prevents data loss but adds latency. Logical replication enables selective data sync to different PostgreSQL versions [citation:9].",
+    "recallHint": "Streaming replication, physical vs logical, sync vs async.",
+    "practice": [
+      "Explain streaming replication.",
+      "Difference between physical and logical replication.",
+      "How do you monitor replication lag?"
+    ]
+  },
+  {
+    "id": "pgsql-010",
+    "category": "postgresql",
+    "concept": "PostgreSQL Partitioning",
+    "priority": "important",
+    "question": "How does table partitioning work in PostgreSQL?",
+    "answer": "Partitioning splits a large table into smaller pieces based on a partition key. Types: RANGE (by date), LIST (by category), HASH (by hash distribution), and composite. Available since PostgreSQL 10.",
+    "code": "-- Range partitioning\nCREATE TABLE orders (\n    id SERIAL,\n    order_date DATE,\n    amount DECIMAL\n) PARTITION BY RANGE (order_date);\n\nCREATE TABLE orders_2024 PARTITION OF orders\nFOR VALUES FROM ('2024-01-01') TO ('2025-01-01');\n\n-- List partitioning\nCREATE TABLE products PARTITION BY LIST (category);\n\n-- Hash partitioning\nCREATE TABLE users PARTITION BY HASH (id);\n\n-- Attach partition\nALTER TABLE orders ATTACH PARTITION orders_2025\nFOR VALUES FROM ('2025-01-01') TO ('2026-01-01');",
+    "explanation": "Partitioning improves query performance (partition pruning), simplifies data management (drop old partitions), and enhances scalability. Essential for time-series data and large tables >100GB [citation:1].",
+    "recallHint": "RANGE, LIST, HASH, partition pruning.",
+    "practice": [
+      "Explain partitioning types.",
+      "When should you partition a table?",
+      "How do you add a new partition?"
+    ]
+  },
+  {
+    "id": "pgsql-011",
+    "category": "postgresql",
+    "concept": "PostgreSQL Security",
+    "priority": "must-know",
+    "question": "What security features does PostgreSQL provide and how do you secure a production database?",
+    "answer": "PostgreSQL provides: role-based access control, SSL/TLS encryption, row-level security, authentication methods (SCRAM-SHA-256, LDAP), and audit logging. Best practices: least privilege, strong passwords, network isolation.",
+    "code": "-- Create roles with minimal privileges\nCREATE ROLE app_readonly;\nGRANT SELECT ON ALL TABLES IN SCHEMA public TO app_readonly;\n\n-- Row-level security\nALTER TABLE users ENABLE ROW LEVEL SECURITY;\nCREATE POLICY user_own_data ON users\nUSING (id = current_setting('app.user_id')::INT);\n\n-- SSL configuration\nssl = on\nssl_cert_file = 'server.crt'\n\n-- Audit logging\nlog_statement = 'ddl'\nlog_connections = on",
+    "explanation": "Security requires a defense-in-depth approach: network security, encryption, least privilege, and monitoring. Always use SCRAM-SHA-256 for password authentication [citation:1].",
+    "recallHint": "Roles, SSL/TLS, RLS, audit logging.",
+    "practice": [
+      "Create a read-only role.",
+      "Enable row-level security.",
+      "Configure SSL/TLS."
+    ]
+  },
+  {
+    "id": "pgsql-012",
+    "category": "postgresql",
+    "concept": "PostgreSQL Extensions",
+    "priority": "important",
+    "question": "What are PostgreSQL extensions and what are the most important ones?",
+    "answer": "Extensions add functionality to PostgreSQL. Key extensions: pgvector (vector search), PostGIS (GIS), pg_stat_statements (query monitoring), hstore (key-value), pg_trgm (trigram search), and full-text search built-ins.",
+    "code": "-- List installed extensions\nSELECT * FROM pg_extension;\n\n-- Install pgvector\nCREATE EXTENSION IF NOT EXISTS vector;\n\n-- Install pg_stat_statements\nCREATE EXTENSION IF NOT EXISTS pg_stat_statements;\n\n-- Install PostGIS\nCREATE EXTENSION postgis;\n\n-- Install pg_trgm\nCREATE EXTENSION pg_trgm;\n\n-- Check available extensions\nSELECT * FROM pg_available_extensions\nORDER BY name;",
+    "explanation": "Extensions make PostgreSQL highly extensible. pgvector enables AI/ML workloads. pg_stat_statements is essential for performance monitoring. Choose extensions based on workload requirements [citation:8].",
+    "recallHint": "pgvector, PostGIS, pg_stat_statements, hstore.",
+    "practice": [
+      "Explain the purpose of extensions.",
+      "Install and configure pg_stat_statements.",
+      "When would you use pg_trgm?"
+    ]
+  },
+  {
+    "id": "pgsql-013",
+    "category": "postgresql",
+    "concept": "PostgreSQL Monitoring",
+    "priority": "important",
+    "question": "How do you monitor PostgreSQL performance?",
+    "answer": "Monitor via: pg_stat_statements (query performance), pg_stat_activity (connections), pg_stat_user_tables (table stats), pg_stat_user_indexes (index usage), and system metrics (CPU, memory, I/O).",
+    "code": "-- Active queries\nSELECT pid, usename, state, query_start, query\nFROM pg_stat_activity\nWHERE state = 'active';\n\n-- Slow queries\nSELECT query, calls, total_time, mean_time\nFROM pg_stat_statements\nORDER BY mean_time DESC\nLIMIT 10;\n\n-- Connection usage\nSELECT count(*) FROM pg_stat_activity;\n\n-- Table bloat\nSELECT schemaname, tablename, n_dead_tup\nFROM pg_stat_user_tables\nWHERE n_dead_tup > 1000;",
+    "explanation": "Proactive monitoring prevents issues. Use pg_stat_statements for query analysis, pg_stat_activity for connections, and monitoring tools like Prometheus/Grafana. Set alerts for replication lag, connections, and slow queries [citation:10].",
+    "recallHint": "pg_stat_statements, pg_stat_activity, connection monitoring.",
+    "practice": [
+      "Monitor slow queries.",
+      "Check connection usage.",
+      "Set up alerting."
+    ]
+  },
+  {
+    "id": "pgbouncer-001",
+    "category": "pgbouncer",
+    "concept": "PgBouncer Overview",
+    "priority": "must-know",
+    "question": "What is PgBouncer and why do you need it?",
+    "answer": "PgBouncer is a lightweight connection pooler for PostgreSQL. It sits between applications and PostgreSQL, accepting many client connections while maintaining a small pool of actual PostgreSQL connections. It reduces connection overhead and prevents connection exhaustion.",
+    "code": "-- PgBouncer configuration (pgbouncer.ini)\n[databases]\nmydb = host=localhost port=5432 dbname=mydb\n\n[pgbouncer]\nlisten_port = 6432\nlisten_addr = 0.0.0.0\npool_mode = transaction\ndefault_pool_size = 20\nmax_client_conn = 1000\n\n-- Client connection\n-- psql -h localhost -p 6432 -d mydb\n\n-- Check pool status\nSHOW STATS;\nSHOW POOLS;\nSHOW CLIENTS;",
+    "explanation": "Each PostgreSQL connection consumes ~10-20MB of memory and has a connection limit (default 100). Without PgBouncer, 1000 application requests would exhaust connections. PgBouncer multiplexes connections, enabling thousands of clients with minimal resources [citation:10].",
+    "recallHint": "Connection pooler, reduces overhead, prevents exhaustion.",
+    "practice": [
+      "Explain why PgBouncer is needed.",
+      "Describe PgBouncer's architecture.",
+      "How does it differ from application-level pooling?"
+    ]
+  },
+  {
+    "id": "pgbouncer-002",
+    "category": "pgbouncer",
+    "concept": "Pooling Modes",
+    "priority": "must-know",
+    "question": "What are the different pooling modes in PgBouncer and when do you use each?",
+    "answer": "Session pooling: client gets dedicated connection for entire session. Transaction pooling: client gets connection only during transaction (most efficient). Statement pooling: client gets connection per statement (breaks multi-statement transactions).",
+    "code": "-- Transaction pooling (recommended)\npool_mode = transaction\n\n-- Session pooling (default)\npool_mode = session\n\n-- Statement pooling (rare)\npool_mode = statement\n\n-- Transaction pooling caveats\n-- 1. Cannot use SET commands\n-- 2. Prepared statements don't persist\n-- 3. Use DISCARD ALL before returning connection\n\n-- Session pooling setup\npool_mode = session\nmax_client_conn = 200\npool_size = 50\n\n-- Transaction pooling setup\npool_mode = transaction\nmax_client_conn = 1000\npool_size = 30\n-- 30 connections can serve thousands of clients",
+    "explanation": "Transaction pooling is the most efficient mode: 100 PostgreSQL connections can serve thousands of concurrent application connections because most connections idle between transactions. Session pooling is similar to application-level pooling [citation:10].",
+    "recallHint": "Transaction (most efficient), Session (default), Statement (rare).",
+    "practice": [
+      "Explain each pooling mode.",
+      "When would you avoid transaction pooling?",
+      "What are the limitations of transaction pooling?"
+    ]
+  },
+  {
+    "id": "pgbouncer-003",
+    "category": "pgbouncer",
+    "concept": "Pool Sizing",
+    "priority": "must-know",
+    "question": "How do you size PgBouncer and PostgreSQL connection pools correctly?",
+    "answer": "The formula: pool_size = (core_count × 2) + 1. More connections cause context switching overhead. Total connections = pool_size × number of pods ≤ max_connections × 0.9. Never increase pool size to handle more traffic.",
+    "code": "-- Example sizing\n-- 4-core pod: pool_size = (4 × 2) + 1 = 9 → round to 10\n-- 50 pods × 10 = 500 connections\n-- PostgreSQL max_connections = 600\n-- 500 ≤ 600 × 0.9 (540) ✓ PASSES\n\n-- Check current settings\nSHOW max_connections;\nSHOW pool_size FROM pgBouncer;\n\n-- PgBouncer pool stats\nSHOW POOLS;\n\n-- PostgreSQL connection count\nSELECT count(*) FROM pg_stat_activity;",
+    "explanation": "The most common mistake is making the pool too large. More connections degrade performance due to context switching. A 4-core machine handles ~10 connections efficiently. Add more pods for horizontal scaling, not larger pools [citation:10].",
+    "recallHint": "(cores × 2) + 1, total ≤ max_connections × 0.9.",
+    "practice": [
+      "Calculate pool size for a given core count.",
+      "Explain why bigger isn't better.",
+      "How do you know if you need more pods vs larger pool?"
+    ]
+  },
+  {
+    "id": "pgbouncer-004",
+    "category": "pgbouncer",
+    "concept": "PgBouncer vs HikariCP",
+    "priority": "important",
+    "question": "What is the difference between PgBouncer and application-level connection pools like HikariCP?",
+    "answer": "HikariCP pools connections within each application instance. PgBouncer is an external pooler shared across all instances. PgBouncer enables: multiple apps sharing a pool, absorbing pod scaling churn, and reducing total PostgreSQL connections.",
+    "code": "-- HikariCP (application-level)\nHikariConfig config = new HikariConfig();\nconfig.setMaximumPoolSize(10); // Per instance\n\n-- PgBouncer (external)\n-- Multiple app instances → PgBouncer → PostgreSQL\n-- 10 instances × 10 connections = 100 PostgreSQL connections\n-- With PgBouncer: 10 instances × 20 client connections → 20 PostgreSQL connections\n\n-- When to use PgBouncer\n-- 1. Multiple application instances\n-- 2. Kubernetes pod scaling\n-- 3. Shared connection pool\n-- 4. Reducing total PostgreSQL connections",
+    "explanation": "Without PgBouncer: 10 application instances with pool_size=20 each open 200 PostgreSQL connections. With PgBouncer: 10 instances connect to PgBouncer, which maintains only 30-50 connections. Essential for microservices and containerized environments [citation:10].",
+    "recallHint": "HikariCP = per instance, PgBouncer = shared external.",
+    "practice": [
+      "Explain the difference.",
+      "When would you use PgBouncer vs HikariCP?",
+      "Can you use both together?"
+    ]
+  },
+  {
+    "id": "pgbouncer-005",
+    "category": "pgbouncer",
+    "concept": "PgBouncer Configuration",
+    "priority": "important",
+    "question": "How do you configure PgBouncer for production?",
+    "answer": "Configure: pool_mode (transaction), default_pool_size (based on cores), max_client_conn (high, e.g., 1000), listen_address, authentication file, and server_reset_query to clean session state.",
+    "code": "[databases]\nmydb = host=postgres.internal port=5432 dbname=mydb\n\n[pgbouncer]\nlisten_port = 6432\nlisten_addr = 0.0.0.0\npool_mode = transaction\ndefault_pool_size = 20\nmax_client_conn = 1000\n\nauth_type = md5\nauth_file = /etc/pgbouncer/users.txt\n\nserver_reset_query = DISCARD ALL\nserver_check_query = SELECT 1\nserver_check_delay = 30\n\n-- Keep connections alive\nserver_idle_timeout = 600\n\n-- users.txt\n\"app_user\" \"md5hash\"\n\n-- Restart\npgbouncer -R /etc/pgbouncer/pgbouncer.ini",
+    "explanation": "Production configuration requires careful tuning. Server_reset_query (DISCARD ALL) is critical for transaction pooling to clean session state. Use md5 or scram-sha-256 authentication. Monitor with SHOW STATS [citation:1].",
+    "recallHint": "transaction mode, default_pool_size, DISCARD ALL.",
+    "practice": [
+      "Write a production PgBouncer config.",
+      "Explain the importance of server_reset_query.",
+      "How do you authenticate with PgBouncer?"
+    ]
+  },
+  {
+    "id": "pgbouncer-006",
+    "category": "pgbouncer",
+    "concept": "Connection Exhaustion Troubleshooting",
+    "priority": "must-know",
+    "question": "Your API works at 100 users but fails at 1000. Database connection exhaustion is suspected. How do you diagnose and fix it?",
+    "answer": "Diagnose by: checking pg_stat_activity for connections, monitoring PgBouncer pools, looking for timeouts in logs. Fix by: adding PgBouncer, adjusting pool size, implementing connection pooling in application, and scaling horizontally.",
+    "code": "-- Check connections\nSELECT count(*) FROM pg_stat_activity;\nSELECT * FROM pg_stat_activity WHERE state = 'active';\n\n-- Check PgBouncer\nSHOW POOLS;\nSHOW STATS;\nSHOW CLIENTS;\n\n-- Check timeouts\n-- Application logs\n-- PgBouncer logs\n\n-- Common fixes\n-- 1. Increase max_connections (temporarily)\n-- 2. Add PgBouncer\n-- 3. Reduce pool size and add more pods\n-- 4. Introduce caching (Redis)\n-- 5. Rate limiting at gateway",
+    "explanation": "At low traffic, connections are within limits. At 1000 users, connection pool exhaustion occurs. The solution is not just increasing pool size, but adding PgBouncer, optimizing queries, and horizontal scaling [citation:3].",
+    "recallHint": "Check connections, add PgBouncer, horizontal scaling.",
+    "practice": [
+      "Diagnose connection exhaustion.",
+      "Explain the fix.",
+      "What other bottlenecks could cause failures?"
+    ]
+  },
+  {
+    "id": "pgbouncer-007",
+    "category": "pgbouncer",
+    "concept": "PgBouncer Monitoring",
+    "priority": "important",
+    "question": "How do you monitor PgBouncer health and performance?",
+    "answer": "Monitor using SHOW STATS (requests per second, total connections), SHOW POOLS (pool usage, wait times), SHOW CLIENTS (active vs idle), and SHOW DATABASES. Set up alerts for pool exhaustion, wait times, and connection failures.",
+    "code": "-- Show pool statistics\nSHOW STATS;\n-- Key metrics: total_requests, total_received, total_sent\n\n-- Show pool status\nSHOW POOLS;\n-- Key metrics: cl_active, cl_waiting, sv_active, sv_idle\n\n-- Show clients\nSHOW CLIENTS;\n-- Key metrics: state, database, user, addr\n\n-- Show server connections\nSHOW SERVERS;\n\n-- Example: pool full alerts\n-- cl_waiting > 0 for 1 minute → pool size may be too small\n\n-- PgBouncer logs\n-- Set log_connections, log_disconnections, log_pooler_errors = on\n\n-- Integration with Prometheus\n-- Use pgbouncer_exporter",
+    "explanation": "Monitor cl_active (active clients), cl_waiting (waiting clients - indicates pool pressure), sv_active (active PostgreSQL connections), and sv_idle (idle connections). Waiting clients > 0 indicates pool may be too small [citation:10].",
+    "recallHint": "SHOW STATS, SHOW POOLS, cl_waiting alert.",
+    "practice": [
+      "Monitor PgBouncer pools.",
+      "What does cl_waiting > 0 mean?",
+      "Set up alerts for pool exhaustion."
+    ]
+  },
+  {
+    "id": "pgvector-001",
+    "category": "pgvector",
+    "concept": "pgvector Overview",
+    "priority": "must-know",
+    "question": "What is pgvector and why is it important for AI applications?",
+    "answer": "pgvector is a PostgreSQL extension that adds vector storage and similarity search capabilities. It enables storing embeddings (vector representations of data) and performing semantic search, enabling RAG (Retrieval-Augmented Generation), recommendation systems, and AI assistants.",
+    "code": "-- Install pgvector\nCREATE EXTENSION IF NOT EXISTS vector;\n\n-- Create table with vector column\nCREATE TABLE documents (\n    id SERIAL PRIMARY KEY,\n    content TEXT,\n    embedding vector(768) -- 768-dimensional embedding\n);\n\n-- Insert embeddings (example)\nINSERT INTO documents (content, embedding)\nVALUES ('PostgreSQL with pgvector', '[0.123, 0.456, ...]'::vector);\n\n-- Vector similarity search\nSELECT content, embedding <=> query_embedding AS distance\nFROM documents\nORDER BY distance\nLIMIT 5;",
+    "explanation": "pgvector is the most popular open-source vector database solution. It integrates vector search with PostgreSQL's ACID guarantees, relational data, and SQL queries. Ideal for RAG systems with existing PostgreSQL infrastructure [citation:8].",
+    "recallHint": "Vector storage, similarity search, RAG, embeddings.",
+    "practice": [
+      "Explain pgvector's purpose.",
+      "When would you use pgvector vs dedicated vector DBs?",
+      "What are embeddings?"
+    ]
+  },
+  {
+    "id": "pgvector-002",
+    "category": "pgvector",
+    "concept": "Vector Indexes",
+    "priority": "must-know",
+    "question": "What vector indexes does pgvector support and what are their tradeoffs?",
+    "answer": "pgvector supports: IVFFlat (balanced, good for moderate datasets), HNSW (faster queries, higher memory), and brute force (no index, for small datasets). IVFFlat is best for up to 1 million vectors, HNSW for larger or latency-critical applications.",
+    "code": "-- IVFFlat index (balanced)\nCREATE INDEX idx_docs_ivfflat ON documents\nUSING ivfflat (embedding vector_cosine_ops)\nWITH (lists = 100); -- lists = sqrt(rows) for ~1M\n\n-- HNSW index (faster, more memory)\nCREATE INDEX idx_docs_hnsw ON documents\nUSING hnsw (embedding vector_cosine_ops)\nWITH (m = 16, ef_construction = 200);\n\n-- Query with HNSW\nSET hnsw.ef_search = 100; -- Higher = more accurate, slower\n\n-- Index tradeoffs\n-- IVFFlat: Good recall, smaller memory, maintenance overhead\n-- HNSW: Excellent recall, high memory, faster queries\n-- Brute Force: Perfect recall, no memory overhead, slow for large datasets",
+    "explanation": "HNSW is typically faster for queries but uses more memory. IVFFlat uses lower memory but may require periodic reindexing as data grows. Choose based on dataset size and latency requirements [citation:8][citation:11].",
+    "recallHint": "IVFFlat (balanced), HNSW (fast, memory-heavy), brute force (small datasets).",
+    "practice": [
+      "Explain each index type.",
+      "When would you choose HNSW over IVFFlat?",
+      "How do you tune ef_search?"
+    ]
+  },
+  {
+    "id": "pgvector-003",
+    "category": "pgvector",
+    "concept": "RAG with pgvector",
+    "priority": "must-know",
+    "question": "How do you build a RAG system with PostgreSQL and pgvector?",
+    "answer": "RAG workflow: 1) Chunk documents, 2) Generate embeddings (via LLM API), 3) Store chunks with embeddings in pgvector, 4) On query: generate embedding, 5) Perform similarity search, 6) Retrieve relevant chunks, 7) Construct prompt with context, 8) Call LLM for answer.",
+    "code": "-- Schema for RAG\nCREATE TABLE documents (\n    id SERIAL PRIMARY KEY,\n    content TEXT,\n    embedding vector(1536), -- e.g., OpenAI embeddings\n    metadata JSONB,\n    created_at TIMESTAMP\n);\n\n-- Search with metadata filter\nSELECT content, embedding <=> query_vector AS distance\nFROM documents\nWHERE metadata->>'source' = 'documentation'\n  AND created_at > NOW() - INTERVAL '90 days'\nORDER BY distance\nLIMIT 5;\n\n-- Filter gotcha: malformed filters cause parsing errors\n-- Test filter format against your LangChain version [citation:4]",
+    "explanation": "pgvector with metadata filtering is ideal for RAG, allowing both semantic search and structured filtering. For 50,000 documents, pgvector is often the right choice over dedicated vector DBs [citation:4][citation:8].",
+    "recallHint": "Chunks → embeddings → store → search → prompt → LLM.",
+    "practice": [
+      "Explain the RAG workflow.",
+      "How do you handle metadata filters?",
+      "When would you choose pgvector for RAG vs Pinecone?"
+    ]
+  },
+  {
+    "id": "pgvector-004",
+    "category": "pgvector",
+    "concept": "Distance Functions",
+    "priority": "must-know",
+    "question": "What distance functions does pgvector support and when do you use each?",
+    "answer": "pgvector supports: Euclidean distance (<->) for L2, Cosine distance (<=>) for cosine similarity, Inner product (<#>), and L1 distance (<+>). Cosine distance is most common for text embeddings; Euclidean is preferred for some computer vision models.",
+    "code": "-- Cosine distance (most common for text embeddings)\nSELECT content, embedding <=> query_embedding AS distance\nFROM documents\nORDER BY distance LIMIT 5;\n-- Range: 0 (identical) to 2 (opposite)\n\n-- L2 distance\nSELECT content, embedding <-> query_embedding AS distance\nFROM documents\nORDER BY distance LIMIT 5;\n-- Range: 0 (identical) to ∞\n\n-- Inner product (dot product)\nSELECT content, embedding <#> query_embedding AS similarity\nFROM documents\nORDER BY similarity DESC LIMIT 5;\n-- Higher values = more similar\n\n-- L1 distance\nSELECT content, embedding <+> query_embedding AS distance\nFROM documents\nORDER BY distance LIMIT 5;",
+    "explanation": "Cosine distance is the default for text embeddings (OpenAI, Cohere, etc.) as it measures angle similarity. L2 is common for other embedding types. The distance operator must match the index type used [citation:8].",
+    "recallHint": "<=> for cosine (text), <-> for L2, <#> for inner product.",
+    "practice": [
+      "Explain each distance function.",
+      "Which is most common for text embeddings?",
+      "How do you choose the right distance?"
+    ]
+  },
+  {
+    "id": "pgvector-005",
+    "category": "pgvector",
+    "concept": "pgvector vs Dedicated Vector DBs",
+    "priority": "must-know",
+    "question": "When should you use pgvector vs a dedicated vector database like Pinecone or Milvus?",
+    "answer": "pgvector is excellent when: you already use PostgreSQL, dataset < 1 million vectors, need relational joins, have a small team, and want simple operations. Dedicated vector DBs are better for large-scale (millions+), specialized features, and extreme performance.",
+    "code": "-- Comparison table [citation:8]\n-- Feature: pgvector vs Pinecone vs Milvus\n-- Core: PostgreSQL + vector vs dedicated vector DB\n-- Scale: < 1M vectors comfortable vs 100M+ vectors\n-- Features: SQL, ACID, relational joins vs vector-only\n-- Cost: Free (existing PG) vs paid per vector/query\n-- Operations: Same as PostgreSQL vs new vendor\n\n-- When pgvector wins\n-- 50K documents, startup, existing Postgres, budget constraints\n\n-- When Pinecone/Milvus wins\n-- 10M+ vectors, specialized features, scale requirements",
+    "explanation": "For many RAG applications with <1M vectors and existing PostgreSQL, pgvector is often the right choice. It avoids vendor lock-in, reduces costs, and leverages PostgreSQL's operational maturity [citation:11].",
+    "recallHint": "pgvector: existing PG, <1M, simple. Dedicated: >1M, specialized.",
+    "practice": [
+      "Compare pgvector with Pinecone.",
+      "What scale does pgvector handle comfortably?",
+      "When would you switch from pgvector to a dedicated DB?"
+    ]
+  },
+  {
+    "id": "pgvector-006",
+    "category": "pgvector",
+    "concept": "pgvector Performance Tuning",
+    "priority": "important",
+    "question": "How do you tune pgvector performance for production?",
+    "answer": "Tune by: choosing the right index type, adjusting index parameters (lists for IVFFlat, m/ef_construction for HNSW), setting ef_search for query accuracy, using metadata filters to reduce search space, and monitoring query latency.",
+    "code": "-- IVFFlat tuning: lists = sqrt(rows) for ~1M\nCREATE INDEX ON documents USING ivfflat (embedding)\nWITH (lists = 1000); -- For 1M rows\n\n-- HNSW tuning\nCREATE INDEX ON documents USING hnsw (embedding)\nWITH (m = 32, ef_construction = 200);\n-- m: 16-64 (higher = more memory, faster queries)\n-- ef_construction: 100-200 (higher = better recall, slower build)\n\n-- Query time tuning\nSET hnsw.ef_search = 100;\n-- Higher = more recall, slower\n-- Lower = faster, less accurate\n\n-- Use metadata filters\nSELECT * FROM documents\nWHERE metadata->>'category' = 'tech'  -- Filter first\nORDER BY embedding <=> query_vector\nLIMIT 10;\n\n-- Monitor performance\n-- Check query latency\n-- Check index build time\n-- Check memory usage",
+    "explanation": "Performance tuning is critical for vector workloads. HNSW offers faster queries at higher memory cost. Metadata filters reduce the search space significantly, improving latency [citation:1].",
+    "recallHint": "Index parameters, ef_search, metadata filters.",
+    "practice": [
+      "Tune IVFFlat lists parameter.",
+      "Tune HNSW parameters.",
+      "Use metadata filters to improve performance."
+    ]
+  },
+  {
+    "id": "pgvector-007",
+    "category": "pgvector",
+    "concept": "Vector Embedding Management",
+    "priority": "important",
+    "question": "How do you manage embeddings when source documents change?",
+    "answer": "Store document hash or timestamp in metadata. When content changes, recompute hash, compare to stored value, and regenerate embeddings only for changed documents. For small collections, regenerate everything; for large ones, track changes.",
+    "code": "-- Track document versions\nCREATE TABLE documents (\n    id SERIAL PRIMARY KEY,\n    content TEXT,\n    embedding vector(768),\n    content_hash TEXT,\n    updated_at TIMESTAMP\n);\n\n-- Check for changes\nSELECT id FROM documents\nWHERE content_hash != md5(content);\n\n-- Update embeddings\nUPDATE documents\nSET embedding = new_embedding, content_hash = md5(content), updated_at = NOW()\nWHERE id = $1;\n\n-- Best practices\n-- 1. Don't over-index embeddings (bloat database)\n-- 2. Use IVFFlat for massive datasets\n-- 3. Use HNSW for smaller datasets where freshness matters [citation:4]",
+    "explanation": "Change tracking prevents unnecessary re-embedding. For large collections, use a change detection mechanism. Regenerate embeddings in batches to avoid overwhelming the embedding API [citation:4].",
+    "recallHint": "Track content hashes, regenerate changed only.",
+    "practice": [
+      "Design a change tracking system.",
+      "How do you handle embedding regeneration?",
+      "What are the tradeoffs of different approaches?"
+    ]
+  },
+  {
+    "id": "pgvector-008",
+    "category": "pgvector",
+    "concept": "RAG Quality Troubleshooting",
+    "priority": "important",
+    "question": "Your RAG system's answer quality is declining. What do you investigate?",
+    "answer": "Check: 1) ANN recall with larger corpus (increase ef_search), 2) HNSW build drift (rebuild index), 3) Document distribution changes, 4) Chunking quality, 5) Embedding model drift, 6) Missing embeddings (null/zero vectors).",
+    "code": "-- Check for missing embeddings\nSELECT COUNT(*) FROM documents WHERE embedding IS NULL;\n\n-- Check embedding model version\nSELECT DISTINCT metadata->>'model_name' FROM documents;\n\n-- Verify HNSW parameters\nSET hnsw.ef_search = 200; -- Increase for better recall\n\n-- Rebuild index\nDROP INDEX idx_docs_hnsw;\nCREATE INDEX idx_docs_hnsw ON documents USING hnsw (embedding);\n\n-- Audit chunk quality\nSELECT content, embedding <=> query AS distance\nFROM documents\nWHERE metadata->>'source' = 'problematic_doc'\nORDER BY distance LIMIT 5;",
+    "explanation": "Declining quality often comes from ANN recall regression at larger corpus sizes, embedding model drift, or chunking issues. Use offline evaluation to detect regressions before users complain [citation:11].",
+    "recallHint": "Recall regression, embedding drift, chunking issues.",
+    "practice": [
+      "Investigate declining RAG quality.",
+      "How do you increase recall?",
+      "Set up offline evaluation."
+    ]
+  },
+  {
+    "id": "pgvector-009",
+    "category": "pgvector",
+    "concept": "pgvector and LangChain",
+    "priority": "important",
+    "question": "How do you use pgvector with LangChain for RAG applications?",
+    "answer": "Use LangChain's PGVector integration: import PGVector from langchain_community.vectorstores. Configure the connection, define embedding function, and use similarity_search() with optional metadata filters.",
+    "code": "from langchain_community.vectorstores import PGVector\nfrom langchain_openai import OpenAIEmbeddings\n\n# Connection\nCONNECTION_STRING = \"postgresql://user:pass@host:5432/db\"\nCOLLECTION_NAME = \"documents\"\n\n# Initialize\nvectorstore = PGVector(\n    connection_string=CONNECTION_STRING,\n    embedding_function=OpenAIEmbeddings(),\n    collection_name=COLLECTION_NAME,\n)\n\n# Add documents\nvectorstore.add_documents(documents)\n\n# Search with filter\nresults = vectorstore.similarity_search(\n    query=\"What is pgvector?\",\n    filter={\"source\": \"docs\"},  # Metadata filter\n    k=5\n)\n\n# Filter gotcha: syntax depends on LangChain version\n# Some expect dicts, others expect WHERE clause syntax [citation:4]",
+    "explanation": "LangChain provides a clean abstraction for pgvector. The filter syntax varies by version—test against your exact version. Add documents in batches to avoid performance issues [citation:4].",
+    "recallHint": "PGVector vectorstore, filter parameter, version-specific syntax.",
+    "practice": [
+      "Set up LangChain with pgvector.",
+      "Add documents with metadata.",
+      "Search with filters."
+    ]
+  },
+  {
+    "id": "pgvector-010",
+    "category": "pgvector",
+    "concept": "pgvector Production Readiness",
+    "priority": "advanced",
+    "question": "What are the production considerations for pgvector in enterprise environments?",
+    "answer": "Consider: memory sizing (HNSW uses significant memory), backup/restore (pg_dump works with vectors), replication (logical replication supports vector types), monitoring (query latency, index stats), and disaster recovery.",
+    "code": "-- Memory estimation\n-- HNSW: index size ~ (d * 2^m * 8) bytes per vector\n-- Example: 768d, m=16 → ~100MB for 100K vectors\n\n-- Backup with pg_dump\npg_dump -Fc -f backup.dump mydb\n\n-- Restore\npg_restore -d mydb backup.dump\n\n-- Check index size\nSELECT pg_size_pretty(pg_total_relation_size('idx_docs_hnsw'));\n\n-- Replication compatibility\n-- pgvector supports streaming replication (binary safe)\n-- Logical replication works with vector type\n\n-- Monitoring\n-- Track query latency for vector searches\n-- Monitor index build time\n-- Watch memory usage for HNSW",
+    "explanation": "HNSW memory can be significant—plan capacity accordingly. pgvector's vector type is supported by PostgreSQL's backup and replication tools, making it enterprise-ready [citation:1].",
+    "recallHint": "Memory sizing, backup, replication, monitoring.",
+    "practice": [
+      "Estimate memory for vector indexes.",
+      "Plan backup strategy for pgvector.",
+      "Monitor production pgvector performance."
+    ]
+  }
+]

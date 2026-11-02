@@ -1,0 +1,386 @@
+[
+  {
+    "id": "aws-apigw-001",
+    "category": "aws-api-gateway",
+    "concept": "API Gateway Overview",
+    "priority": "must-know",
+    "question": "What is Amazon API Gateway and what are its key features?",
+    "answer": "Amazon API Gateway is a fully managed service for creating, publishing, and managing APIs. Key features: REST/HTTP/WebSocket APIs, request throttling, caching, authentication (IAM, Cognito, Lambda), request validation, API versioning, and monitoring.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyAPI\": {\n      \"Type\": \"AWS::ApiGateway::RestApi\",\n      \"Properties\": {\n        \"Name\": \"MyAPI\",\n        \"Description\": \"My REST API\",\n        \"EndpointConfiguration\": {\n          \"Types\": [\"REGIONAL\"]\n        },\n        \"MinimumCompressionSize\": 1024\n      }\n    }\n  }\n}\n```",
+    "explanation": "API Gateway acts as a front door for backend services. It handles API lifecycle management, security, monitoring, and traffic management. It supports REST APIs (for web apps), HTTP APIs (faster, cheaper), and WebSocket APIs (real-time).",
+    "recallHint": "Fully managed API management: REST/HTTP/WebSocket, throttling, caching, auth.",
+    "practice": [
+      "What are the types of APIs supported by API Gateway?",
+      "What are the key features of API Gateway?",
+      "When would you use HTTP API vs REST API?"
+    ]
+  },
+  {
+    "id": "aws-apigw-002",
+    "category": "aws-api-gateway",
+    "concept": "API Gateway Types",
+    "priority": "must-know",
+    "question": "What is the difference between REST API and HTTP API in API Gateway?",
+    "answer": "REST API (formerly API Gateway) is feature-rich with integration capabilities, request validation, and transformation. HTTP API is simpler, faster, and cheaper, ideal for serverless workloads with fewer features.",
+    "code": "```json\n// REST API (Feature-rich)\n{\n  \"Type\": \"AWS::ApiGateway::RestApi\",\n  \"Properties\": {\n    \"Name\": \"my-rest-api\",\n    \"Description\": \"REST API with full features\",\n    \"MinimumCompressionSize\": 1024\n  }\n}\n\n// HTTP API (Simpler, cheaper)\n{\n  \"Type\": \"AWS::ApiGatewayV2::Api\",\n  \"Properties\": {\n    \"Name\": \"my-http-api\",\n    \"ProtocolType\": \"HTTP\",\n    \"Description\": \"HTTP API for Lambda\",\n    \"CorsConfiguration\": {\n      \"AllowOrigins\": [\"*\"],\n      \"AllowMethods\": [\"GET\", \"POST\"]\n    }\n  }\n}\n\n// WebSocket API\n{\n  \"Type\": \"AWS::ApiGatewayV2::Api\",\n  \"Properties\": {\n    \"Name\": \"my-websocket-api\",\n    \"ProtocolType\": \"WEBSOCKET\",\n    \"RouteSelectionExpression\": \"$request.body.action\"\n  }\n}\n```",
+    "explanation": "HTTP API is 60-70% cheaper than REST API and has lower latency. It supports OIDC/JWT authentication but lacks request validation and transformation features. REST API supports more features but costs more.",
+    "recallHint": "REST = feature-rich, costlier. HTTP = simpler, faster, cheaper.",
+    "practice": [
+      "When would you choose HTTP API over REST API?",
+      "What features are available in REST API but not HTTP API?",
+      "What are the cost differences between REST and HTTP APIs?"
+    ]
+  },
+  {
+    "id": "aws-apigw-003",
+    "category": "aws-api-gateway",
+    "concept": "API Gateway Integration Types",
+    "priority": "must-know",
+    "question": "What are the integration types in API Gateway?",
+    "answer": "Integration types: Lambda (invokes Lambda function), HTTP (calls HTTP endpoints), Mock (returns mock responses), AWS (calls AWS services like S3, DynamoDB), and VPC Link (connects to private VPC resources).",
+    "code": "```json\n{\n  \"Resources\": {\n    // Lambda Integration\n    \"LambdaIntegration\": {\n      \"Type\": \"AWS::ApiGateway::Method\",\n      \"Properties\": {\n        \"Integration\": {\n          \"Type\": \"AWS_PROXY\",\n          \"IntegrationHttpMethod\": \"POST\",\n          \"Uri\": \"arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${MyFunction.Arn}/invocations\"\n        }\n      }\n    },\n    // HTTP Integration\n    \"HTTPIntegration\": {\n      \"Type\": \"AWS::ApiGateway::Method\",\n      \"Properties\": {\n        \"Integration\": {\n          \"Type\": \"HTTP_PROXY\",\n          \"IntegrationHttpMethod\": \"GET\",\n          \"Uri\": \"https://api.example.com/users\"\n        }\n      }\n    },\n    // Mock Integration\n    \"MockIntegration\": {\n      \"Type\": \"AWS::ApiGateway::Method\",\n      \"Properties\": {\n        \"Integration\": {\n          \"Type\": \"MOCK\",\n          \"RequestTemplates\": {\n            \"application/json\": \"{\\\"statusCode\\\": 200}\"\n          },\n          \"IntegrationResponses\": [\n            {\n              \"StatusCode\": \"200\",\n              \"ResponseTemplates\": {\n                \"application/json\": \"{\\\"message\\\": \\\"Mock response\\\"}\"\n              }\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "Lambda integration (AWS_PROXY) passes the entire request to Lambda. HTTP integration proxies to external APIs. Mock integration is useful for testing. AWS integration (not shown) calls other AWS services directly.",
+    "recallHint": "Lambda = serverless, HTTP = external APIs, Mock = testing.",
+    "practice": [
+      "What are the different integration types in API Gateway?",
+      "When would you use AWS_PROXY vs AWS integration?",
+      "How do you integrate API Gateway with a private HTTP endpoint?"
+    ]
+  },
+  {
+    "id": "aws-apigw-004",
+    "category": "aws-api-gateway",
+    "concept": "API Gateway Authentication",
+    "priority": "must-know",
+    "question": "What authentication methods are available in API Gateway?",
+    "answer": "Authentication methods: IAM (AWS_IAM), Cognito User Pools, Lambda Authorizer (custom JWT/OAuth), API Keys (for usage plans), and JWT tokens (HTTP API). Each offers different security levels.",
+    "code": "```json\n{\n  \"Resources\": {\n    // IAM Authentication\n    \"IAMMethod\": {\n      \"Type\": \"AWS::ApiGateway::Method\",\n      \"Properties\": {\n        \"AuthorizationType\": \"AWS_IAM\",\n        \"ApiKeyRequired\": false\n      }\n    },\n    // Cognito User Pools\n    \"CognitoAuthorizer\": {\n      \"Type\": \"AWS::ApiGateway::Authorizer\",\n      \"Properties\": {\n        \"Name\": \"cognito-authorizer\",\n        \"Type\": \"COGNITO_USER_POOLS\",\n        \"ProviderARNs\": [\"arn:aws:cognito-idp:us-east-1:123456789012:userpool/us-east-1_abc123\"]\n      }\n    },\n    // Lambda Authorizer\n    \"LambdaAuthorizer\": {\n      \"Type\": \"AWS::ApiGateway::Authorizer\",\n      \"Properties\": {\n        \"Name\": \"lambda-authorizer\",\n        \"Type\": \"TOKEN\",\n        \"AuthorizerUri\": \"arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations\",\n        \"IdentitySource\": \"method.request.header.Authorization\"\n      }\n    },\n    // API Key Authentication\n    \"APIKeyMethod\": {\n      \"Type\": \"AWS::ApiGateway::Method\",\n      \"Properties\": {\n        \"AuthorizationType\": \"NONE\",\n        \"ApiKeyRequired\": true\n      }\n    }\n  }\n}\n```",
+    "explanation": "IAM is best for AWS users/roles. Cognito is ideal for user authentication. Lambda authorizer supports custom auth logic. API Keys are for usage plans, not security.",
+    "recallHint": "IAM (AWS users), Cognito (users), Lambda (custom), API Keys (usage).",
+    "practice": [
+      "What are the authentication options in API Gateway?",
+      "When would you use a Lambda Authorizer?",
+      "What is the difference between API Keys and IAM authentication?"
+    ]
+  },
+  {
+    "id": "aws-apigw-005",
+    "category": "aws-api-gateway",
+    "concept": "API Gateway Throttling",
+    "priority": "must-know",
+    "question": "How does API Gateway throttling work and how do you configure it?",
+    "answer": "API Gateway throttling sets limits: Account-level (10,000 RPS default) and Route-level (per route). Rate limiting = requests per second, Burst = sustained requests. Over-throttling returns 429 Too Many Requests.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyAPI\": {\n      \"Type\": \"AWS::ApiGateway::RestApi\",\n      \"Properties\": {\n        \"Name\": \"MyAPI\"\n      }\n    },\n    \"MyStage\": {\n      \"Type\": \"AWS::ApiGateway::Stage\",\n      \"Properties\": {\n        \"StageName\": \"prod\",\n        \"RestApiId\": { \"Ref\": \"MyAPI\" },\n        \"MethodSettings\": [\n          {\n            \"ResourcePath\": \"/users\",\n            \"HttpMethod\": \"GET\",\n            \"ThrottlingRateLimit\": 1000,\n            \"ThrottlingBurstLimit\": 2000,\n            \"CachingEnabled\": true,\n            \"CacheTtlInSeconds\": 300\n          }\n        ]\n      }\n    }\n  }\n}\n```",
+    "explanation": "Rate limits are applied per API Key or per account. Throttling protects backends from being overwhelmed. Standard API Gateway limit is 10,000 requests per second, can be increased by requesting.",
+    "recallHint": "Rate = requests per second, Burst = max requests, 429 = throttled.",
+    "practice": [
+      "What is the default API Gateway throttling limit?",
+      "How do you configure throttling for a specific route?",
+      "What happens when throttling limits are exceeded?"
+    ]
+  },
+  {
+    "id": "aws-apigw-006",
+    "category": "aws-api-gateway",
+    "concept": "API Gateway Caching",
+    "priority": "important",
+    "question": "How does API Gateway caching work and what are the benefits?",
+    "answer": "API Gateway caches responses from backend services for a specified TTL (Time To Live). Caching reduces latency, reduces backend calls, and lowers costs. It stores responses in-memory and can be configured per route.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyStage\": {\n      \"Type\": \"AWS::ApiGateway::Stage\",\n      \"Properties\": {\n        \"StageName\": \"prod\",\n        \"RestApiId\": { \"Ref\": \"MyAPI\" },\n        \"CacheClusterEnabled\": true,\n        \"CacheClusterSize\": \"0.5\",\n        \"MethodSettings\": [\n          {\n            \"ResourcePath\": \"/products\",\n            \"HttpMethod\": \"GET\",\n            \"CachingEnabled\": true,\n            \"CacheTtlInSeconds\": 300,\n            \"CacheDataEncrypted\": true,\n            \"CacheKeyParameters\": [\"method.request.querystring.category\"]\n          }\n        ]\n      }\n    }\n  }\n}\n\n// Cache invalidation\n// Use cache-control header: Cache-Control: max-age=0\n// Invalidate via AWS CLI: aws apigateway flush-stage-cache\n```",
+    "explanation": "Caching improves performance for read-heavy endpoints. Cache size options: 0.5GB, 1.6GB, 6.1GB, 13.5GB, 28.4GB, 58.2GB, 118GB. Caching costs are per hour. Use cache key parameters to customize cache keys.",
+    "recallHint": "Cache responses, reduce latency, reduce costs, TTL.",
+    "practice": [
+      "What are the benefits of API Gateway caching?",
+      "How do you configure caching for an endpoint?",
+      "What is the difference between cached and uncached responses?"
+    ]
+  },
+  {
+    "id": "aws-apigw-007",
+    "category": "aws-api-gateway",
+    "concept": "API Gateway Stages and Deployments",
+    "priority": "must-know",
+    "question": "What are API Gateway stages and how do you manage deployments?",
+    "answer": "Stages are named snapshots of API configuration (prod, dev, test). Deploying an API creates a new stage. You can have multiple stages pointing to different backend versions or using different settings.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyAPI\": {\n      \"Type\": \"AWS::ApiGateway::RestApi\",\n      \"Properties\": {\n        \"Name\": \"MyAPI\",\n        \"ApiKeySourceType\": \"HEADER\"\n      }\n    },\n    \"ProdDeployment\": {\n      \"Type\": \"AWS::ApiGateway::Deployment\",\n      \"Properties\": {\n        \"RestApiId\": { \"Ref\": \"MyAPI\" },\n        \"StageName\": \"prod\",\n        \"Description\": \"Production deployment\"\n      }\n    },\n    \"DevDeployment\": {\n      \"Type\": \"AWS::ApiGateway::Deployment\",\n      \"Properties\": {\n        \"RestApiId\": { \"Ref\": \"MyAPI\" },\n        \"StageName\": \"dev\",\n        \"Description\": \"Development deployment\"\n      }\n    },\n    \"ProdStage\": {\n      \"Type\": \"AWS::ApiGateway::Stage\",\n      \"Properties\": {\n        \"StageName\": \"prod\",\n        \"RestApiId\": { \"Ref\": \"MyAPI\" },\n        \"DeploymentId\": { \"Ref\": \"ProdDeployment\" },\n        \"Variables\": {\n          \"environment\": \"production\"\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "Stages allow environment separation (dev/staging/prod). Each stage can have its own variables, throttling, and caching. Deployment is the process of publishing changes to a stage.",
+    "recallHint": "Stages = environments (prod/dev/test), Deployment = publish changes.",
+    "practice": [
+      "What is the difference between a stage and a deployment?",
+      "How do you create a new stage for testing?",
+      "What are stage variables and how are they used?"
+    ]
+  },
+  {
+    "id": "aws-apigw-008",
+    "category": "aws-api-gateway",
+    "concept": "API Gateway Request Validation",
+    "priority": "important",
+    "question": "How does API Gateway validate requests and why is it important?",
+    "answer": "API Gateway validates requests against defined schemas (JSON/OpenAPI). It validates: required parameters, query strings, headers, request body schema. Validation prevents invalid requests from reaching your backend.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyAPI\": {\n      \"Type\": \"AWS::ApiGateway::RestApi\",\n      \"Properties\": {\n        \"Name\": \"MyAPI\",\n        \"BodySensitive\": true\n      }\n    },\n    \"MyModel\": {\n      \"Type\": \"AWS::ApiGateway::Model\",\n      \"Properties\": {\n        \"RestApiId\": { \"Ref\": \"MyAPI\" },\n        \"Name\": \"UserModel\",\n        \"ContentType\": \"application/json\",\n        \"Schema\": {\n          \"$schema\": \"http://json-schema.org/draft-04/schema#\",\n          \"type\": \"object\",\n          \"required\": [\"name\", \"email\"],\n          \"properties\": {\n            \"name\": { \"type\": \"string\", \"minLength\": 3 },\n            \"email\": { \"type\": \"string\", \"format\": \"email\" },\n            \"age\": { \"type\": \"integer\", \"minimum\": 18, \"maximum\": 120 }\n          }\n        }\n      }\n    },\n    \"MyMethod\": {\n      \"Type\": \"AWS::ApiGateway::Method\",\n      \"Properties\": {\n        \"HttpMethod\": \"POST\",\n        \"RestApiId\": { \"Ref\": \"MyAPI\" },\n        \"RequestModels\": {\n          \"application/json\": { \"Ref\": \"MyModel\" }\n        },\n        \"RequestParameters\": {\n          \"method.request.header.Content-Type\": false,\n          \"method.request.querystring.limit\": false\n        },\n        \"RequestValidatorId\": { \"Ref\": \"MyValidator\" }\n      }\n    },\n    \"MyValidator\": {\n      \"Type\": \"AWS::ApiGateway::RequestValidator\",\n      \"Properties\": {\n        \"RestApiId\": { \"Ref\": \"MyAPI\" },\n        \"Name\": \"body-validator\",\n        \"ValidateRequestBody\": true,\n        \"ValidateRequestParameters\": true\n      }\n    }\n  }\n}\n```",
+    "explanation": "Request validation is a first line of defense against invalid data. It reduces Lambda/backend costs by rejecting invalid requests. You can validate both parameters and body using JSON schema.",
+    "recallHint": "Validates request body/parameters against schema, rejects invalid requests.",
+    "practice": [
+      "What types of validation does API Gateway support?",
+      "How do you create a request validation model?",
+      "What happens when request validation fails?"
+    ]
+  },
+  {
+    "id": "aws-apigw-009",
+    "category": "aws-api-gateway",
+    "concept": "API Gateway Response Transformation",
+    "priority": "important",
+    "question": "How do you transform responses in API Gateway?",
+    "answer": "API Gateway can transform responses using Velocity Template Language (VTL) or mapping templates. You can modify status codes, headers, and response bodies before sending to the client.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyMethod\": {\n      \"Type\": \"AWS::ApiGateway::Method\",\n      \"Properties\": {\n        \"Integration\": {\n          \"Type\": \"AWS_PROXY\",\n          \"IntegrationResponses\": [\n            {\n              \"StatusCode\": \"200\",\n              \"ResponseTemplates\": {\n                \"application/json\": \"#set($inputRoot = $input.path('$'))\\n{\\n  \\\"status\\\": \\\"success\\\",\\n  \\\"data\\\": $inputRoot.body,\\n  \\\"timestamp\\\": \\\"$context.requestTime\\\",\\n  \\\"requestId\\\": \\\"$context.requestId\\\"\\n}\"\n              },\n              \"ResponseParameters\": {\n                \"method.response.header.X-Custom-Header\": \"'custom-value'\"\n              }\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n\n// Common transformations:\n// 1. Remove sensitive data (passwords)\n// 2. Standardize response format\n// 3. Add metadata (timestamp, requestId)\n// 4. Convert XML to JSON\n\n// For XML to JSON conversion\n\"application/xml\": \"#set($root = $input.path('$'))\\n{\\n  \\\"data\\\": \\\"$root.Data\\\"\\n}\"\n```",
+    "explanation": "Response transformation standardizes API responses across multiple backends. It can hide backend internals, add metadata, and handle protocol conversions.",
+    "recallHint": "VTL templates, transform responses, add metadata, standardize format.",
+    "practice": [
+      "How do you transform API responses in API Gateway?",
+      "What is Velocity Template Language and when would you use it?",
+      "How do you remove sensitive data from responses?"
+    ]
+  },
+  {
+    "id": "aws-apigw-010",
+    "category": "aws-api-gateway",
+    "concept": "API Gateway WebSockets",
+    "priority": "important",
+    "question": "How do WebSockets work with API Gateway?",
+    "answer": "API Gateway WebSocket APIs enable full-duplex real-time communication. Clients establish persistent connections (wss://) and can send/receive messages. Uses $connect, $disconnect, and custom routes.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyWebSocketAPI\": {\n      \"Type\": \"AWS::ApiGatewayV2::Api\",\n      \"Properties\": {\n        \"Name\": \"my-websocket-api\",\n        \"ProtocolType\": \"WEBSOCKET\",\n        \"RouteSelectionExpression\": \"$request.body.action\"\n      }\n    },\n    \"ConnectRoute\": {\n      \"Type\": \"AWS::ApiGatewayV2::Route\",\n      \"Properties\": {\n        \"ApiId\": { \"Ref\": \"MyWebSocketAPI\" },\n        \"RouteKey\": \"$connect\",\n        \"AuthorizationType\": \"NONE\",\n        \"Target\": { \"Fn::Join\": [\"\", [\"integrations/\", { \"Ref\": \"ConnectIntegration\" }]] }\n      }\n    },\n    \"DisconnectRoute\": {\n      \"Type\": \"AWS::ApiGatewayV2::Route\",\n      \"Properties\": {\n        \"ApiId\": { \"Ref\": \"MyWebSocketAPI\" },\n        \"RouteKey\": \"$disconnect\",\n        \"Target\": { \"Fn::Join\": [\"\", [\"integrations/\", { \"Ref\": \"DisconnectIntegration\" }]] }\n      }\n    },\n    \"SendMessageRoute\": {\n      \"Type\": \"AWS::ApiGatewayV2::Route\",\n      \"Properties\": {\n        \"ApiId\": { \"Ref\": \"MyWebSocketAPI\" },\n        \"RouteKey\": \"sendMessage\",\n        \"Target\": { \"Fn::Join\": [\"\", [\"integrations/\", { \"Ref\": \"MessageIntegration\" }]] }\n      }\n    }\n  }\n}\n```",
+    "explanation": "WebSocket APIs are ideal for chat, live updates, and real-time dashboards. $connect/ $disconnect handles lifecycle events. Custom routes handle different message types.",
+    "recallHint": "wss://, $connect/$disconnect, real-time communication.",
+    "practice": [
+      "What are WebSocket APIs used for?",
+      "How do WebSocket routes differ from HTTP routes?",
+      "How do you send messages to connected clients?"
+    ]
+  },
+  {
+    "id": "aws-apigw-011",
+    "category": "aws-api-gateway",
+    "concept": "API Gateway Cost Optimization",
+    "priority": "important",
+    "question": "How do you optimize API Gateway costs?",
+    "answer": "Optimization strategies: Use HTTP API instead of REST API, implement caching (reduces backend calls), enable response compression, limit throttling, remove unused API versions, and use CloudFront for CDN.",
+    "code": "```bash\n# Cost comparison\n# REST API: ~$3.50 per million requests\n# HTTP API: ~$1.00 per million requests\n# Data transfer: ~$0.09 per GB (within AWS region)\n\n# Enable compression\nMinimumCompressionSize: 1024 # Bytes, compression for responses > 1KB\n\n# Set up caching\nCacheClusterSize: \"0.5\" # 0.5GB, ~$0.015/hour\n\n# Use CloudFront\n# - Reduces data transfer costs\n# - Caches responses at edge locations\n\n# Monitor costs via Cost Explorer\naws ce get-cost-and-usage --time-period Start=2024-01-01,End=2024-01-31 --granularity DAILY --metrics \"AmortizedCost\"\n\n# Implement request validation\n# - Reduces invalid requests to backend\n# - Saves backend Lambda costs\n```",
+    "explanation": "HTTP API is 60-70% cheaper than REST API. Caching saves backend costs but adds cache infrastructure costs. Request validation reduces unnecessary Lambda invocations.",
+    "recallHint": "HTTP API cheaper, caching reduces backend costs, compression.",
+    "practice": [
+      "What are the main cost components of API Gateway?",
+      "How does HTTP API reduce costs compared to REST API?",
+      "What is the cost-benefit analysis of enabling caching?"
+    ]
+  },
+  {
+    "id": "aws-apigw-012",
+    "category": "aws-api-gateway",
+    "concept": "API Gateway and Lambda Integration",
+    "priority": "must-know",
+    "question": "How does Lambda integrate with API Gateway for serverless APIs?",
+    "answer": "API Gateway acts as a proxy, forwarding HTTP requests to Lambda. Lambda returns a specific response format (statusCode, headers, body). The integration can be AWS_PROXY (pass-through) or AWS (with mapping).",
+    "code": "```javascript\n// Lambda function for API Gateway\n\nexports.handler = async (event) => {\n    // event contains request data\n    const path = event.path;\n    const method = event.httpMethod;\n    const queryParams = event.queryStringParameters;\n    const body = JSON.parse(event.body || '{}');\n    \n    // Business logic\n    let result;\n    if (method === 'GET' && path === '/users') {\n        result = { users: ['Alice', 'Bob'] };\n    } else if (method === 'POST' && path === '/users') {\n        result = { message: 'User created', user: body };\n    } else {\n        return {\n            statusCode: 404,\n            body: JSON.stringify({ error: 'Not found' })\n        };\n    }\n    \n    // Response format for API Gateway\n    return {\n        statusCode: 200,\n        headers: {\n            'Content-Type': 'application/json',\n            'Access-Control-Allow-Origin': '*'\n        },\n        body: JSON.stringify(result),\n        isBase64Encoded: false\n    };\n};\n```",
+    "explanation": "API Gateway sends the request in a specific event format. Lambda processes it and returns a response object. The response must include statusCode and body.",
+    "recallHint": "API Gateway → Lambda → Response with statusCode + body.",
+    "practice": [
+      "What is the Lambda response format for API Gateway?",
+      "How do you handle different HTTP methods in Lambda?",
+      "What is the difference between AWS_PROXY and AWS integration?"
+    ]
+  },
+  {
+    "id": "aws-sns-001",
+    "category": "aws-sns",
+    "concept": "SNS Overview",
+    "priority": "must-know",
+    "question": "What is Amazon SNS and what are its key features?",
+    "answer": "Amazon SNS (Simple Notification Service) is a fully managed pub/sub messaging service. Key features: message fan-out (one-to-many), multiple protocols (SQS, Lambda, HTTP, email, SMS), filtering, encryption, and FIFO ordering.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyTopic\": {\n      \"Type\": \"AWS::SNS::Topic\",\n      \"Properties\": {\n        \"TopicName\": \"my-topic\",\n        \"DisplayName\": \"My Topic\",\n        \"ContentBasedDeduplication\": false,\n        \"FifoTopic\": false\n      }\n    },\n    // FIFO Topic\n    \"MyFIFOTopic\": {\n      \"Type\": \"AWS::SNS::Topic\",\n      \"Properties\": {\n        \"TopicName\": \"my-fifo-topic.fifo\",\n        \"DisplayName\": \"My FIFO Topic\",\n        \"FifoTopic\": true,\n        \"ContentBasedDeduplication\": true\n      }\n    }\n  }\n}\n```",
+    "explanation": "SNS is the backbone of event-driven architectures. It decouples publishers from subscribers. Common patterns: fan-out to multiple SQS queues, triggering Lambda functions, sending notifications.",
+    "recallHint": "Pub/sub, one-to-many, fan-out, multiple protocols.",
+    "practice": [
+      "What is the difference between SNS and SQS?",
+      "What are the supported subscription protocols?",
+      "What is the message size limit in SNS?"
+    ]
+  },
+  {
+    "id": "aws-sns-002",
+    "category": "aws-sns",
+    "concept": "SNS vs SQS",
+    "priority": "must-know",
+    "question": "What is the difference between SNS and SQS?",
+    "answer": "SNS is a push-based pub/sub service (fan-out) where messages are pushed to subscribers. SQS is a pull-based message queue with polling. SNS is one-to-many, SQS is one-to-one.",
+    "code": "```json\n{\n  \"Comparison\": {\n    \"SNS\": {\n      \"Model\": \"Pub/Sub\",\n      \"Pattern\": \"One-to-many\",\n      \"Delivery\": \"Push\",\n      \"Protocols\": \"SQS, Lambda, HTTP, Email, SMS\",\n      \"Retention\": \"Not retained (delivered or lost)\",\n      \"Use Cases\": \"Notifications, alerts, fan-out\"\n    },\n    \"SQS\": {\n      \"Model\": \"Queue\",\n      \"Pattern\": \"One-to-one\",\n      \"Delivery\": \"Poll\",\n      \"Protocols\": \"Only SQS\",\n      \"Retention\": \"Up to 14 days\",\n      \"Use Cases\": \"Decoupling, buffering, batching\"\n    }\n  }\n}\n\n// SNS → SQS Fan-out (combine both)\n{\n  \"Resources\": {\n    \"MyTopic\": {\n      \"Type\": \"AWS::SNS::Topic\"\n    },\n    \"MyQueue\": {\n      \"Type\": \"AWS::SQS::Queue\"\n    },\n    \"Subscription\": {\n      \"Type\": \"AWS::SNS::Subscription\",\n      \"Properties\": {\n        \"TopicArn\": { \"Ref\": \"MyTopic\" },\n        \"Protocol\": \"sqs\",\n        \"Endpoint\": { \"Fn::GetAtt\": [\"MyQueue\", \"Arn\"] },\n        \"RawMessageDelivery\": true\n      }\n    }\n  }\n}\n```",
+    "explanation": "SNS is ideal for broadcasting messages to multiple consumers. SQS is ideal for reliable message processing and workload buffering. They're often used together: SNS → SQS → Lambda.",
+    "recallHint": "SNS = push, one-to-many. SQS = pull, one-to-one.",
+    "practice": [
+      "What is the difference between SNS and SQS?",
+      "When would you use SNS with SQS?",
+      "Can you use SQS with multiple consumers?"
+    ]
+  },
+  {
+    "id": "aws-sns-003",
+    "category": "aws-sns",
+    "concept": "SNS Message Filtering",
+    "priority": "important",
+    "question": "How does message filtering work in SNS?",
+    "answer": "SNS supports message filtering using subscription filter policies. You can filter messages based on message attributes. This reduces the number of messages sent to subscribers and eliminates the need for subscriber-side filtering.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyTopic\": {\n      \"Type\": \"AWS::SNS::Topic\"\n    },\n    \"EmailSubscription\": {\n      \"Type\": \"AWS::SNS::Subscription\",\n      \"Properties\": {\n        \"TopicArn\": { \"Ref\": \"MyTopic\" },\n        \"Protocol\": \"email\",\n        \"Endpoint\": \"admin@example.com\",\n        \"FilterPolicy\": {\n          \"severity\": [\"CRITICAL\", \"HIGH\"],\n          \"service\": [\"api\", \"database\"],\n          \"environment\": [\"production\"]\n        }\n      }\n    },\n    \"SQSSubscription\": {\n      \"Type\": \"AWS::SNS::Subscription\",\n      \"Properties\": {\n        \"TopicArn\": { \"Ref\": \"MyTopic\" },\n        \"Protocol\": \"sqs\",\n        \"Endpoint\": { \"Fn::GetAtt\": [\"MyQueue\", \"Arn\"] },\n        \"FilterPolicy\": {\n          \"severity\": [\"INFO\", \"WARNING\"],\n          \"service\": [\"application\"]\n        }\n      }\n    },\n    \"FilterPolicyScope\": {\n      \"Type\": \"AWS::SNS::Subscription\",\n      \"Properties\": {\n        \"TopicArn\": { \"Ref\": \"MyTopic\" },\n        \"Protocol\": \"lambda\",\n        \"Endpoint\": { \"Fn::GetAtt\": [\"MyFunction\", \"Arn\"] },\n        \"FilterPolicy\": {\n          \"severity\": [\"CRITICAL\"]\n        },\n        \"FilterPolicyScope\": \"MessageAttributes\"\n      }\n    }\n  }\n}\n```",
+    "explanation": "Filter policies are applied to subscriptions. Only messages matching the policy are delivered. This pattern is called content-based filtering and reduces the number of unnecessary messages.",
+    "recallHint": "Filter messages by attributes, reduce unnecessary deliveries.",
+    "practice": [
+      "How does SNS message filtering work?",
+      "What types of filters can you apply?",
+      "What is the difference between MessageBody and MessageAttributes filtering?"
+    ]
+  },
+  {
+    "id": "aws-sns-004",
+    "category": "aws-sns",
+    "concept": "SNS Dead-Letter Queues",
+    "priority": "important",
+    "question": "What are SNS Dead-Letter Queues and how do they work?",
+    "answer": "SNS Dead-Letter Queues (DLQs) capture messages that cannot be delivered to subscribers after multiple attempts. It allows you to recover and retry failed messages.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyTopic\": {\n      \"Type\": \"AWS::SNS::Topic\",\n      \"Properties\": {\n        \"TopicName\": \"my-topic\"\n      }\n    },\n    \"DLQQueue\": {\n      \"Type\": \"AWS::SQS::Queue\",\n      \"Properties\": {\n        \"QueueName\": \"sns-dlq\",\n        \"MessageRetentionPeriod\": 1209600\n      }\n    },\n    \"Subscription\": {\n      \"Type\": \"AWS::SNS::Subscription\",\n      \"Properties\": {\n        \"TopicArn\": { \"Ref\": \"MyTopic\" },\n        \"Protocol\": \"sqs\",\n        \"Endpoint\": { \"Fn::GetAtt\": [\"MyQueue\", \"Arn\"] },\n        \"RedrivePolicy\": {\n          \"deadLetterTargetArn\": { \"Fn::GetAtt\": [\"DLQQueue\", \"Arn\"] },\n          \"maxReceiveCount\": 3\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "DLQs are SQS queues used to store failed messages. You can configure maxReceiveCount and deadLetterTargetArn. Messages are moved to DLQ after the max retry attempts are exhausted.",
+    "recallHint": "Capture failed messages, SQS queue, configurable retry count.",
+    "practice": [
+      "What is the purpose of an SNS Dead-Letter Queue?",
+      "How do you configure a DLQ for SNS?",
+      "What happens to messages in the DLQ?"
+    ]
+  },
+  {
+    "id": "aws-sns-005",
+    "category": "aws-sns",
+    "concept": "SNS and SQS Fanout",
+    "priority": "must-know",
+    "question": "How do you implement a fanout pattern with SNS and SQS?",
+    "answer": "Fanout pattern: Send one message to SNS, which distributes it to multiple SQS queues. Each queue can have different subscriber groups (e.g., orders, inventory, analytics).",
+    "code": "```json\n{\n  \"Resources\": {\n    \"OrderTopic\": {\n      \"Type\": \"AWS::SNS::Topic\",\n      \"Properties\": {\n        \"TopicName\": \"order-events\"\n      }\n    },\n    \"OrdersQueue\": {\n      \"Type\": \"AWS::SQS::Queue\"\n    },\n    \"InventoryQueue\": {\n      \"Type\": \"AWS::SQS::Queue\"\n    },\n    \"AnalyticsQueue\": {\n      \"Type\": \"AWS::SQS::Queue\"\n    },\n    \"OrdersSubscription\": {\n      \"Type\": \"AWS::SNS::Subscription\",\n      \"Properties\": {\n        \"TopicArn\": { \"Ref\": \"OrderTopic\" },\n        \"Protocol\": \"sqs\",\n        \"Endpoint\": { \"Fn::GetAtt\": [\"OrdersQueue\", \"Arn\"] },\n        \"FilterPolicy\": {\n          \"event_type\": [\"order_created\", \"order_updated\"]\n        }\n      }\n    },\n    \"InventorySubscription\": {\n      \"Type\": \"AWS::SNS::Subscription\",\n      \"Properties\": {\n        \"TopicArn\": { \"Ref\": \"OrderTopic\" },\n        \"Protocol\": \"sqs\",\n        \"Endpoint\": { \"Fn::GetAtt\": [\"InventoryQueue\", \"Arn\"] },\n        \"FilterPolicy\": {\n          \"event_type\": [\"order_shipped\"]\n        }\n      }\n    },\n    \"AnalyticsSubscription\": {\n      \"Type\": \"AWS::SNS::Subscription\",\n      \"Properties\": {\n        \"TopicArn\": { \"Ref\": \"OrderTopic\" },\n        \"Protocol\": \"sqs\",\n        \"Endpoint\": { \"Fn::GetAtt\": [\"AnalyticsQueue\", \"Arn\"] },\n        \"FilterPolicy\": {\n          \"event_type\": [\"order_created\", \"order_shipped\", \"order_cancelled\"]\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "Fanout pattern enables decoupling and parallel processing. One message is published to SNS and delivered to all subscribed SQS queues. Each queue can be processed independently.",
+    "recallHint": "One SNS topic → multiple SQS queues → parallel processing.",
+    "practice": [
+      "What is the fanout pattern and when would you use it?",
+      "How do you implement fanout with SNS and SQS?",
+      "What are the benefits of fanout?"
+    ]
+  },
+  {
+    "id": "aws-sns-006",
+    "category": "aws-sns",
+    "concept": "SNS with Lambda",
+    "priority": "must-know",
+    "question": "How does SNS integrate with Lambda for event-driven processing?",
+    "answer": "SNS can directly invoke Lambda functions. The Lambda receives the SNS message as input and processes it. This pattern decouples event sources from Lambda consumers.",
+    "code": "```javascript\n// Lambda function processing SNS messages\n\nexports.handler = async (event) => {\n    // SNS event format\n    // event.Records[0].Sns.Message\n    \n    try {\n        for (const record of event.Records) {\n            const sns = record.Sns;\n            const message = JSON.parse(sns.Message);\n            const messageId = sns.MessageId;\n            const timestamp = sns.Timestamp;\n            \n            console.log(`Processing message ${messageId} from SNS`);\n            console.log(`Message:`, message);\n            \n            // Process the message\n            await processMessage(message);\n        }\n        \n        return {\n            statusCode: 200,\n            body: 'Processed successfully'\n        };\n    } catch (error) {\n        console.error('Error processing SNS message:', error);\n        throw error; // Lambda will retry\n    }\n};\n\n// CloudFormation\n{\n  \"Resources\": {\n    \"MyTopic\": {\n      \"Type\": \"AWS::SNS::Topic\"\n    },\n    \"LambdaInvokePermission\": {\n      \"Type\": \"AWS::Lambda::Permission\",\n      \"Properties\": {\n        \"Action\": \"lambda:InvokeFunction\",\n        \"FunctionName\": { \"Ref\": \"MyFunction\" },\n        \"Principal\": \"sns.amazonaws.com\",\n        \"SourceArn\": { \"Ref\": \"MyTopic\" }\n      }\n    },\n    \"SNSTrigger\": {\n      \"Type\": \"AWS::SNS::Subscription\",\n      \"Properties\": {\n        \"TopicArn\": { \"Ref\": \"MyTopic\" },\n        \"Protocol\": \"lambda\",\n        \"Endpoint\": { \"Fn::GetAtt\": [\"MyFunction\", \"Arn\"] }\n      }\n    }\n  }\n}\n```",
+    "explanation": "SNS Lambda integration is fully managed: SNS triggers Lambda with the message payload. Lambda must have permission to be invoked by SNS. Messages can be filtered before Lambda invocation.",
+    "recallHint": "SNS → Lambda (invokes Lambda), filter messages, event-driven.",
+    "practice": [
+      "How does SNS invoke Lambda functions?",
+      "What permissions are required for SNS to trigger Lambda?",
+      "How do you filter messages sent to Lambda?"
+    ]
+  },
+  {
+    "id": "aws-sns-007",
+    "category": "aws-sns",
+    "concept": "SNS Pricing",
+    "priority": "important",
+    "question": "How is SNS pricing calculated and how do you optimize costs?",
+    "answer": "SNS pricing: $0.50 per million requests, $0.00 for first 1000 requests/month. Data transfer costs apply for external deliveries. FIFO SNS costs additional.",
+    "code": "```bash\n# SNS Pricing (us-east-1)\n# Standard SNS: $0.50 per million requests\n# FIFO SNS: $0.50 per million requests\n# Data transfer: $0.09 per GB (within AWS)\n# SMS: varies by destination country\n\n# Cost optimization\n# 1. Use message filtering (reduce messages)\n# 2. Use SQS (AWS internal, no data transfer costs)\n# 3. Use HTTP/S endpoints instead of email/SMS for AWS internal\n# 4. Batch messages\n# 5. Use SNS with CloudWatch (free)\n\n# Example cost calculation\n# 10 million messages/month\n# Cost = 10,000,000 × $0.50 / 1,000,000 = $5\n# Data transfer (10GB internal) = 10 × $0.09 = $0.90\n# Total = ~$5.90/month\n```",
+    "explanation": "SNS is cost-effective for high-volume messaging. The biggest cost factor is the number of requests. Use SQS for internal fan-out to avoid data transfer costs.",
+    "recallHint": "$0.50 per million requests, data transfer costs.",
+    "practice": [
+      "How is SNS priced?",
+      "What are the main cost drivers in SNS?",
+      "How do you optimize SNS costs?"
+    ]
+  },
+  {
+    "id": "aws-sns-008",
+    "category": "aws-sns",
+    "concept": "SNS Message Attributes",
+    "priority": "important",
+    "question": "What are SNS message attributes and how do you use them?",
+    "answer": "SNS message attributes are structured metadata (key-value pairs) sent with the message. They enable filtering, routing, and subscriber-specific processing without modifying the message body.",
+    "code": "```javascript\n// Publishing with message attributes (AWS SDK v3)\nimport { SNSClient, PublishCommand } from \"@aws-sdk/client-sns\";\n\nconst sns = new SNSClient({ region: \"us-east-1\" });\n\nconst params = {\n    TopicArn: \"arn:aws:sns:us-east-1:123456789012:my-topic\",\n    Message: JSON.stringify({\n        orderId: \"ORD-12345\",\n        customer: \"John Doe\",\n        amount: 99.99\n    }),\n    MessageAttributes: {\n        \"event_type\": {\n            DataType: \"String\",\n            StringValue: \"order_created\"\n        },\n        \"severity\": {\n            DataType: \"String\",\n            StringValue: \"INFO\"\n        },\n        \"environment\": {\n            DataType: \"String\",\n            StringValue: \"production\"\n        },\n        \"is_priority\": {\n            DataType: \"String\",\n            StringValue: \"false\"\n        },\n        \"order_amount\": {\n            DataType: \"Number\",\n            StringValue: \"99.99\"\n        },\n        \"timestamp\": {\n            DataType: \"String\",\n            StringValue: new Date().toISOString()\n        }\n    }\n};\n\nawait sns.send(new PublishCommand(params));\n\n// Subscriber-side (Lambda)\nexports.handler = async (event) => {\n    for (const record of event.Records) {\n        const sns = record.Sns;\n        const attributes = sns.MessageAttributes;\n        \n        // Access message attributes\n        const eventType = attributes.event_type.Value;\n        const severity = attributes.severity.Value;\n        const isPriority = attributes.is_priority.Value === 'true';\n        \n        console.log(`Event Type: ${eventType}`);\n        console.log(`Severity: ${severity}`);\n        \n        // Process based on attributes\n        if (isPriority) {\n            await processPriorityMessage(JSON.parse(sns.Message));\n        } else {\n            await processRegularMessage(JSON.parse(sns.Message));\n        }\n    }\n};\n```",
+    "explanation": "Message attributes support String, Number, and Binary data types. They're used with filter policies. They should be used for routing/filtering metadata, not the actual message content.",
+    "recallHint": "Metadata key-value pairs, used for filtering and routing.",
+    "practice": [
+      "What are SNS message attributes used for?",
+      "What data types are supported for message attributes?",
+      "How do message attributes differ from the message body?"
+    ]
+  },
+  {
+    "id": "aws-sns-009",
+    "category": "aws-sns",
+    "concept": "SNS FIFO",
+    "priority": "advanced",
+    "question": "What is SNS FIFO and when would you use it?",
+    "answer": "SNS FIFO (First-In-First-Out) provides guaranteed message ordering and exactly-once processing. Messages are delivered to subscribers in the order they were published. FIFO topics are more limited and more expensive.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyFIFOTopic\": {\n      \"Type\": \"AWS::SNS::Topic\",\n      \"Properties\": {\n        \"TopicName\": \"my-fifo-topic.fifo\",\n        \"FifoTopic\": true,\n        \"ContentBasedDeduplication\": true,\n        \"DisplayName\": \"My FIFO Topic\"\n      }\n    },\n    \"MyFIFOQueue\": {\n      \"Type\": \"AWS::SQS::Queue\",\n      \"Properties\": {\n        \"QueueName\": \"my-fifo-queue.fifo\",\n        \"FifoQueue\": true,\n        \"ContentBasedDeduplication\": true\n      }\n    },\n    \"FIFOSubscription\": {\n      \"Type\": \"AWS::SNS::Subscription\",\n      \"Properties\": {\n        \"TopicArn\": { \"Ref\": \"MyFIFOTopic\" },\n        \"Protocol\": \"sqs\",\n        \"Endpoint\": { \"Fn::GetAtt\": [\"MyFIFOQueue\", \"Arn\"] },\n        \"RawMessageDelivery\": true\n      }\n    }\n  }\n}\n```",
+    "explanation": "FIFO topics require FIFO SQS queues. They support ContentBasedDeduplication for de-duping. Use FIFO for order-sensitive workflows (e.g., financial transactions, inventory updates).",
+    "recallHint": "Guaranteed ordering, exactly-once, FIFO queues required.",
+    "practice": [
+      "When would you use SNS FIFO?",
+      "What are the limitations of SNS FIFO?",
+      "How does FIFO compare to standard SNS?"
+    ]
+  },
+  {
+    "id": "aws-sns-010",
+    "category": "aws-sns",
+    "concept": "SNS Monitoring",
+    "priority": "important",
+    "question": "What metrics are available for SNS monitoring and how do you use them?",
+    "answer": "SNS publishes CloudWatch metrics: NumberOfMessagesPublished, NumberOfNotificationsDelivered, NumberOfNotificationsFailed, PublishSize, and SMS metrics. Use them for monitoring, alerting, and troubleshooting.",
+    "code": "```bash\n# CloudWatch metrics for SNS\naws cloudwatch get-metric-statistics --namespace AWS/SNS --metric-name NumberOfMessagesPublished --statistics Sum --period 3600\n\n# Failed deliveries\naws cloudwatch get-metric-statistics --namespace AWS/SNS --metric-name NumberOfNotificationsFailed --statistics Sum --period 3600\n\n# Set up CloudWatch alarm\n{\n  \"Resources\": {\n    \"SNSErrorAlarm\": {\n      \"Type\": \"AWS::CloudWatch::Alarm\",\n      \"Properties\": {\n        \"AlarmName\": \"SNS-Delivery-Errors\",\n        \"AlarmDescription\": \"Alarm if SNS delivery errors exceed 10\",\n        \"MetricName\": \"NumberOfNotificationsFailed\",\n        \"Namespace\": \"AWS/SNS\",\n        \"Statistic\": \"Sum\",\n        \"Period\": 60,\n        \"EvaluationPeriods\": 5,\n        \"Threshold\": 10,\n        \"ComparisonOperator\": \"GreaterThanThreshold\"\n      }\n    }\n  }\n}\n```",
+    "explanation": "Monitor NumberOfNotificationsFailed for delivery issues. Use CloudWatch logs for HTTP/S endpoint failures. SMS metrics include SMSMessageSent and SMSSuccessRate.",
+    "recallHint": "Published, Delivered, Failed metrics, CloudWatch alarms.",
+    "practice": [
+      "What SNS metrics are available in CloudWatch?",
+      "How do you monitor SNS delivery failures?",
+      "What does a spike in NumberOfNotificationsFailed indicate?"
+    ]
+  },
+  {
+    "id": "aws-sns-011",
+    "category": "aws-sns",
+    "concept": "SNS Security",
+    "priority": "must-know",
+    "question": "What are the security best practices for SNS?",
+    "answer": "Best practices: encryption at rest (KMS), IAM policies, resource-based policies (topic policies), encryption in transit (TLS), audit logging (CloudTrail), and access control.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"EncryptedTopic\": {\n      \"Type\": \"AWS::SNS::Topic\",\n      \"Properties\": {\n        \"TopicName\": \"secure-topic\",\n        \"KmsMasterKeyId\": \"arn:aws:kms:us-east-1:123456789012:key/my-key\",\n        \"DisplayName\": \"Encrypted Topic\"\n      }\n    },\n    // Topic Policy (resource-based)\n    \"TopicPolicy\": {\n      \"Type\": \"AWS::SNS::TopicPolicy\",\n      \"Properties\": {\n        \"Topics\": [{ \"Ref\": \"EncryptedTopic\" }],\n        \"PolicyDocument\": {\n          \"Statement\": [\n            {\n              \"Effect\": \"Allow\",\n              \"Principal\": { \"AWS\": \"arn:aws:iam::123456789012:role/app-role\" },\n              \"Action\": [\"sns:Publish\", \"sns:Subscribe\"],\n              \"Resource\": { \"Ref\": \"EncryptedTopic\" },\n              \"Condition\": {\n                \"StringEquals\": {\n                  \"aws:SourceAccount\": \"123456789012\"\n                }\n              }\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "Use KMS encryption at rest for sensitive messages. Restrict topic policy to specific principals. Use HTTPS endpoints for subscriptions. Enable CloudTrail for audit logs.",
+    "recallHint": "KMS encryption, IAM policies, HTTPS, audit logging.",
+    "practice": [
+      "How do you encrypt SNS messages at rest?",
+      "What is the difference between IAM policies and topic policies?",
+      "How do you restrict who can publish to an SNS topic?"
+    ]
+  },
+  {
+    "id": "aws-sns-012",
+    "category": "aws-sns",
+    "concept": "SNS Delivery Status",
+    "priority": "important",
+    "question": "What is SNS Delivery Status and how do you configure it?",
+    "answer": "SNS Delivery Status provides feedback on successful or failed deliveries. It can write logs to CloudWatch for HTTP/S endpoints and SQS queues, helping you troubleshoot delivery issues.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyTopic\": {\n      \"Type\": \"AWS::SNS::Topic\",\n      \"Properties\": {\n        \"TopicName\": \"my-topic\"\n      }\n    },\n    \"Subscription\": {\n      \"Type\": \"AWS::SNS::Subscription\",\n      \"Properties\": {\n        \"TopicArn\": { \"Ref\": \"MyTopic\" },\n        \"Protocol\": \"https\",\n        \"Endpoint\": \"https://example.com/webhook\",\n        \"DeliveryPolicy\": {\n          \"maxReceivesPerSecond\": 10,\n          \"healthyRetryPolicy\": {\n            \"minDelayTarget\": 10,\n            \"maxDelayTarget\": 60,\n            \"numRetries\": 3\n          }\n        }\n      }\n    }\n  }\n}\n\n// AWS CLI to configure CloudWatch Logs for SNS\naws sns set-topic-attributes --topic-arn arn:aws:sns:us-east-1:123456789012:my-topic --attribute-name DeliveryStatusLogging --attribute-value '{\"S3Enabled\": true, \"S3Bucket\": \"sns-logs\", \"S3Prefix\": \"delivery/\"}'\n```",
+    "explanation": "Delivery policies allow you to control retry behavior and rate. CloudWatch Logs help you understand why deliveries fail. Use with S3 for long-term log retention.",
+    "recallHint": "Delivery feedback, CloudWatch logs, S3 storage, retry policy.",
+    "practice": [
+      "How do you monitor SNS delivery status?",
+      "What is a Delivery Policy and when would you use it?",
+      "How do you configure SNS to store delivery logs in S3?"
+    ]
+  }
+]

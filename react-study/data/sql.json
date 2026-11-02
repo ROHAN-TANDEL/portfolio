@@ -1,0 +1,962 @@
+[
+  {
+    "id": "sql-001",
+    "category": "sql",
+    "concept": "SQL Fundamentals",
+    "priority": "must-know",
+    "question": "What is SQL and what are the different types of SQL commands?",
+    "answer": "SQL (Structured Query Language) is a standard language for managing relational databases. Commands are categorized into: DDL (Data Definition Language - CREATE, ALTER, DROP), DML (Data Manipulation Language - INSERT, UPDATE, DELETE), DQL (Data Query Language - SELECT), DCL (Data Control Language - GRANT, REVOKE), and TCL (Transaction Control Language - COMMIT, ROLLBACK).",
+    "code": "-- DDL - Define structure\nCREATE TABLE users (\n    id INT PRIMARY KEY,\n    name VARCHAR(100),\n    email VARCHAR(100)\n);\n\n-- DML - Manipulate data\nINSERT INTO users (id, name, email) VALUES (1, 'John', 'john@email.com');\nUPDATE users SET name = 'Jane' WHERE id = 1;\nDELETE FROM users WHERE id = 1;\n\n-- DQL - Query data\nSELECT * FROM users WHERE name = 'John';\n\n-- DCL - Control access\nGRANT SELECT ON users TO user_role;\nREVOKE SELECT ON users FROM user_role;\n\n-- TCL - Transaction control\nBEGIN TRANSACTION;\nUPDATE accounts SET balance = balance - 100 WHERE id = 1;\nUPDATE accounts SET balance = balance + 100 WHERE id = 2;\nCOMMIT;\nROLLBACK;",
+    "explanation": "Understanding SQL command types is fundamental. DDL changes the database structure, DML manipulates data, DQL queries data, DCL manages permissions, and TCL controls transactions.",
+    "recallHint": "DDL (CREATE, ALTER, DROP), DML (INSERT, UPDATE, DELETE), DQL (SELECT), DCL (GRANT, REVOKE), TCL (COMMIT, ROLLBACK).",
+    "practice": [
+      "Explain each SQL command type with examples.",
+      "Describe when to use each type.",
+      "Write examples for each category."
+    ]
+  },
+  {
+    "id": "sql-002",
+    "category": "sql",
+    "concept": "SELECT Statement",
+    "priority": "must-know",
+    "question": "What is the SELECT statement and how do you use it?",
+    "answer": "SELECT is the primary query command used to retrieve data from one or more tables. It can include DISTINCT, WHERE, ORDER BY, GROUP BY, and JOIN clauses to refine results.",
+    "code": "-- Basic SELECT\nSELECT * FROM users;\n\n-- Select specific columns\nSELECT id, name, email FROM users;\n\n-- With DISTINCT (remove duplicates)\nSELECT DISTINCT city FROM users;\n\n-- With WHERE (filtering)\nSELECT * FROM users WHERE age > 18 AND status = 'active';\n\n-- With ORDER BY (sorting)\nSELECT * FROM users ORDER BY name ASC, created_at DESC;\n\n-- With LIMIT and OFFSET (pagination)\nSELECT * FROM users LIMIT 10 OFFSET 20;\n\n-- With AS (aliases)\nSELECT name AS full_name, email AS contact_email FROM users;\n\n-- With CASE (conditional logic)\nSELECT name,\n    CASE \n        WHEN age < 18 THEN 'Minor'\n        WHEN age BETWEEN 18 AND 65 THEN 'Adult'\n        ELSE 'Senior'\n    END AS age_group\nFROM users;\n\n-- With COALESCE (handle NULL)\nSELECT name, COALESCE(phone, 'No phone') AS phone FROM users;",
+    "explanation": "SELECT is the most frequently used SQL command. Understanding its clauses is essential for efficient data retrieval. The order of clauses matters: SELECT, DISTINCT, FROM, JOIN, WHERE, GROUP BY, HAVING, ORDER BY, LIMIT.",
+    "recallHint": "SELECT columns FROM table WHERE condition GROUP BY column HAVING condition ORDER BY column LIMIT n.",
+    "practice": [
+      "Write a SELECT query with filtering.",
+      "Add sorting and pagination.",
+      "Use CASE and COALESCE in queries."
+    ]
+  },
+  {
+    "id": "sql-003",
+    "category": "sql",
+    "concept": "WHERE Clause",
+    "priority": "must-know",
+    "question": "What operators can be used in the WHERE clause?",
+    "answer": "WHERE supports: comparison operators (=, !=, >, <, >=, <=), logical operators (AND, OR, NOT), pattern matching (LIKE), range (BETWEEN), list (IN), NULL checks (IS NULL, IS NOT NULL).",
+    "code": "-- Comparison operators\nSELECT * FROM users WHERE age = 25;\nSELECT * FROM users WHERE age != 25;\nSELECT * FROM users WHERE age > 18;\n\n-- Logical operators (AND, OR, NOT)\nSELECT * FROM users WHERE age > 18 AND status = 'active';\nSELECT * FROM users WHERE age < 18 OR age > 65;\nSELECT * FROM users WHERE NOT status = 'inactive';\n\n-- Pattern matching (LIKE)\n-- % = any characters, _ = single character\nSELECT * FROM users WHERE name LIKE 'J%';  -- Starts with J\nSELECT * FROM users WHERE name LIKE '%son'; -- Ends with son\nSELECT * FROM users WHERE name LIKE '%oh%'; -- Contains 'oh'\nSELECT * FROM users WHERE name LIKE 'J_n'; -- Exactly 3 chars, starts J ends n\n\n-- Range (BETWEEN)\nSELECT * FROM users WHERE age BETWEEN 18 AND 65;\nSELECT * FROM orders WHERE order_date BETWEEN '2024-01-01' AND '2024-12-31';\n\n-- List (IN)\nSELECT * FROM users WHERE city IN ('New York', 'Los Angeles', 'Chicago');\nSELECT * FROM users WHERE city NOT IN ('New York', 'Los Angeles');\n\n-- NULL checks\nSELECT * FROM users WHERE phone IS NULL;\nSELECT * FROM users WHERE email IS NOT NULL;\n\n-- IN with subquery\nSELECT * FROM users \nWHERE id IN (SELECT user_id FROM orders WHERE amount > 1000);",
+    "explanation": "WHERE clause filters rows before grouping and aggregation. Understanding operators is crucial for writing accurate queries. LIKE is case-sensitive in some databases, use ILIKE for case-insensitive in PostgreSQL.",
+    "recallHint": "=, !=, >, <, AND, OR, LIKE, BETWEEN, IN, IS NULL.",
+    "practice": [
+      "Write a query with multiple conditions.",
+      "Use LIKE for pattern matching.",
+      "Use IN with a subquery."
+    ]
+  },
+  {
+    "id": "sql-004",
+    "category": "sql",
+    "concept": "JOIN Operations",
+    "priority": "must-know",
+    "question": "What are the different types of JOINs and when do you use them?",
+    "answer": "INNER JOIN returns matching rows from both tables. LEFT JOIN returns all rows from left table plus matches from right. RIGHT JOIN is the opposite. FULL OUTER JOIN returns all rows from both. CROSS JOIN returns Cartesian product.",
+    "code": "-- Sample tables\n-- users: id, name\n-- orders: id, user_id, amount, status\n\n-- INNER JOIN (only matches)\nSELECT u.name, o.amount, o.status\nFROM users u\nINNER JOIN orders o ON u.id = o.user_id;\n\n-- LEFT JOIN (all users, orders if exist)\nSELECT u.name, o.amount, o.status\nFROM users u\nLEFT JOIN orders o ON u.id = o.user_id;\n\n-- LEFT JOIN with NULL filter (users with no orders)\nSELECT u.name\nFROM users u\nLEFT JOIN orders o ON u.id = o.user_id\nWHERE o.id IS NULL;\n\n-- RIGHT JOIN\nSELECT u.name, o.amount, o.status\nFROM users u\nRIGHT JOIN orders o ON u.id = o.user_id;\n\n-- FULL OUTER JOIN\nSELECT u.name, o.amount, o.status\nFROM users u\nFULL OUTER JOIN orders o ON u.id = o.user_id;\n\n-- CROSS JOIN (Cartesian product)\nSELECT u.name, p.product_name\nFROM users u\nCROSS JOIN products p;\n\n-- Self JOIN (table joined to itself)\nSELECT e.name AS employee, m.name AS manager\nFROM employees e\nLEFT JOIN employees m ON e.manager_id = m.id;\n\n-- Multiple joins\nSELECT u.name, o.amount, p.product_name\nFROM users u\nINNER JOIN orders o ON u.id = o.user_id\nINNER JOIN order_items oi ON o.id = oi.order_id\nINNER JOIN products p ON oi.product_id = p.id;",
+    "explanation": "JOINs are fundamental to relational databases. INNER JOIN for related data, LEFT JOIN for data that may not exist, and SELF JOIN for hierarchical data. Multiple joins need proper join order for performance.",
+    "recallHint": "INNER = matches only, LEFT = all left + matches, RIGHT = all right + matches, FULL = all, SELF = table to itself.",
+    "practice": [
+      "Explain each JOIN type with examples.",
+      "When would you use LEFT JOIN vs INNER JOIN?",
+      "Write a query with multiple JOINs."
+    ]
+  },
+  {
+    "id": "sql-005",
+    "category": "sql",
+    "concept": "GROUP BY and Aggregate Functions",
+    "priority": "must-know",
+    "question": "What are aggregate functions and how do you use GROUP BY?",
+    "answer": "Aggregate functions: COUNT(), SUM(), AVG(), MIN(), MAX(). GROUP BY groups rows that have the same values in specified columns. HAVING filters groups after aggregation.",
+    "code": "-- Aggregate functions\nSELECT COUNT(*) AS total_users FROM users;\nSELECT COUNT(DISTINCT city) AS unique_cities FROM users;\nSELECT AVG(age) AS average_age FROM users;\nSELECT SUM(amount) AS total_sales FROM orders;\nSELECT MIN(created_at) AS first_order FROM orders;\nSELECT MAX(created_at) AS last_order FROM orders;\n\n-- GROUP BY (group by single column)\nSELECT city, COUNT(*) AS user_count\nFROM users\nGROUP BY city;\n\n-- GROUP BY with multiple columns\nSELECT city, status, COUNT(*) AS count\nFROM users\nGROUP BY city, status;\n\n-- GROUP BY with aggregate functions\nSELECT \n    user_id,\n    COUNT(*) AS order_count,\n    SUM(amount) AS total_spent,\n    AVG(amount) AS avg_order_value,\n    MIN(amount) AS min_order,\n    MAX(amount) AS max_order\nFROM orders\nGROUP BY user_id;\n\n-- HAVING (filter groups)\nSELECT \n    user_id,\n    COUNT(*) AS order_count,\n    SUM(amount) AS total_spent\nFROM orders\nGROUP BY user_id\nHAVING COUNT(*) > 5 AND SUM(amount) > 1000;\n\n-- GROUP BY with date functions\nSELECT \n    DATE_TRUNC('month', created_at) AS month,\n    COUNT(*) AS orders,\n    SUM(amount) AS revenue\nFROM orders\nGROUP BY DATE_TRUNC('month', created_at)\nORDER BY month DESC;\n\n-- ROLLUP (subtotals)\nSELECT \n    city,\n    status,\n    COUNT(*) AS count\nFROM users\nGROUP BY ROLLUP(city, status);\n\n-- GROUPING SETS (multiple groupings)\nSELECT \n    city,\n    status,\n    COUNT(*) AS count\nFROM users\nGROUP BY GROUPING SETS ((city, status), (city), ());",
+    "explanation": "Aggregate functions summarize data. GROUP BY creates groups for aggregation. HAVING filters groups (WHERE filters rows). ROLLUP and GROUPING SETS provide subtotals.",
+    "recallHint": "COUNT, SUM, AVG, MIN, MAX with GROUP BY, HAVING for group filters.",
+    "practice": [
+      "Write a query with SUM and GROUP BY.",
+      "Use HAVING to filter groups.",
+      "Write a query with multiple aggregate functions."
+    ]
+  },
+  {
+    "id": "sql-006",
+    "category": "sql",
+    "concept": "Subqueries",
+    "priority": "must-know",
+    "question": "What are subqueries and how do you use them?",
+    "answer": "Subqueries are nested queries within another query. They can be in SELECT (scalar), FROM (derived table), WHERE (filtering), or HAVING. Subqueries can be correlated (reference outer query) or non-correlated.",
+    "code": "-- Subquery in WHERE (scalar subquery)\nSELECT * FROM orders\nWHERE amount > (SELECT AVG(amount) FROM orders);\n\n-- Subquery with IN\nSELECT * FROM users\nWHERE id IN (SELECT user_id FROM orders WHERE amount > 1000);\n\n-- Subquery with EXISTS\nSELECT * FROM users u\nWHERE EXISTS (\n    SELECT 1 FROM orders o \n    WHERE o.user_id = u.id AND o.amount > 1000\n);\n\n-- Subquery in SELECT (scalar)\nSELECT \n    name,\n    (SELECT COUNT(*) FROM orders WHERE user_id = u.id) AS order_count,\n    (SELECT COALESCE(SUM(amount), 0) FROM orders WHERE user_id = u.id) AS total_spent\nFROM users u;\n\n-- Subquery in FROM (derived table)\nSELECT \n    user_id,\n    order_count,\n    total_spent\nFROM (\n    SELECT \n        user_id,\n        COUNT(*) AS order_count,\n        SUM(amount) AS total_spent\n    FROM orders\n    GROUP BY user_id\n) AS user_stats\nWHERE order_count > 5;\n\n-- Correlated subquery\nSELECT * FROM orders o1\nWHERE amount = (\n    SELECT MAX(amount) \n    FROM orders o2 \n    WHERE o2.user_id = o1.user_id\n);\n\n-- Subquery with ANY/SOME\nSELECT * FROM users\nWHERE age > ANY (SELECT age FROM users WHERE city = 'New York');\n\n-- Subquery with ALL\nSELECT * FROM users\nWHERE age > ALL (SELECT age FROM users WHERE city = 'New York');\n\n-- Nested subqueries\nSELECT name FROM users\nWHERE id IN (\n    SELECT user_id FROM orders\n    WHERE amount > (\n        SELECT AVG(amount) FROM orders\n    )\n);",
+    "explanation": "Subqueries enable complex data retrieval. Correlated subqueries reference outer queries and execute for each row. EXISTS is efficient for checking existence. Derived tables are useful for intermediate results.",
+    "recallHint": "Subquery in WHERE, SELECT, FROM, HAVING. Correlated vs non-correlated.",
+    "practice": [
+      "Write a subquery in WHERE with IN.",
+      "Write a correlated subquery.",
+      "Use a subquery in FROM as derived table."
+    ]
+  },
+  {
+    "id": "sql-007",
+    "category": "sql",
+    "concept": "CTE (Common Table Expression)",
+    "priority": "must-know",
+    "question": "What is a CTE and when would you use it over a subquery?",
+    "answer": "A CTE is a temporary named result set defined using WITH. It improves readability, allows recursion, and can be referenced multiple times. Use CTEs for complex queries, recursion, and better organization.",
+    "code": "-- Basic CTE\nWITH user_stats AS (\n    SELECT \n        user_id,\n        COUNT(*) AS order_count,\n        SUM(amount) AS total_spent\n    FROM orders\n    GROUP BY user_id\n)\nSELECT u.name, us.order_count, us.total_spent\nFROM users u\nINNER JOIN user_stats us ON u.id = us.user_id\nWHERE us.order_count > 5;\n\n-- Multiple CTEs\nWITH monthly_sales AS (\n    SELECT \n        DATE_TRUNC('month', created_at) AS month,\n        SUM(amount) AS total_sales\n    FROM orders\n    GROUP BY DATE_TRUNC('month', created_at)\n),\nuser_growth AS (\n    SELECT \n        DATE_TRUNC('month', created_at) AS month,\n        COUNT(*) AS new_users\n    FROM users\n    GROUP BY DATE_TRUNC('month', created_at)\n)\nSELECT \n    ms.month,\n    ms.total_sales,\n    ug.new_users,\n    ROUND(ms.total_sales / ug.new_users, 2) AS revenue_per_user\nFROM monthly_sales ms\nJOIN user_growth ug ON ms.month = ug.month\nORDER BY ms.month DESC;\n\n-- Recursive CTE (hierarchy)\nWITH RECURSIVE employee_hierarchy AS (\n    -- Base case\n    SELECT id, name, manager_id, 1 AS level\n    FROM employees\n    WHERE manager_id IS NULL\n    \n    UNION ALL\n    \n    -- Recursive case\n    SELECT e.id, e.name, e.manager_id, eh.level + 1\n    FROM employees e\n    INNER JOIN employee_hierarchy eh ON e.manager_id = eh.id\n)\nSELECT * FROM employee_hierarchy ORDER BY level;\n\n-- Recursive CTE (tree traversal)\nWITH RECURSIVE category_tree AS (\n    SELECT id, name, parent_id, name AS path\n    FROM categories\n    WHERE parent_id IS NULL\n    \n    UNION ALL\n    \n    SELECT c.id, c.name, c.parent_id, ct.path || ' > ' || c.name\n    FROM categories c\n    INNER JOIN category_tree ct ON c.parent_id = ct.id\n)\nSELECT * FROM category_tree ORDER BY path;\n\n-- CTE with window functions\nWITH ranked_orders AS (\n    SELECT \n        *,\n        ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY amount DESC) AS rank\n    FROM orders\n)\nSELECT * FROM ranked_orders WHERE rank <= 3;",
+    "explanation": "CTEs improve query readability and maintainability. Recursive CTEs are powerful for hierarchical data (org charts, category trees). CTEs can be referenced multiple times, unlike subqueries.",
+    "recallHint": "WITH name AS (query), recursive CTEs for hierarchies.",
+    "practice": [
+      "Convert a complex subquery to a CTE.",
+      "Create a recursive CTE for a hierarchy.",
+      "Use multiple CTEs in one query."
+    ]
+  },
+  {
+    "id": "sql-008",
+    "category": "sql",
+    "concept": "Window Functions",
+    "priority": "must-know",
+    "question": "What are window functions and how do they differ from GROUP BY?",
+    "answer": "Window functions perform calculations across a set of rows related to the current row without collapsing rows. They use OVER() clause. Unlike GROUP BY, they preserve individual rows.",
+    "code": "-- ROW_NUMBER (sequential numbering)\nSELECT \n    name,\n    ROW_NUMBER() OVER (ORDER BY created_at) AS row_num\nFROM users;\n\n-- ROW_NUMBER with partition\nSELECT \n    name,\n    city,\n    ROW_NUMBER() OVER (PARTITION BY city ORDER BY name) AS rank_in_city\nFROM users;\n\n-- RANK and DENSE_RANK\nSELECT \n    name,\n    amount,\n    RANK() OVER (ORDER BY amount DESC) AS rank,\n    DENSE_RANK() OVER (ORDER BY amount DESC) AS dense_rank\nFROM orders;\n\n-- NTILE (percentiles)\nSELECT \n    name,\n    amount,\n    NTILE(4) OVER (ORDER BY amount DESC) AS quartile\nFROM orders;\n\n-- LAG and LEAD (previous/next values)\nSELECT \n    user_id,\n    order_date,\n    amount,\n    LAG(amount, 1) OVER (PARTITION BY user_id ORDER BY order_date) AS prev_amount,\n    LEAD(amount, 1) OVER (PARTITION BY user_id ORDER BY order_date) AS next_amount\nFROM orders;\n\n-- FIRST_VALUE and LAST_VALUE\nSELECT \n    user_id,\n    order_date,\n    amount,\n    FIRST_VALUE(amount) OVER (PARTITION BY user_id ORDER BY order_date) AS first_order,\n    LAST_VALUE(amount) OVER (PARTITION BY user_id ORDER BY order_date) AS last_order\nFROM orders;\n\n-- Running totals\nSELECT \n    order_date,\n    amount,\n    SUM(amount) OVER (ORDER BY order_date) AS running_total,\n    AVG(amount) OVER (ORDER BY order_date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS moving_avg_7d\nFROM orders;\n\n-- Cumulative percentages\nSELECT \n    name,\n    amount,\n    ROUND(100.0 * amount / SUM(amount) OVER (), 2) AS percentage\nFROM orders\nORDER BY amount DESC;\n\n-- Row comparison with previous\nSELECT \n    date,\n    sales,\n    sales - LAG(sales) OVER (ORDER BY date) AS daily_change,\n    ROUND(100.0 * (sales - LAG(sales) OVER (ORDER BY date)) / LAG(sales) OVER (ORDER BY date), 2) AS growth_pct\nFROM daily_sales;",
+    "explanation": "Window functions are powerful for analytics: ranking, running totals, moving averages, and comparing rows. They're more efficient than self-joins for these tasks.",
+    "recallHint": "ROW_NUMBER, RANK, LAG, LEAD, SUM with OVER(), preserves rows.",
+    "practice": [
+      "Use ROW_NUMBER for pagination.",
+      "Calculate running totals with SUM OVER.",
+      "Use LAG to compare with previous row."
+    ]
+  },
+  {
+    "id": "sql-009",
+    "category": "sql",
+    "concept": "Indexes",
+    "priority": "must-know",
+    "question": "What are indexes and how do they improve query performance?",
+    "answer": "Indexes are data structures that improve query performance by allowing faster data retrieval. Common types: B-tree (default), Hash, GIN (full-text), GiST (geospatial). Proper indexing is crucial for performance.",
+    "code": "-- Create index\nCREATE INDEX idx_users_email ON users(email);\n\n-- Composite index\nCREATE INDEX idx_users_city_status ON users(city, status);\n\n-- Unique index\nCREATE UNIQUE INDEX idx_users_email_unique ON users(email);\n\n-- Partial index (only for specific rows)\nCREATE INDEX idx_active_users ON users(created_at) WHERE status = 'active';\n\n-- Full-text search index\nCREATE INDEX idx_articles_fulltext ON articles USING GIN (to_tsvector('english', content));\n\n-- Index with included columns (PostgreSQL)\nCREATE INDEX idx_orders_user_date ON orders(user_id, order_date) INCLUDE (amount, status);\n\n-- Drop index\nDROP INDEX idx_users_email;\n\n-- Analyze index usage\nEXPLAIN ANALYZE SELECT * FROM users WHERE email = 'john@example.com';\n\n-- Find slow queries\nSELECT \n    query,\n    calls,\n    total_time,\n    mean_time\nFROM pg_stat_statements\nORDER BY mean_time DESC\nLIMIT 10;\n\n-- Index usage statistics\nSELECT \n    schemaname,\n    tablename,\n    indexname,\n    idx_scan,\n    idx_tup_read,\n    idx_tup_fetch\nFROM pg_stat_user_indexes\nORDER BY idx_scan DESC;\n\n-- When NOT to use indexes\n-- 1. Small tables\n-- 2. Tables with frequent writes\n-- 3. Columns with low cardinality (e.g., boolean)\n-- 4. Columns rarely used in WHERE",
+    "explanation": "Indexes speed up reads but slow down writes (INSERT, UPDATE, DELETE). Choose indexes based on query patterns. Composite indexes follow leftmost prefix rule. Monitor index usage and remove unused indexes.",
+    "recallHint": "Index = faster reads, slower writes. Create based on query patterns.",
+    "practice": [
+      "Create an index on a frequently queried column.",
+      "Create a composite index.",
+      "Use EXPLAIN ANALYZE to verify index usage."
+    ]
+  },
+  {
+    "id": "sql-010",
+    "category": "sql",
+    "concept": "Normalization",
+    "priority": "must-know",
+    "question": "What is database normalization and what are the normal forms?",
+    "answer": "Normalization organizes data to reduce redundancy and improve integrity. Normal forms: 1NF (atomic values), 2NF (no partial dependencies), 3NF (no transitive dependencies), BCNF (no overlapping candidate keys).",
+    "code": "-- UNORMALIZED (repeating groups)\n-- orders: id, customer, order_date, product1, quantity1, price1, product2, quantity2, price2\n\n-- 1NF (atomic values, no repeating groups)\n-- orders: id, customer, order_date\n-- order_items: order_id, product, quantity, price\n\n-- 2NF (no partial dependencies)\n-- order_items: order_id, product, quantity, price\n-- products: product, category, supplier\n\n-- 3NF (no transitive dependencies)\n-- employees: emp_id, emp_name, dept_id\n-- departments: dept_id, dept_name, location, manager_id\n\n-- BCNF (every determinant is a candidate key)\n-- This usually occurs when there are multiple candidate keys\n\n-- Example: Denormalized (for reporting)\nCREATE TABLE order_summary (\n    order_id INT,\n    customer_name VARCHAR(100),\n    order_date DATE,\n    total_amount DECIMAL(10,2),\n    product_count INT,\n    category_distribution JSON\n);\n\n-- Normalized version\nCREATE TABLE customers (\n    id INT PRIMARY KEY,\n    name VARCHAR(100),\n    email VARCHAR(100)\n);\n\nCREATE TABLE orders (\n    id INT PRIMARY KEY,\n    customer_id INT REFERENCES customers(id),\n    order_date DATE\n);\n\nCREATE TABLE order_items (\n    id INT PRIMARY KEY,\n    order_id INT REFERENCES orders(id),\n    product_id INT REFERENCES products(id),\n    quantity INT,\n    price DECIMAL(10,2)\n);\n\nCREATE TABLE products (\n    id INT PRIMARY KEY,\n    name VARCHAR(100),\n    category_id INT REFERENCES categories(id),\n    price DECIMAL(10,2)\n);",
+    "explanation": "Normalization reduces data redundancy and improves data integrity. Denormalization improves read performance for reporting. Choose normalization level based on use case (OLTP vs OLAP).",
+    "recallHint": "1NF = atomic, 2NF = no partial dependencies, 3NF = no transitive dependencies.",
+    "practice": [
+      "Normalize a denormalized table to 3NF.",
+      "Explain the benefits of normalization.",
+      "When would you denormalize?"
+    ]
+  },
+  {
+    "id": "sql-011",
+    "category": "sql",
+    "concept": "Transactions",
+    "priority": "must-know",
+    "question": "What is a transaction and what are the ACID properties?",
+    "answer": "A transaction is a unit of work that ensures data integrity. ACID: Atomicity (all or nothing), Consistency (valid state), Isolation (concurrent execution), Durability (persisted after commit).",
+    "code": "-- Transaction with rollback\nBEGIN TRANSACTION;\n\nUPDATE accounts SET balance = balance - 100 WHERE id = 1;\nUPDATE accounts SET balance = balance + 100 WHERE id = 2;\n\n-- Check if everything is correct\nSELECT * FROM accounts;\n\n-- If something is wrong\nROLLBACK;\n\n-- If everything is correct\nCOMMIT;\n\n-- Savepoints (nested transactions)\nBEGIN TRANSACTION;\nSAVEPOINT before_transfer;\n\nUPDATE accounts SET balance = balance - 100 WHERE id = 1;\n-- Problem detected\nROLLBACK TO SAVEPOINT before_transfer;\n\n-- Continue with different logic\nUPDATE accounts SET balance = balance - 50 WHERE id = 1;\nUPDATE accounts SET balance = balance + 50 WHERE id = 2;\n\nCOMMIT;\n\n-- Isolation levels (PostgreSQL)\n-- Read Uncommitted (allows dirty reads)\nSET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;\n\n-- Read Committed (default in many DBs)\nSET TRANSACTION ISOLATION LEVEL READ COMMITTED;\n\n-- Repeatable Read (ensures consistent reads)\nSET TRANSACTION ISOLATION LEVEL REPEATABLE READ;\n\n-- Serializable (highest isolation)\nSET TRANSACTION ISOLATION LEVEL SERIALIZABLE;\n\n-- Deadlock example\n-- Transaction 1: Update users, then orders\nBEGIN;\nUPDATE users SET name = 'John' WHERE id = 1;\nUPDATE orders SET status = 'processed' WHERE user_id = 1;\nCOMMIT;\n\n-- Transaction 2: Update orders, then users (can deadlock)\nBEGIN;\nUPDATE orders SET status = 'pending' WHERE user_id = 1;\nUPDATE users SET name = 'Jane' WHERE id = 1;\nCOMMIT;",
+    "explanation": "Transactions ensure data consistency. Isolation levels trade performance for consistency. Deadlocks occur when transactions wait for each other. Use appropriate isolation levels and consistent locking order.",
+    "recallHint": "ACID: Atomic, Consistent, Isolated, Durable.",
+    "practice": [
+      "Explain ACID properties.",
+      "Write a transaction with rollback.",
+      "Explain isolation levels and their trade-offs."
+    ]
+  },
+  {
+    "id": "sql-012",
+    "category": "sql",
+    "concept": "Primary and Foreign Keys",
+    "priority": "must-know",
+    "question": "What are primary and foreign keys and how do they enforce referential integrity?",
+    "answer": "Primary key uniquely identifies each row (unique, non-null). Foreign key references a primary key in another table, enforcing referential integrity. ON DELETE/UPDATE actions define behavior.",
+    "code": "-- Table with primary key\nCREATE TABLE users (\n    id INT PRIMARY KEY,\n    name VARCHAR(100) NOT NULL,\n    email VARCHAR(100) UNIQUE NOT NULL\n);\n\n-- Composite primary key\nCREATE TABLE order_items (\n    order_id INT,\n    product_id INT,\n    quantity INT,\n    PRIMARY KEY (order_id, product_id)\n);\n\n-- Foreign key with different actions\nCREATE TABLE orders (\n    id INT PRIMARY KEY,\n    user_id INT,\n    amount DECIMAL(10,2),\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n    \n    CONSTRAINT fk_user \n        FOREIGN KEY (user_id) \n        REFERENCES users(id)\n        ON DELETE CASCADE -- Delete orders when user is deleted\n        ON UPDATE CASCADE -- Update user_id when user id changes\n);\n\n-- Foreign key actions\n-- ON DELETE CASCADE: Delete child rows when parent is deleted\n-- ON DELETE SET NULL: Set foreign key to NULL when parent is deleted\n-- ON DELETE SET DEFAULT: Set to default value\n-- ON DELETE RESTRICT: Prevent deletion if child exists\n-- ON DELETE NO ACTION: Same as RESTRICT\n\n-- Add foreign key to existing table\nALTER TABLE orders\nADD CONSTRAINT fk_user\nFOREIGN KEY (user_id) REFERENCES users(id);\n\n-- Drop foreign key\nALTER TABLE orders DROP CONSTRAINT fk_user;\n\n-- Check referential integrity\nSELECT \n    o.id,\n    o.user_id,\n    u.name\nFROM orders o\nLEFT JOIN users u ON o.user_id = u.id\nWHERE u.id IS NULL; -- Orphaned rows\n\n-- Disable foreign key checks (MySQL)\nSET FOREIGN_KEY_CHECKS = 0;\n-- Do bulk operations\nSET FOREIGN_KEY_CHECKS = 1;\n\n-- Deferred constraints (PostgreSQL)\nCREATE TABLE orders (\n    id INT PRIMARY KEY,\n    user_id INT,\n    CONSTRAINT fk_user \n        FOREIGN KEY (user_id) \n        REFERENCES users(id)\n        DEFERRABLE INITIALLY DEFERRED\n);",
+    "explanation": "Primary keys ensure row uniqueness. Foreign keys maintain referential integrity. Choose ON DELETE CASCADE for dependent data, SET NULL for optional relationships. Deferred constraints allow circular dependencies.",
+    "recallHint": "PK = unique identifier, FK = references PK in other table.",
+    "practice": [
+      "Create tables with primary and foreign keys.",
+      "Explain different ON DELETE actions.",
+      "Find orphaned rows in a database."
+    ]
+  },
+  {
+    "id": "sql-013",
+    "category": "sql",
+    "concept": "Database Constraints",
+    "priority": "must-know",
+    "question": "What types of constraints are available in SQL and why are they important?",
+    "answer": "Constraints enforce data integrity: NOT NULL (required), UNIQUE (no duplicates), PRIMARY KEY (unique + not null), FOREIGN KEY (referential integrity), CHECK (value validation), DEFAULT (default value).",
+    "code": "-- All constraints in one table\nCREATE TABLE products (\n    id INT PRIMARY KEY,\n    name VARCHAR(100) NOT NULL,\n    sku VARCHAR(50) UNIQUE,\n    price DECIMAL(10,2) CHECK (price > 0),\n    category_id INT,\n    status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'draft')),\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n    \n    CONSTRAINT fk_category \n        FOREIGN KEY (category_id) REFERENCES categories(id)\n);\n\n-- CHECK constraint examples\nALTER TABLE employees\nADD CONSTRAINT age_check CHECK (age >= 18 AND age <= 65);\n\nALTER TABLE orders\nADD CONSTRAINT positive_amount CHECK (amount > 0);\n\nALTER TABLE users\nADD CONSTRAINT valid_email CHECK (email LIKE '%@%');\n\n-- UNIQUE constraint (multiple columns)\nALTER TABLE order_items\nADD CONSTRAINT unique_order_product UNIQUE (order_id, product_id);\n\n-- NOT NULL constraint\nALTER TABLE products\nALTER COLUMN price SET NOT NULL;\n\nALTER TABLE products\nALTER COLUMN price DROP NOT NULL;\n\n-- DEFAULT constraint\nALTER TABLE products\nALTER COLUMN status SET DEFAULT 'active';\n\n-- Complex CHECK constraint\nALTER TABLE bookings\nADD CONSTRAINT valid_date_range CHECK (\n    check_in_date < check_out_date\n    AND check_in_date >= CURRENT_DATE\n);\n\n-- Constraint with user-defined function (PostgreSQL)\nCREATE FUNCTION valid_email_format(email TEXT) RETURNS BOOLEAN AS $$\nBEGIN\n    RETURN email ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$';\nEND;\n$$ LANGUAGE plpgsql;\n\nALTER TABLE users\nADD CONSTRAINT email_format CHECK (valid_email_format(email));",
+    "explanation": "Constraints are the foundation of data integrity. They prevent invalid data entry and maintain database consistency. Always define constraints at the database level, not just in the application.",
+    "recallHint": "NOT NULL, UNIQUE, PRIMARY KEY, FOREIGN KEY, CHECK, DEFAULT.",
+    "practice": [
+      "Create a table with all constraint types.",
+      "Add a CHECK constraint to an existing table.",
+      "Explain why constraints are important."
+    ]
+  },
+  {
+    "id": "sql-014",
+    "category": "sql",
+    "concept": "Views",
+    "priority": "must-know",
+    "question": "What are views and when would you use them?",
+    "answer": "Views are virtual tables defined by a query. They simplify complex queries, restrict data access, and provide a consistent interface. Materialized views store query results physically.",
+    "code": "-- Simple view\nCREATE VIEW active_users AS\nSELECT id, name, email, created_at\nFROM users\nWHERE status = 'active';\n\n-- Using a view\nSELECT * FROM active_users ORDER BY name;\n\n-- View with multiple tables\nCREATE VIEW user_order_summary AS\nSELECT \n    u.id AS user_id,\n    u.name,\n    COUNT(o.id) AS order_count,\n    COALESCE(SUM(o.amount), 0) AS total_spent,\n    COALESCE(AVG(o.amount), 0) AS avg_order_value,\n    MAX(o.created_at) AS last_order_date\nFROM users u\nLEFT JOIN orders o ON u.id = o.user_id\nGROUP BY u.id, u.name;\n\n-- View with filters\nCREATE VIEW high_value_customers AS\nSELECT * FROM user_order_summary\nWHERE total_spent > 10000 AND order_count > 5;\n\n-- Updatable view (simple views)\nCREATE VIEW user_public AS\nSELECT id, name, email, city\nFROM users;\n\nINSERT INTO user_public (id, name, email, city) \nVALUES (100, 'John', 'john@email.com', 'New York');\n\n-- Materialized view (PostgreSQL)\nCREATE MATERIALIZED VIEW monthly_sales AS\nSELECT \n    DATE_TRUNC('month', created_at) AS month,\n    SUM(amount) AS total_sales,\n    COUNT(*) AS order_count\nFROM orders\nGROUP BY DATE_TRUNC('month', created_at);\n\n-- Refresh materialized view\nREFRESH MATERIALIZED VIEW monthly_sales;\nREFRESH MATERIALIZED VIEW CONCURRENTLY monthly_sales;\n\n-- Drop view\nDROP VIEW IF EXISTS active_users;\nDROP MATERIALIZED VIEW IF EXISTS monthly_sales;\n\n-- View with security (row-level security)\nCREATE VIEW user_own_data AS\nSELECT * FROM users\nWHERE id = current_setting('app.current_user_id')::INT;\n\n-- Check view definition\nSELECT \n    table_schema,\n    table_name,\n    view_definition\nFROM information_schema.views\nWHERE table_schema = 'public';",
+    "explanation": "Views simplify complex queries and enforce security. Materialized views improve performance for expensive queries at the cost of storage and maintenance.",
+    "recallHint": "Virtual table, simplifies queries, restricts access, materialized = stored.",
+    "practice": [
+      "Create a view joining multiple tables.",
+      "Create a materialized view for reporting.",
+      "Explain when to use views."
+    ]
+  },
+  {
+    "id": "sql-015",
+    "category": "sql",
+    "concept": "Stored Procedures",
+    "priority": "important",
+    "question": "What are stored procedures and how do they differ from functions?",
+    "answer": "Stored procedures are precompiled SQL code that can accept parameters and perform complex operations. Functions return a value and can be used in queries. Procedures can have transaction control.",
+    "code": "-- PostgreSQL stored procedure\nCREATE PROCEDURE transfer_funds(\n    sender_id INT,\n    receiver_id INT,\n    amount DECIMAL\n)\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    -- Start transaction\n    UPDATE accounts SET balance = balance - amount WHERE id = sender_id;\n    UPDATE accounts SET balance = balance + amount WHERE id = receiver_id;\n    \n    -- Log transaction\n    INSERT INTO transfers (sender_id, receiver_id, amount, transfer_date)\n    VALUES (sender_id, receiver_id, amount, NOW());\n    \n    COMMIT;\nEXCEPTION\n    WHEN OTHERS THEN\n        ROLLBACK;\n        RAISE;\nEND;\n$$;\n\n-- Call procedure\nCALL transfer_funds(1, 2, 100.00);\n\n-- Function (returns a value)\nCREATE FUNCTION get_user_orders(user_id INT)\nRETURNS TABLE(\n    order_id INT,\n    order_date DATE,\n    amount DECIMAL\n)\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    RETURN QUERY\n    SELECT id, order_date, amount\n    FROM orders\n    WHERE user_id = $1\n    ORDER BY order_date DESC;\nEND;\n$$;\n\n-- Use function in query\nSELECT * FROM get_user_orders(1);\n\n-- Scalar function\nCREATE FUNCTION calculate_discount(amount DECIMAL, loyalty_years INT)\nRETURNS DECIMAL\nLANGUAGE plpgsql\nAS $$\nDECLARE\n    discount_rate DECIMAL;\nBEGIN\n    IF loyalty_years > 10 THEN\n        discount_rate = 0.20;\n    ELSIF loyalty_years > 5 THEN\n        discount_rate = 0.10;\n    ELSE\n        discount_rate = 0.05;\n    END IF;\n    \n    RETURN amount * (1 - discount_rate);\nEND;\n$$;\n\n-- Use function in SELECT\nSELECT \n    name,\n    amount,\n    calculate_discount(amount, loyalty_years) AS discounted_price\nFROM orders\nJOIN users ON orders.user_id = users.id;\n\n-- SQL Server\nCREATE PROCEDURE sp_GetUserOrders\n    @UserID INT,\n    @StartDate DATE = NULL\nAS\nBEGIN\n    SELECT * FROM orders \n    WHERE user_id = @UserID \n    AND (@StartDate IS NULL OR order_date >= @StartDate);\nEND;\n\nEXEC sp_GetUserOrders @UserID = 1;\n\n-- MySQL\nCREATE PROCEDURE GetUserOrders(\n    IN user_id INT,\n    OUT total_orders INT\n)\nBEGIN\n    SELECT COUNT(*) INTO total_orders\n    FROM orders\n    WHERE user_id = user_id;\nEND;",
+    "explanation": "Stored procedures encapsulate business logic in the database. They reduce network traffic, enforce consistency, and improve security. Functions are more reusable in queries.",
+    "recallHint": "Procedure = business logic, Function = returns value, used in queries.",
+    "practice": [
+      "Create a stored procedure for fund transfer.",
+      "Create a function for calculation.",
+      "Explain the difference between procedures and functions."
+    ]
+  },
+  {
+    "id": "sql-016",
+    "category": "sql",
+    "concept": "Triggers",
+    "priority": "important",
+    "question": "What are triggers and when would you use them?",
+    "answer": "Triggers are database objects that automatically execute in response to events (INSERT, UPDATE, DELETE). Use for auditing, validation, derived data, and maintaining consistency.",
+    "code": "-- Trigger for auditing (PostgreSQL)\nCREATE TABLE audit_log (\n    id SERIAL PRIMARY KEY,\n    table_name TEXT,\n    action TEXT,\n    old_data JSONB,\n    new_data JSONB,\n    changed_by TEXT,\n    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);\n\nCREATE OR REPLACE FUNCTION audit_function()\nRETURNS TRIGGER\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    IF TG_OP = 'INSERT' THEN\n        INSERT INTO audit_log (table_name, action, new_data, changed_by)\n        VALUES (TG_TABLE_NAME, 'INSERT', row_to_json(NEW), current_user);\n        RETURN NEW;\n    ELSIF TG_OP = 'UPDATE' THEN\n        INSERT INTO audit_log (table_name, action, old_data, new_data, changed_by)\n        VALUES (TG_TABLE_NAME, 'UPDATE', row_to_json(OLD), row_to_json(NEW), current_user);\n        RETURN NEW;\n    ELSIF TG_OP = 'DELETE' THEN\n        INSERT INTO audit_log (table_name, action, old_data, changed_by)\n        VALUES (TG_TABLE_NAME, 'DELETE', row_to_json(OLD), current_user);\n        RETURN OLD;\n    END IF;\n    RETURN NULL;\nEND;\n$$;\n\nCREATE TRIGGER audit_users\nAFTER INSERT OR UPDATE OR DELETE ON users\nFOR EACH ROW EXECUTE FUNCTION audit_function();\n\n-- Trigger for updating derived data\nCREATE TABLE products (\n    id SERIAL PRIMARY KEY,\n    name TEXT,\n    price DECIMAL(10,2),\n    stock INT\n);\n\nCREATE TABLE product_summary (\n    total_products INT,\n    average_price DECIMAL(10,2),\n    total_stock INT\n);\n\nCREATE OR REPLACE FUNCTION update_product_summary()\nRETURNS TRIGGER\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    UPDATE product_summary\n    SET \n        total_products = (SELECT COUNT(*) FROM products),\n        average_price = (SELECT AVG(price) FROM products),\n        total_stock = (SELECT SUM(stock) FROM products);\n    RETURN NULL;\nEND;\n$$;\n\nCREATE TRIGGER refresh_summary\nAFTER INSERT OR UPDATE OR DELETE ON products\nFOR EACH STATEMENT EXECUTE FUNCTION update_product_summary();\n\n-- Trigger to prevent deletion\nCREATE OR REPLACE FUNCTION prevent_delete()\nRETURNS TRIGGER\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    IF OLD.status = 'active' THEN\n        RAISE EXCEPTION 'Cannot delete active records';\n    END IF;\n    RETURN OLD;\nEND;\n$$;\n\nCREATE TRIGGER prevent_active_delete\nBEFORE DELETE ON users\nFOR EACH ROW EXECUTE FUNCTION prevent_delete();\n\n-- INSTEAD OF trigger (for views)\nCREATE VIEW user_details AS\nSELECT u.id, u.name, u.email, p.phone\nFROM users u\nLEFT JOIN profiles p ON u.id = p.user_id;\n\nCREATE OR REPLACE FUNCTION update_user_details()\nRETURNS TRIGGER\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    UPDATE users SET name = NEW.name, email = NEW.email WHERE id = NEW.id;\n    UPDATE profiles SET phone = NEW.phone WHERE user_id = NEW.id;\n    RETURN NEW;\nEND;\n$$;\n\nCREATE TRIGGER update_details\nINSTEAD OF UPDATE ON user_details\nFOR EACH ROW EXECUTE FUNCTION update_user_details();",
+    "explanation": "Triggers enforce business rules automatically. Use them sparingly as they can be hard to debug and impact performance. For complex logic, consider using application code.",
+    "recallHint": "Automatic execution on INSERT/UPDATE/DELETE. Audit, validation, derived data.",
+    "practice": [
+      "Create an audit trigger.",
+      "Create a trigger to prevent deletion.",
+      "Explain trigger performance considerations."
+    ]
+  },
+  {
+    "id": "sql-017",
+    "category": "sql",
+    "concept": "Query Optimization",
+    "priority": "must-know",
+    "question": "How do you optimize slow SQL queries?",
+    "answer": "Optimize by: adding indexes, rewriting queries (avoid SELECT *), using EXISTS instead of IN, avoiding functions in WHERE, using appropriate JOINs, and analyzing execution plans.",
+    "code": "-- Use EXPLAIN ANALYZE\nEXPLAIN ANALYZE\nSELECT * FROM users u\nJOIN orders o ON u.id = o.user_id\nWHERE u.status = 'active' \n  AND o.created_at > '2024-01-01';\n\n-- Bad: SELECT *\nSELECT * FROM users; -- Use specific columns\n\n-- Good: Specific columns\nSELECT id, name, email, created_at FROM users;\n\n-- Bad: Function in WHERE (prevents index usage)\nSELECT * FROM users WHERE DATE(created_at) = '2024-01-01';\n\n-- Good: Range query (uses index)\nSELECT * FROM users WHERE created_at >= '2024-01-01' AND created_at < '2024-01-02';\n\n-- Bad: Subquery with IN\nSELECT * FROM users\nWHERE id IN (\n    SELECT user_id FROM orders WHERE amount > 1000\n);\n\n-- Good: EXISTS or JOIN\nSELECT * FROM users u\nWHERE EXISTS (\n    SELECT 1 FROM orders o WHERE o.user_id = u.id AND o.amount > 1000\n);\n\n-- Bad: LIKE with leading wildcard\nSELECT * FROM users WHERE name LIKE '%smith%';\n\n-- Good: LIKE with ending wildcard\nSELECT * FROM users WHERE name LIKE 'smith%';\n\n-- Use composite indexes correctly\n-- Index on (city, status)\nCREATE INDEX idx_users_city_status ON users(city, status);\n\n-- Good: Uses index\nSELECT * FROM users WHERE city = 'NYC' AND status = 'active';\nSELECT * FROM users WHERE city = 'NYC'; -- Uses index\n\n-- Bad: Doesn't use index (skips first column)\nSELECT * FROM users WHERE status = 'active';\n\n-- Avoid SELECT DISTINCT when not needed\n-- Bad: DISTINCT with JOIN\nSELECT DISTINCT u.name\nFROM users u\nJOIN orders o ON u.id = o.user_id;\n\n-- Good: EXISTS\nSELECT u.name\nFROM users u\nWHERE EXISTS (SELECT 1 FROM orders o WHERE o.user_id = u.id);\n\n-- Batch processing\n-- Bad: Row-by-row\nFOR user IN (SELECT id FROM users) LOOP\n    UPDATE users SET status = 'active' WHERE id = user.id;\nEND LOOP;\n\n-- Good: Bulk update\nUPDATE users SET status = 'active' WHERE status = 'inactive';\n\n-- Use proper pagination\n-- Bad: Large offset\nSELECT * FROM users ORDER BY id LIMIT 10 OFFSET 1000000;\n\n-- Good: Seek method\nSELECT * FROM users WHERE id > 1000000 ORDER BY id LIMIT 10;",
+    "explanation": "Query optimization is critical for performance. Use EXPLAIN ANALYZE to understand query plans. Index the right columns, avoid functions on indexed columns, and use appropriate join types.",
+    "recallHint": "EXPLAIN ANALYZE, indexes, avoid SELECT *, EXISTS vs IN, seek pagination.",
+    "practice": [
+      "Analyze a slow query with EXPLAIN ANALYZE.",
+      "Optimize a query with poor performance.",
+      "Explain different optimization strategies."
+    ]
+  },
+  {
+    "id": "sql-018",
+    "category": "sql",
+    "concept": "Query Execution Plan",
+    "priority": "important",
+    "question": "How do you read and interpret a SQL execution plan?",
+    "answer": "An execution plan shows how the database executes a query: table access methods (seq scan, index scan), join methods (nested loop, hash join), and operation order. It helps identify performance bottlenecks.",
+    "code": "-- PostgreSQL execution plan\nEXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)\nSELECT u.name, COUNT(o.id) AS order_count\nFROM users u\nLEFT JOIN orders o ON u.id = o.user_id\nWHERE u.status = 'active'\nGROUP BY u.id, u.name\nHAVING COUNT(o.id) > 5;\n\n-- Sample plan output\n-- HashAggregate (cost=1234.56..1456.78 rows=100 width=72)\n--   Group Key: u.id, u.name\n--   Filter: (count(o.id) > 5)\n--   -> Merge Left Join (cost=567.89..987.65 rows=2000 width=40)\n--        Merge Cond: (u.id = o.user_id)\n--        -> Index Scan using idx_users_status on users\n--             Index Cond: (status = 'active'::text)\n--        -> Sort on orders (cost=123.45..145.67 rows=5000 width=20)\n--             Sort Key: o.user_id\n\n-- Interpreting plan\n-- 1. Operation order: Innermost to outermost\n-- 2. Cost: cost=startup..total (cost units)\n-- 3. Rows: Estimated rows\n-- 4. Width: Row size in bytes\n\n-- Common operations\n-- Seq Scan: Full table scan (slow for large tables)\n-- Index Scan: Uses index (fast)\n-- Index Only Scan: Uses only index (no table access)\n-- Hash Join: Joins using hash table\n-- Merge Join: Joins sorted inputs\n-- Nested Loop: Nested iteration (good for small datasets)\n\n-- PostgreSQL: Check index usage\nEXPLAIN (BUFFERS)\nSELECT * FROM users WHERE email = 'john@example.com';\n\n-- PostgreSQL: Toggle settings\nSET enable_seqscan = OFF; -- Force index scan (for testing)\nSET enable_hashjoin = OFF; -- Disable hash join\n\n-- MySQL: Execution plan\nEXPLAIN SELECT * FROM users WHERE email = 'john@example.com';\n\n-- MySQL: Extended EXPLAIN\nEXPLAIN EXTENDED SELECT * FROM users WHERE email = 'john@example.com';\nSHOW WARNINGS; -- Shows rewritten query\n\n-- SQL Server: Execution plan\nSET STATISTICS PROFILE ON;\nSELECT * FROM users WHERE email = 'john@example.com';\nSET STATISTICS PROFILE OFF;\n\n-- SQL Server: Actual execution plan\nSET STATISTICS XML ON;\nSELECT * FROM users WHERE email = 'john@example.com';\nSET STATISTICS XML OFF;",
+    "explanation": "Reading execution plans is essential for query tuning. Look for sequential scans on large tables, expensive joins, and high row estimates. Understand the cost of each operation.",
+    "recallHint": "Seq Scan = slow, Index Scan = fast, operation order = inner to outer.",
+    "practice": [
+      "Explain a simple execution plan.",
+      "Identify a bottleneck in an execution plan.",
+      "Use EXPLAIN ANALYZE to verify optimization."
+    ]
+  },
+  {
+    "id": "sql-019",
+    "category": "sql",
+    "concept": "Database Normalization vs Denormalization",
+    "priority": "important",
+    "question": "When should you normalize vs denormalize a database?",
+    "answer": "Normalize for OLTP (writes, consistency) - reduces redundancy, ensures data integrity. Denormalize for OLAP (reads, reporting) - improves query performance at the cost of storage and update complexity.",
+    "code": "-- Normalized (OLTP) - Order Management System\nCREATE TABLE customers (\n    id INT PRIMARY KEY,\n    name VARCHAR(100),\n    email VARCHAR(100),\n    created_at TIMESTAMP\n);\n\nCREATE TABLE addresses (\n    id INT PRIMARY KEY,\n    customer_id INT REFERENCES customers(id),\n    street VARCHAR(200),\n    city VARCHAR(100),\n    state VARCHAR(50),\n    zip VARCHAR(20)\n);\n\nCREATE TABLE orders (\n    id INT PRIMARY KEY,\n    customer_id INT REFERENCES customers(id),\n    order_date TIMESTAMP,\n    status VARCHAR(50)\n);\n\nCREATE TABLE order_items (\n    id INT PRIMARY KEY,\n    order_id INT REFERENCES orders(id),\n    product_id INT REFERENCES products(id),\n    quantity INT,\n    price DECIMAL(10,2)\n);\n\n-- Denormalized (OLAP) - Reporting System\nCREATE TABLE order_summary (\n    order_id INT,\n    customer_name VARCHAR(100),\n    customer_email VARCHAR(100),\n    order_date TIMESTAMP,\n    total_amount DECIMAL(10,2),\n    item_count INT,\n    category VARCHAR(50),\n    product_names TEXT,\n    shipping_city VARCHAR(100),\n    shipping_state VARCHAR(50)\n);\n\n-- Example: Denormalize for reporting\nCREATE MATERIALIZED VIEW order_analytics AS\nSELECT \n    o.id AS order_id,\n    c.name AS customer_name,\n    c.email AS customer_email,\n    o.order_date,\n    SUM(oi.price * oi.quantity) AS total_amount,\n    COUNT(oi.id) AS item_count,\n    STRING_AGG(DISTINCT p.category, ', ') AS categories,\n    a.city AS shipping_city,\n    a.state AS shipping_state\nFROM orders o\nJOIN customers c ON o.customer_id = c.id\nJOIN order_items oi ON o.id = oi.order_id\nJOIN products p ON oi.product_id = p.id\nJOIN addresses a ON c.id = a.customer_id\nWHERE a.is_primary = true\nGROUP BY o.id, c.name, c.email, o.order_date, a.city, a.state;\n\n-- When to denormalize\n-- 1. Analytics dashboards with aggregations\n-- 2. Frequently accessed data (cache)\n-- 3. Reporting databases (data warehouse)\n-- 4. Complex joins that are too slow\n\n-- Considerations for denormalization\n-- 1. Update anomalies\n-- 2. Storage increase\n-- 3. Data inconsistency risk\n-- 4. Maintenance complexity",
+    "explanation": "Normalization is standard for transactional systems. Denormalization is a performance optimization for reporting. Choose based on workload: write-heavy (normalize) vs read-heavy (denormalize).",
+    "recallHint": "Normalize = OLTP (writes), Denormalize = OLAP (reads).",
+    "practice": [
+      "Explain the trade-offs of denormalization.",
+      "Design a normalized schema for an e-commerce app.",
+      "Design a denormalized reporting table."
+    ]
+  },
+  {
+    "id": "sql-020",
+    "category": "sql",
+    "concept": "Database Performance Tuning",
+    "priority": "must-know",
+    "question": "What are the key strategies for database performance tuning?",
+    "answer": "Key strategies: index optimization, query optimization, connection pooling, caching, hardware scaling, partitioning, archiving old data, and proper configuration (memory, buffer sizes).",
+    "code": "-- 1. Index strategy\n-- Create covering indexes\nCREATE INDEX idx_orders_user_status_include ON orders(user_id, status) \nINCLUDE (amount, order_date);\n\n-- Drop unused indexes\nSELECT \n    schemaname,\n    tablename,\n    indexname,\n    idx_scan,\n    idx_tup_read\nFROM pg_stat_user_indexes\nWHERE idx_scan = 0;\n\n-- 2. Query optimization\n-- Use batch processing\nINSERT INTO logs (user_id, action, timestamp)\nSELECT user_id, 'login', NOW()\nFROM users\nWHERE last_login < NOW() - INTERVAL '30 days';\n\n-- 3. Connection pooling\n-- Use pgbouncer or built-in pool\n-- PostgreSQL: max_connections = 100, pool_size = 20\n\n-- 4. Caching\n-- Use Redis/Memcached for frequent queries\n-- Or materialized views for heavy aggregations\n\n-- 5. Partitioning (PostgreSQL)\nCREATE TABLE orders_2024 PARTITION OF orders\nFOR VALUES FROM ('2024-01-01') TO ('2025-01-01');\n\nCREATE TABLE orders_2025 PARTITION OF orders\nFOR VALUES FROM ('2025-01-01') TO ('2026-01-01');\n\n-- 6. Archiving old data\n-- Move old data to archive tables\nCREATE TABLE orders_archive (LIKE orders INCLUDING ALL);\n\nINSERT INTO orders_archive SELECT * FROM orders \nWHERE order_date < '2023-01-01';\n\nDELETE FROM orders WHERE order_date < '2023-01-01';\n\n-- 7. Vacuum and Analyze (PostgreSQL)\nVACUUM ANALYZE orders;\nVACUUM FULL orders; -- Reclaims space (locks table)\n\n-- 8. Configuration tuning (postgresql.conf)\n-- shared_buffers = 25% of RAM\n-- effective_cache_size = 50% of RAM\n-- work_mem = 4MB (increase for complex queries)\n-- maintenance_work_mem = 64MB\n\n-- 9. Monitoring slow queries\nSELECT \n    query,\n    calls,\n    total_time,\n    mean_time,\n    stddev_time,\n    rows\nFROM pg_stat_statements\nORDER BY mean_time DESC\nLIMIT 10;\n\n-- 10. Query timeout\nSET statement_timeout = '5s'; -- PostgreSQL\n-- SET SESSION wait_timeout = 5; -- MySQL",
+    "explanation": "Performance tuning is iterative. Start with slow query logs, optimize the worst queries, add appropriate indexes, and monitor the results. Regular maintenance is crucial.",
+    "recallHint": "Indexes, query optimization, caching, partitioning, configuration.",
+    "practice": [
+      "Identify slow queries from logs.",
+      "Optimize a slow query with an index.",
+      "Explain partitioning benefits."
+    ]
+  },
+  {
+    "id": "sql-021",
+    "category": "sql",
+    "concept": "NoSQL vs SQL",
+    "priority": "important",
+    "question": "When would you choose SQL vs NoSQL for a project?",
+    "answer": "SQL: structured data, ACID transactions, complex queries, integrity. NoSQL: unstructured data, high scalability, flexible schema, high write volume. Choose based on data model and requirements.",
+    "code": "-- SQL (PostgreSQL) - Structured, relational\nCREATE TABLE users (\n    id SERIAL PRIMARY KEY,\n    name VARCHAR(100),\n    email VARCHAR(100) UNIQUE,\n    metadata JSONB, -- Can store semi-structured\n    created_at TIMESTAMP DEFAULT NOW()\n);\n\n-- Complex query with joins\nSELECT \n    u.name,\n    COUNT(o.id) as order_count,\n    SUM(o.total) as total_spent\nFROM users u\nLEFT JOIN orders o ON u.id = o.user_id\nWHERE u.created_at > '2024-01-01'\nGROUP BY u.id\nHAVING COUNT(o.id) > 5;\n\n-- NoSQL (MongoDB) - Document-based\n// User document\n{\n    _id: ObjectId(\"...\"),\n    name: \"John\",\n    email: \"john@email.com\",\n    metadata: {\n        preferences: { theme: \"dark\" },\n        settings: { notifications: true }\n    },\n    orders: [\n        {\n            order_id: \"ORD001\",\n            total: 100.00,\n            items: [\n                { product_id: \"P001\", name: \"Product 1\", quantity: 2 }\n            ],\n            status: \"shipped\"\n        }\n    ],\n    created_at: ISODate(\"2024-01-01\")\n}\n\n// MongoDB query\ndb.users.aggregate([\n    { $match: { created_at: { $gte: ISODate(\"2024-01-01\") } } },\n    { $project: {\n        name: 1,\n        order_count: { $size: \"$orders\" },\n        total_spent: { $sum: \"$orders.total\" }\n    }},\n    { $match: { order_count: { $gt: 5 } } }\n]);\n\n// When to use SQL\n// 1. Consistent data structure\n// 2. Complex queries and relationships\n// 3. Transactional integrity (banking, e-commerce)\n// 4. Reporting and analytics\n\n// When to use NoSQL\n// 1. Unstructured or variable data\n// 2. High volume writes\n// 3. Rapid iteration and development\n// 4. Big data and real-time applications",
+    "explanation": "SQL and NoSQL serve different purposes. SQL provides data integrity and complex querying. NoSQL provides flexibility and scalability. Many modern systems use both (polyglot persistence).",
+    "recallHint": "SQL = structured, ACID, complex. NoSQL = flexible, scalable, simple.",
+    "practice": [
+      "Explain when to use SQL vs NoSQL.",
+      "Design a system using both.",
+      "Discuss the trade-offs of each."
+    ]
+  },
+  {
+    "id": "sql-022",
+    "category": "sql",
+    "concept": "ACID vs BASE",
+    "priority": "important",
+    "question": "What is the difference between ACID and BASE in database systems?",
+    "answer": "ACID (Atomicity, Consistency, Isolation, Durability) ensures strong consistency for relational databases. BASE (Basically Available, Soft state, Eventual consistency) is for distributed systems with high availability.",
+    "code": "-- ACID Example (SQL)\nBEGIN TRANSACTION;\n\n-- Atomicity: Both operations succeed or fail together\nUPDATE accounts SET balance = balance - 100 WHERE id = 1;\nUPDATE accounts SET balance = balance + 100 WHERE id = 2;\n\n-- Consistency: Check constraint ensures valid balance\nCHECK (balance >= 0);\n\n-- Isolation: Concurrent transactions don't interfere\n-- Transaction 1 sees consistent state\n\n-- Durability: Committed transaction is persisted\nCOMMIT;\n\n-- BASE Example (NoSQL/Distributed)\n-- Basically Available: System always responds\n-- Soft state: State may change without new input\n-- Eventual consistency: Data consistent over time\n\n-- Eventual consistency example\n// Node 1 updates user\nawait db.updateUser({ id: 1, name: \"John\" });\n// Node 2 may not see update immediately\nconst user = await db.findUser(1); // May return old value\n// After replication, consistency is reached\n\n-- CAP Theorem: Choose 2 of 3\n-- Consistency, Availability, Partition tolerance\n-- In distributed systems, choose AP (NoSQL) or CP (SQL cluster)\n\n-- PostgreSQL (CP - Consistency + Partition)\n-- MongoDB (AP - Availability + Partition)\n-- Apache Cassandra (AP - Availability + Partition)",
+    "explanation": "ACID provides strong consistency at the cost of availability in distributed systems. BASE provides high availability with eventual consistency. Choose based on business requirements.",
+    "recallHint": "ACID = strong consistency, BASE = eventual consistency, high availability.",
+    "practice": [
+      "Explain ACID properties.",
+      "Explain BASE properties.",
+      "Describe CAP theorem trade-offs."
+    ]
+  },
+  {
+    "id": "sql-023",
+    "category": "sql",
+    "concept": "Database Sharding",
+    "priority": "important",
+    "question": "What is database sharding and how does it work?",
+    "answer": "Sharding distributes data across multiple database instances (shards) based on a shard key. It enables horizontal scaling, improves performance, and increases capacity.",
+    "code": "-- Shard key: user_id\n-- Shard 1: user_id % 4 = 0\n-- Shard 2: user_id % 4 = 1\n-- Shard 3: user_id % 4 = 2\n-- Shard 4: user_id % 4 = 3\n\n-- Application-level sharding logic\nfunction getShard(userId) {\n    const shardCount = 4;\n    const shardIndex = userId % shardCount;\n    return `shard_${shardIndex}`;\n}\n\n-- Query across shards (application needs to aggregate)\nconst results = [];\nfor (let i = 0; i < 4; i++) {\n    const shard = `shard_${i}`;\n    const result = await shard.query(\n        'SELECT * FROM orders WHERE user_id IN ($1, $2)',\n        [userId1, userId2]\n    );\n    results.push(...result);\n}\n\n-- Sharding strategies\n-- 1. Range-based: user_id 1-1000 in shard1, 1001-2000 in shard2\n-- 2. Hash-based: hash(user_id) % shard_count\n-- 3. Directory-based: lookup table maps key to shard\n\n-- Example: Creating sharded tables (PostgreSQL with extension)\n-- CREATE EXTENSION citus;\n\n-- CREATE TABLE orders (\n--     order_id INT,\n--     user_id INT,\n--     amount DECIMAL\n-- );\n\n-- SELECT create_distributed_table('orders', 'user_id');\n\n-- Challenges\n-- 1. Cross-shard queries\n-- 2. Joins across shards\n-- 3. Transaction consistency\n-- 4. Rebalancing\n\n-- Solution: Use proxy layer (Vitess, Citus)\n-- Vitess: MySQL-compatible sharding solution\n-- Citus: PostgreSQL distributed database",
+    "explanation": "Sharding is essential for scaling beyond a single database. Choose the right shard key (high cardinality, evenly distributed). Sharding adds complexity but enables linear scaling.",
+    "recallHint": "Shard key = distribution strategy, horizontal scaling, challenges.",
+    "practice": [
+      "Explain sharding and its benefits.",
+      "Design a sharding strategy for user data.",
+      "Discuss sharding challenges."
+    ]
+  },
+  {
+    "id": "sql-024",
+    "category": "sql",
+    "concept": "Database Replication",
+    "priority": "important",
+    "question": "What is database replication and what are the different types?",
+    "answer": "Replication copies data from a primary database to one or more replicas. Types: Master-Slave (async, read scaling), Master-Master (write scaling, complexity), and Multi-Master.",
+    "code": "-- PostgreSQL Master-Slave setup\n-- Master: WAL (Write-Ahead Logging) streaming\n-- Slave: WAL receiver and replay\n\n-- Master configuration (postgresql.conf)\nwal_level = replica\nmax_wal_senders = 3\nwal_keep_size = 64MB\n\n-- Slave configuration\nprimary_conninfo = 'host=master port=5432 user=replica password=secret'\n\n-- Create replication user\nCREATE USER replica WITH REPLICATION ENCRYPTED PASSWORD 'secret';\n\n-- Base backup\n-- pg_basebackup -h master -D /var/lib/postgresql/data -U replica -P -R\n\n-- Read from slave\nSELECT * FROM users; -- Runs on slave\n\n-- Write to master (application logic)\n// Separate connections\nconst masterClient = new Client('postgres://master:5432/db');\nconst slaveClient = new Client('postgres://slave:5432/db');\n\n// Write queries go to master\nawait masterClient.query('INSERT INTO users ...');\n\n// Read queries use slave (with eventual consistency)\nconst users = await slaveClient.query('SELECT * FROM users');\n\n-- Failover to slave\n-- Promote slave to master\n-- pg_ctl promote -D /var/lib/postgresql/data\n\n-- Use connection poolers (PgBouncer) for managing connections\n\n-- Master-Master (Active-Active) replication\n-- PostgreSQL with BDR (Bi-Directional Replication)\n-- OR use multi-master solutions like MySQL Group Replication\n\n-- Use cases\n-- 1. Read scaling: Distribute read queries across replicas\n-- 2. High availability: Failover to replica\n-- 3. Disaster recovery: Off-site replica\n-- 4. Analytics: Query on replica to avoid performance impact\n\n-- Considerations\n-- 1. Replication lag (asynchronous)\n-- 2. Data consistency\n-- 3. Network bandwidth\n-- 4. Failover complexity",
+    "explanation": "Replication improves read performance and availability. Choose async replication for performance, sync for consistency. Monitor replication lag and have a failover plan.",
+    "recallHint": "Master = writes, Slave = reads, async/sync, replication lag.",
+    "practice": [
+      "Explain master-slave replication.",
+      "Describe replication use cases.",
+      "Discuss replication challenges."
+    ]
+  },
+  {
+    "id": "sql-025",
+    "category": "sql",
+    "concept": "Database Monitoring",
+    "priority": "important",
+    "question": "What should you monitor in a production database?",
+    "answer": "Monitor: query performance, connection count, CPU/memory usage, disk I/O, replication lag, lock contention, cache hit ratio, deadlocks, and error logs.",
+    "code": "-- PostgreSQL monitoring queries\n-- 1. Active connections\nSELECT \n    pid,\n    usename,\n    application_name,\n    client_addr,\n    state,\n    query,\n    now() - query_start AS duration\nFROM pg_stat_activity\nWHERE state != 'idle'\nORDER BY duration DESC;\n\n-- 2. Lock monitoring\nSELECT \n    blocked_locks.pid AS blocked_pid,\n    blocking_locks.pid AS blocking_pid,\n    blocked_activity.query AS blocked_query,\n    blocking_activity.query AS blocking_query\nFROM pg_locks blocked_locks\nJOIN pg_stat_activity blocked_activity ON blocked_locks.pid = blocked_activity.pid\nJOIN pg_locks blocking_locks ON blocked_locks.locktype = blocking_locks.locktype\nJOIN pg_stat_activity blocking_activity ON blocking_locks.pid = blocking_activity.pid\nWHERE NOT blocked_locks.granted;\n\n-- 3. Cache hit ratio\nSELECT \n    'index hit ratio' AS name,\n    (sum(idx_blks_hit) / (sum(idx_blks_hit) + sum(idx_blks_read)))::float AS ratio\nFROM pg_statio_user_indexes\nUNION ALL\nSELECT \n    'table hit ratio',\n    (sum(heap_blks_hit) / (sum(heap_blks_hit) + sum(heap_blks_read)))::float\nFROM pg_statio_user_tables;\n\n-- 4. Database size\nSELECT \n    pg_database_size(current_database()) / 1024 / 1024 AS size_mb;\n\n-- 5. Table sizes\nSELECT \n    schemaname,\n    tablename,\n    pg_total_relation_size(schemaname||'.'||tablename) / 1024 / 1024 AS size_mb\nFROM pg_tables\nWHERE schemaname = 'public'\nORDER BY size_mb DESC;\n\n-- 6. Index usage\nSELECT \n    schemaname,\n    tablename,\n    indexname,\n    idx_scan,\n    idx_tup_read,\n    idx_tup_fetch\nFROM pg_stat_user_indexes\nORDER BY idx_scan DESC;\n\n-- 7. Slow queries (requires pg_stat_statements)\nSELECT \n    query,\n    calls,\n    total_time,\n    mean_time,\n    stddev_time,\n    rows,\n    total_time / calls AS avg_time_per_call\nFROM pg_stat_statements\nORDER BY mean_time DESC\nLIMIT 10;\n\n-- 8. Deadlock monitoring\n-- Track deadlocks in logs\nSET log_lock_waits = on;\n\n-- 9. Connection pool monitoring (PgBouncer)\nSHOW POOLS;\nSHOW STATS;\nSHOW CLIENTS;",
+    "explanation": "Proactive monitoring prevents issues. Set up alerts for: connection spikes, slow queries, replication lag, and resource exhaustion. Use monitoring tools like Prometheus/Grafana.",
+    "recallHint": "Connections, locks, cache hit, query performance, replication lag.",
+    "practice": [
+      "Monitor active connections.",
+      "Find slow queries.",
+      "Check lock contention."
+    ]
+  },
+  {
+    "id": "sql-026",
+    "category": "sql",
+    "concept": "INSERT, UPDATE, DELETE Operations",
+    "priority": "must-know",
+    "question": "How do you perform INSERT, UPDATE, and DELETE operations efficiently?",
+    "answer": "Use bulk operations for inserts, indexed WHERE clauses for updates/deletes, and transactions for consistency. Use UPSERT (INSERT ... ON CONFLICT) for handling duplicates.",
+    "code": "-- Efficient INSERT\n-- Bad: Row-by-row\nINSERT INTO users (name, email) VALUES ('John', 'john@email.com');\nINSERT INTO users (name, email) VALUES ('Jane', 'jane@email.com');\n\n-- Good: Bulk insert\nINSERT INTO users (name, email) VALUES \n    ('John', 'john@email.com'),\n    ('Jane', 'jane@email.com'),\n    ('Bob', 'bob@email.com');\n\n-- INSERT with SELECT (copy data)\nINSERT INTO users_archive (id, name, email, created_at)\nSELECT id, name, email, created_at\nFROM users\nWHERE created_at < '2024-01-01';\n\n-- UPSERT (PostgreSQL)\nINSERT INTO users (id, name, email)\nVALUES (1, 'John', 'john@email.com')\nON CONFLICT (id) \nDO UPDATE SET \n    name = EXCLUDED.name,\n    email = EXCLUDED.email,\n    updated_at = NOW();\n\n-- UPSERT with condition\nINSERT INTO users (id, name, email)\nVALUES (1, 'John', 'john@email.com')\nON CONFLICT (id) \nDO UPDATE SET \n    name = EXCLUDED.name,\n    email = EXCLUDED.email\nWHERE users.updated_at < EXCLUDED.updated_at;\n\n-- Efficient UPDATE\n-- Bad: Update without WHERE\nUPDATE users SET status = 'active';\n\n-- Good: Update with index-friendly condition\nUPDATE users SET status = 'active' \nWHERE last_login > '2024-01-01';\n\n-- UPDATE with JOIN\nUPDATE orders \nSET status = 'shipped'\nFROM shipments \nWHERE orders.id = shipments.order_id \n  AND shipments.shipped_date = NOW();\n\n-- Batch UPDATE\nUPDATE users \nSET status = 'inactive'\nWHERE id IN (1, 2, 3, 4, 5);\n\n-- Efficient DELETE\n-- Bad: Delete all (use TRUNCATE instead)\nDELETE FROM logs;\n\n-- Good: TRUNCATE for all rows\nTRUNCATE TABLE logs;\n\n-- Delete with condition\nDELETE FROM users WHERE status = 'inactive' AND created_at < '2023-01-01';\n\n-- Delete with USING (PostgreSQL)\nDELETE FROM orders o\nUSING users u\nWHERE o.user_id = u.id AND u.status = 'inactive';\n\n-- Safe DELETE in batches (avoid locks)\nDO $$\nDECLARE\n    batch_size INT := 1000;\nBEGIN\n    LOOP\n        DELETE FROM large_table\n        WHERE condition\n        LIMIT batch_size;\n        \n        EXIT WHEN NOT FOUND;\n        \n        -- Allow other operations\n        PERFORM pg_sleep(1);\n        COMMIT;\n    END LOOP;\nEND $$;",
+    "explanation": "Efficient DML operations use batch processing, appropriate WHERE clauses, and proper indexing. Use transactions for consistency and avoid locking large tables with long-running operations.",
+    "recallHint": "Bulk inserts, index-friendly WHERE, batch deletes, UPSERT.",
+    "practice": [
+      "Write a bulk INSERT statement.",
+      "Use UPSERT for conflict handling.",
+      "Write a safe batch DELETE operation."
+    ]
+  },
+  {
+    "id": "sql-027",
+    "category": "sql",
+    "concept": "DATE and TIME Functions",
+    "priority": "must-know",
+    "question": "What are common DATE and TIME functions in SQL?",
+    "answer": "Common functions: NOW(), DATE_TRUNC, DATE_PART, EXTRACT, AGE, INTERVAL, date arithmetic, formatting (TO_CHAR), and converting strings to dates.",
+    "code": "-- Current date/time\nSELECT NOW(); -- Current timestamp\nSELECT CURRENT_DATE; -- Current date\nSELECT CURRENT_TIME; -- Current time\nSELECT CURRENT_TIMESTAMP; -- Current timestamp with timezone\n\n-- Date arithmetic\nSELECT NOW() + INTERVAL '1 day';\nSELECT NOW() - INTERVAL '7 days';\nSELECT NOW() + INTERVAL '2 hours';\nSELECT NOW() + INTERVAL '30 minutes';\n\n-- EXTRACT parts\nSELECT \n    EXTRACT(YEAR FROM order_date) AS year,\n    EXTRACT(MONTH FROM order_date) AS month,\n    EXTRACT(DAY FROM order_date) AS day,\n    EXTRACT(DOW FROM order_date) AS day_of_week,\n    EXTRACT(HOUR FROM order_date) AS hour,\n    EXTRACT(QUARTER FROM order_date) AS quarter\nFROM orders;\n\n-- DATE_TRUNC (group by time period)\nSELECT \n    DATE_TRUNC('month', order_date) AS month,\n    COUNT(*) AS orders,\n    SUM(amount) AS total\nFROM orders\nGROUP BY DATE_TRUNC('month', order_date);\n\n-- AGE (difference between dates)\nSELECT \n    name,\n    AGE(NOW(), birth_date) AS age,\n    EXTRACT(YEAR FROM AGE(NOW(), birth_date)) AS age_in_years\nFROM users;\n\n-- Date formatting (PostgreSQL)\nSELECT TO_CHAR(NOW(), 'YYYY-MM-DD') AS date_string;\nSELECT TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS') AS date_time_string;\nSELECT TO_CHAR(NOW(), 'Month DD, YYYY') AS formatted_date;\n\n-- String to date\nSELECT TO_DATE('2024-01-01', 'YYYY-MM-DD');\nSELECT TO_TIMESTAMP('2024-01-01 12:30:45', 'YYYY-MM-DD HH24:MI:SS');\n\n-- MySQL date functions\nSELECT \n    DATE_FORMAT(order_date, '%Y-%m-%d') AS formatted_date,\n    YEAR(order_date) AS year,\n    MONTH(order_date) AS month,\n    DAY(order_date) AS day,\n    WEEKDAY(order_date) AS day_of_week,\n    QUARTER(order_date) AS quarter\nFROM orders;\n\n-- MySQL date arithmetic\nSELECT DATE_ADD(NOW(), INTERVAL 1 DAY);\nSELECT DATE_SUB(NOW(), INTERVAL 7 DAY);\nSELECT DATEDIFF('2024-01-10', '2024-01-01') AS days_diff;\n\n-- Common use cases\n-- 1. Last 7 days\nSELECT * FROM orders \nWHERE order_date > NOW() - INTERVAL '7 days';\n\n-- 2. Current month\nSELECT * FROM orders \nWHERE DATE_TRUNC('month', order_date) = DATE_TRUNC('month', NOW());\n\n-- 3. Between dates\nSELECT * FROM orders \nWHERE order_date BETWEEN '2024-01-01' AND '2024-12-31';\n\n-- 4. Date filtering with index\nSELECT * FROM orders \nWHERE order_date >= NOW() - INTERVAL '30 days';\n-- Use >= instead of functions for index usage",
+    "explanation": "Date/time functions are essential for reporting and filtering. Use DATE_TRUNC for grouping, EXTRACT for components, and compare with indexed columns without functions for performance.",
+    "recallHint": "NOW(), DATE_TRUNC, EXTRACT, AGE, INTERVAL, TO_CHAR.",
+    "practice": [
+      "Write a query for last 30 days of orders.",
+      "Group orders by month using DATE_TRUNC.",
+      "Calculate age from birth date."
+    ]
+  },
+  {
+    "id": "sql-028",
+    "category": "sql",
+    "concept": "String Functions",
+    "priority": "must-know",
+    "question": "What are common string functions in SQL?",
+    "answer": "Common functions: CONCAT, SUBSTRING, LENGTH, UPPER/LOWER, TRIM, REPLACE, POSITION, SPLIT_PART, and regular expressions.",
+    "code": "-- PostgreSQL string functions\n-- CONCAT\nSELECT CONCAT(first_name, ' ', last_name) AS full_name FROM users;\nSELECT first_name || ' ' || last_name AS full_name FROM users;\n\n-- SUBSTRING\nSELECT SUBSTRING(email FROM '^[^@]+') AS username FROM users;\nSELECT SUBSTRING(email, 1, POSITION('@' IN email) - 1) AS username FROM users;\nSELECT SUBSTRING(email, '^[^@]+') AS username FROM users;\n\n-- LENGTH\nSELECT LENGTH(name) AS name_length FROM users;\nSELECT CHAR_LENGTH(name) AS char_length FROM users;\n\n-- UPPER/LOWER\nSELECT UPPER(name) AS upper_name FROM users;\nSELECT LOWER(email) AS lower_email FROM users;\nSELECT INITCAP(name) AS title_case FROM users; -- PostgreSQL only\n\n-- TRIM\nSELECT TRIM(' Hello ') AS trimmed;\nSELECT TRIM(LEADING '0' FROM '000123') AS trimmed;\nSELECT TRIM(TRAILING '0' FROM '123000') AS trimmed;\nSELECT TRIM(BOTH ' ' FROM ' Hello ') AS trimmed;\n\n-- REPLACE\nSELECT REPLACE(phone, '-', '') AS clean_phone FROM users;\n\n-- POSITION\nSELECT POSITION('@' IN email) AS at_position FROM users;\n\n-- SPLIT_PART (PostgreSQL)\nSELECT \n    SPLIT_PART(email, '@', 1) AS username,\n    SPLIT_PART(email, '@', 2) AS domain\nFROM users;\n\n-- Regular expressions\nSELECT * FROM users WHERE email ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$';\nSELECT REGEXP_MATCHES(email, '^([^@]+)@(.+)$') FROM users;\n\n-- MySQL string functions\nSELECT \n    CONCAT(first_name, ' ', last_name) AS full_name,\n    SUBSTRING(email, 1, LOCATE('@', email) - 1) AS username,\n    SUBSTRING_INDEX(email, '@', 1) AS username_mysql,\n    LENGTH(name) AS name_length,\n    UPPER(name) AS upper_name,\n    LOWER(email) AS lower_email,\n    TRIM(' Hello ') AS trimmed,\n    REPLACE(phone, '-', '') AS clean_phone,\n    LOCATE('@', email) AS at_position\nFROM users;\n\n-- Common use cases\n-- 1. Search\nSELECT * FROM users WHERE name ILIKE '%john%';\n\n-- 2. Format\nSELECT \n    CONCAT('$', TO_CHAR(amount, '999,999.99')) AS formatted_amount\nFROM orders;\n\n-- 3. Email domain analysis\nSELECT \n    SPLIT_PART(email, '@', 2) AS domain,\n    COUNT(*) AS count\nFROM users\nGROUP BY SPLIT_PART(email, '@', 2)\nORDER BY count DESC;",
+    "explanation": "String functions are essential for data cleaning, formatting, and analysis. Use regular expressions for complex pattern matching. Index performance can be impacted by functions in WHERE.",
+    "recallHint": "CONCAT, SUBSTRING, LENGTH, UPPER/LOWER, TRIM, REPLACE, POSITION.",
+    "practice": [
+      "Extract username from email.",
+      "Clean phone numbers.",
+      "Format names in title case."
+    ]
+  },
+  {
+    "id": "sql-029",
+    "category": "sql",
+    "concept": "Aggregate Functions Advanced",
+    "priority": "important",
+    "question": "What are advanced aggregate functions and how do they differ from basic aggregates?",
+    "answer": "Advanced aggregates include: statistical functions (STDDEV, VARIANCE), array/JSON aggregates (ARRAY_AGG, JSON_AGG), string aggregates (STRING_AGG), and percentiles (PERCENTILE_CONT, PERCENTILE_DISC).",
+    "code": "-- Statistical aggregates\nSELECT \n    AVG(amount) AS average,\n    STDDEV(amount) AS standard_deviation,\n    VARIANCE(amount) AS variance,\n    CORR(amount, quantity) AS correlation,\n    REGR_SLOPE(amount, quantity) AS regression_slope,\n    REGR_INTERCEPT(amount, quantity) AS regression_intercept\nFROM order_items;\n\n-- Array aggregates (PostgreSQL)\nSELECT \n    user_id,\n    ARRAY_AGG(order_id ORDER BY order_date) AS order_ids,\n    ARRAY_AGG(amount ORDER BY order_date) AS amounts\nFROM orders\nGROUP BY user_id;\n\n-- JSON aggregates (PostgreSQL)\nSELECT \n    user_id,\n    JSON_AGG(\n        JSON_BUILD_OBJECT(\n            'order_id', order_id,\n            'amount', amount,\n            'status', status\n        )\n    ) AS orders_json\nFROM orders\nGROUP BY user_id;\n\n-- String aggregate\nSELECT \n    user_id,\n    STRING_AGG(product_name, ', ' ORDER BY product_name) AS products\nFROM order_items oi\nJOIN products p ON oi.product_id = p.id\nGROUP BY user_id;\n\n-- Percentiles\nSELECT \n    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY amount) AS median,\n    PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY amount) AS quartile_1,\n    PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY amount) AS quartile_3,\n    PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY amount) AS percentile_90\nFROM orders;\n\n-- PERCENTILE_DISC (discrete - actual value)\nSELECT \n    PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY amount) AS median_actual\nFROM orders;\n\n-- GROUP BY with multiple aggregates\nSELECT \n    product_id,\n    COUNT(*) AS sales_count,\n    SUM(quantity) AS total_quantity,\n    AVG(price) AS avg_price,\n    MIN(price) AS min_price,\n    MAX(price) AS max_price,\n    STDDEV(price) AS price_stddev,\n    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY price) AS median_price\nFROM order_items\nGROUP BY product_id\nHAVING COUNT(*) > 100;\n\n-- Window aggregates\nSELECT \n    user_id,\n    order_date,\n    amount,\n    AVG(amount) OVER (PARTITION BY user_id ORDER BY order_date) AS running_avg,\n    SUM(amount) OVER (PARTITION BY user_id ORDER BY order_date) AS running_total,\n    RANK() OVER (PARTITION BY user_id ORDER BY amount DESC) AS rank_by_amount\nFROM orders;",
+    "explanation": "Advanced aggregates enable sophisticated analytics. Array/JSON aggregation is useful for nested data structures. Percentiles are used for performance metrics and distribution analysis.",
+    "recallHint": "ARRAY_AGG, JSON_AGG, STRING_AGG, PERCENTILE_CONT, STDDEV.",
+    "practice": [
+      "Use JSON_AGG to create nested JSON responses.",
+      "Calculate median with PERCENTILE_CONT.",
+      "Use statistical functions for analysis."
+    ]
+  },
+  {
+    "id": "sql-030",
+    "category": "sql",
+    "concept": "JSON in SQL",
+    "priority": "important",
+    "question": "How do you work with JSON data in SQL databases?",
+    "answer": "Modern SQL databases (PostgreSQL, MySQL, SQL Server) support JSON data types and operations: JSON creation, querying, extraction, and manipulation functions.",
+    "code": "-- PostgreSQL JSON operations\n-- Create table with JSON column\nCREATE TABLE users (\n    id SERIAL PRIMARY KEY,\n    name TEXT,\n    metadata JSONB -- Binary JSON (indexable, efficient)\n);\n\n-- Insert JSON data\nINSERT INTO users (name, metadata) VALUES (\n    'John',\n    '{\n        \"age\": 30,\n        \"city\": \"New York\",\n        \"preferences\": {\n            \"theme\": \"dark\",\n            \"notifications\": true\n        },\n        \"tags\": [\"developer\", \"manager\"]\n    }'\n);\n\n-- JSON building functions\nSELECT \n    JSON_BUILD_OBJECT(\n        'id', id,\n        'name', name,\n        'email', email\n    ) AS user_json\nFROM users;\n\nSELECT \n    JSON_AGG(\n        JSON_BUILD_OBJECT(\n            'id', id,\n            'name', name\n        )\n    ) AS users_json\nFROM users;\n\n-- Query JSON data\nSELECT \n    name,\n    metadata->>'city' AS city,\n    metadata->'preferences'->>'theme' AS theme\nFROM users;\n\n-- JSON path access\nSELECT \n    name,\n    metadata#>>'{preferences,theme}' AS theme\nFROM users;\n\n-- Filter by JSON\nSELECT * FROM users\nWHERE metadata->>'city' = 'New York';\n\n-- Filter by JSON with condition\nSELECT * FROM users\nWHERE (metadata->'age')::INT > 25;\n\n-- JSON array operations\nSELECT * FROM users\nWHERE metadata->'tags' ? 'developer';\n\n-- JSONB indexing (PostgreSQL)\nCREATE INDEX idx_users_metadata ON users USING GIN (metadata);\nCREATE INDEX idx_users_city ON users ((metadata->>'city'));\n\n-- Update JSON\nUPDATE users\nSET metadata = JSONB_SET(\n    metadata,\n    '{preferences,theme}',\n    '\"light\"'\n)\nWHERE id = 1;\n\n-- MySQL JSON functions\nCREATE TABLE users (\n    id INT PRIMARY KEY,\n    name VARCHAR(100),\n    metadata JSON\n);\n\nINSERT INTO users (id, name, metadata) VALUES (\n    1, \n    'John',\n    JSON_OBJECT(\n        'age', 30,\n        'city', 'New York',\n        'preferences', JSON_OBJECT('theme', 'dark', 'notifications', true)\n    )\n);\n\nSELECT \n    name,\n    JSON_EXTRACT(metadata, '$.city') AS city,\n    JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.preferences.theme')) AS theme\nFROM users;\n\nSELECT * FROM users\nWHERE JSON_EXTRACT(metadata, '$.age') > 25;\n\n-- When to use JSON in SQL\n-- 1. Flexible schemas\n-- 2. Semi-structured data\n-- 3. Configuration data\n-- 4. API responses storage\n-- 5. Audit logs\n\n-- When NOT to use JSON\n-- 1. Frequently queried data (use columns)\n-- 2. Data with integrity constraints\n-- 3. Data that needs to be indexed heavily\n-- 4. Large datasets (performance impact)",
+    "explanation": "JSON support provides flexibility for semi-structured data. Use JSONB (PostgreSQL) for performance and indexing. Balance JSON usage with relational design for optimal performance.",
+    "recallHint": "JSONB/JSON type, query with -> and ->>, JSON_AGG, JSON_BUILD_OBJECT.",
+    "practice": [
+      "Store and query JSON data.",
+      "Create JSON aggregates for reporting.",
+      "Index JSON fields for performance."
+    ]
+  },
+  {
+    "id": "sql-031",
+    "category": "sql",
+    "concept": "Recursive Queries",
+    "priority": "important",
+    "question": "How do you write recursive queries for hierarchical data?",
+    "answer": "Use recursive CTEs with UNION ALL. Base case starts the recursion, recursive case joins back to the CTE. Used for organization charts, category trees, and graph traversal.",
+    "code": "-- Organization hierarchy\nCREATE TABLE employees (\n    id INT PRIMARY KEY,\n    name TEXT,\n    manager_id INT REFERENCES employees(id)\n);\n\n-- Recursive query for org chart\nWITH RECURSIVE org_chart AS (\n    -- Base case: top-level employees\n    SELECT \n        id,\n        name,\n        manager_id,\n        1 AS level,\n        name AS path\n    FROM employees\n    WHERE manager_id IS NULL\n    \n    UNION ALL\n    \n    -- Recursive case: reports\n    SELECT \n        e.id,\n        e.name,\n        e.manager_id,\n        oc.level + 1,\n        oc.path || ' > ' || e.name\n    FROM employees e\n    INNER JOIN org_chart oc ON e.manager_id = oc.id\n)\nSELECT * FROM org_chart ORDER BY path;\n\n-- Tree traversal with aggregate\nWITH RECURSIVE org_chart AS (\n    SELECT \n        id,\n        name,\n        manager_id,\n        1 AS level,\n        name AS path,\n        array[name] AS path_array\n    FROM employees\n    WHERE manager_id IS NULL\n    \n    UNION ALL\n    \n    SELECT \n        e.id,\n        e.name,\n        e.manager_id,\n        oc.level + 1,\n        oc.path || ' > ' || e.name,\n        oc.path_array || e.name\n    FROM employees e\n    INNER JOIN org_chart oc ON e.manager_id = oc.id\n)\nSELECT \n    id,\n    name,\n    level,\n    path,\n    path_array[1] AS top_level,\n    path_array[array_length(path_array, 1)] AS employee_name,\n    array_length(path_array, 1) AS depth\nFROM org_chart\nORDER BY path;\n\n-- Category tree\nCREATE TABLE categories (\n    id INT PRIMARY KEY,\n    name TEXT,\n    parent_id INT REFERENCES categories(id)\n);\n\nWITH RECURSIVE category_tree AS (\n    SELECT \n        id,\n        name,\n        parent_id,\n        name AS full_path,\n        array[name] AS path_array,\n        1 AS level\n    FROM categories\n    WHERE parent_id IS NULL\n    \n    UNION ALL\n    \n    SELECT \n        c.id,\n        c.name,\n        c.parent_id,\n        ct.full_path || ' > ' || c.name,\n        ct.path_array || c.name,\n        ct.level + 1\n    FROM categories c\n    INNER JOIN category_tree ct ON c.parent_id = ct.id\n)\nSELECT * FROM category_tree ORDER BY full_path;\n\n-- Graph traversal (friends of friends)\nCREATE TABLE friendships (\n    user_id INT,\n    friend_id INT\n);\n\nWITH RECURSIVE friend_network AS (\n    -- Base: direct friends\n    SELECT \n        user_id,\n        friend_id,\n        1 AS degree\n    FROM friendships\n    WHERE user_id = 1\n    \n    UNION ALL\n    \n    -- Recursive: friends of friends\n    SELECT \n        f.user_id,\n        f.friend_id,\n        fn.degree + 1\n    FROM friendships f\n    INNER JOIN friend_network fn ON f.user_id = fn.friend_id\n    WHERE fn.degree < 3 -- Limit depth\n)\nSELECT DISTINCT friend_id, degree FROM friend_network ORDER BY degree;\n\n-- Find cycles in hierarchy\nWITH RECURSIVE cycle_check AS (\n    SELECT \n        id,\n        manager_id,\n        array[id] AS path,\n        false AS has_cycle\n    FROM employees\n    WHERE manager_id IS NULL\n    \n    UNION ALL\n    \n    SELECT \n        e.id,\n        e.manager_id,\n        cc.path || e.id,\n        e.id = ANY(cc.path)\n    FROM employees e\n    INNER JOIN cycle_check cc ON e.manager_id = cc.id\n    WHERE NOT cc.has_cycle\n)\nSELECT * FROM cycle_check WHERE has_cycle = true;",
+    "explanation": "Recursive CTEs are powerful for hierarchical data queries. They can traverse unlimited depth but need careful design to avoid infinite loops. Use them for org charts, category trees, and graph queries.",
+    "recallHint": "WITH RECURSIVE, base case + recursive case, UNION ALL.",
+    "practice": [
+      "Write a query for org hierarchy.",
+      "Create a category tree with paths.",
+      "Find friends of friends with graph traversal."
+    ]
+  },
+  {
+    "id": "sql-032",
+    "category": "sql",
+    "concept": "Pivot Tables",
+    "priority": "important",
+    "question": "How do you create pivot tables in SQL?",
+    "answer": "Pivot tables transform rows into columns using conditional aggregation (CASE with SUM). PostgreSQL has crosstab, but CASE aggregation works across databases.",
+    "code": "-- Sample sales data\n-- date | product | sales\n\n-- Pivot using CASE (cross-database)\nSELECT \n    date,\n    SUM(CASE WHEN product = 'A' THEN sales ELSE 0 END) AS product_a,\n    SUM(CASE WHEN product = 'B' THEN sales ELSE 0 END) AS product_b,\n    SUM(CASE WHEN product = 'C' THEN sales ELSE 0 END) AS product_c,\n    SUM(sales) AS total\nFROM sales\nGROUP BY date\nORDER BY date;\n\n-- Pivot with multiple dimensions\nSELECT \n    year,\n    quarter,\n    SUM(CASE WHEN region = 'North' THEN revenue ELSE 0 END) AS north,\n    SUM(CASE WHEN region = 'South' THEN revenue ELSE 0 END) AS south,\n    SUM(CASE WHEN region = 'East' THEN revenue ELSE 0 END) AS east,\n    SUM(CASE WHEN region = 'West' THEN revenue ELSE 0 END) AS west\nFROM sales\nGROUP BY year, quarter\nORDER BY year, quarter;\n\n-- Dynamic pivot (PostgreSQL with crosstab)\n-- Install tablefunc extension\n-- CREATE EXTENSION tablefunc;\n\nSELECT * FROM crosstab(\n    'SELECT date, product, sales FROM sales ORDER BY 1,2',\n    'SELECT DISTINCT product FROM sales ORDER BY 1'\n) AS (\n    date DATE,\n    product_a DECIMAL,\n    product_b DECIMAL,\n    product_c DECIMAL\n);\n\n-- Pivot with aggregations\nSELECT \n    product,\n    SUM(CASE WHEN month = 'Jan' THEN sales ELSE 0 END) AS jan,\n    SUM(CASE WHEN month = 'Feb' THEN sales ELSE 0 END) AS feb,\n    SUM(CASE WHEN month = 'Mar' THEN sales ELSE 0 END) AS mar,\n    SUM(CASE WHEN month = 'Apr' THEN sales ELSE 0 END) AS apr,\n    SUM(sales) AS total\nFROM monthly_sales\nGROUP BY product;\n\n-- Pivot with percentages\nSELECT \n    category,\n    SUM(CASE WHEN status = 'completed' THEN count ELSE 0 END) AS completed,\n    SUM(CASE WHEN status = 'pending' THEN count ELSE 0 END) AS pending,\n    SUM(CASE WHEN status = 'failed' THEN count ELSE 0 END) AS failed,\n    SUM(count) AS total,\n    ROUND(100.0 * SUM(CASE WHEN status = 'completed' THEN count ELSE 0 END) / SUM(count), 2) AS success_rate\nFROM orders\nGROUP BY category;\n\n-- Unpivot (reverse pivot)\nWITH pivot_data AS (\n    SELECT \n        product,\n        SUM(CASE WHEN month = 'Jan' THEN sales ELSE 0 END) AS jan,\n        SUM(CASE WHEN month = 'Feb' THEN sales ELSE 0 END) AS feb\n    FROM sales\n    GROUP BY product\n)\nSELECT \n    product,\n    'Jan' AS month,\n    jan AS sales\nFROM pivot_data\nUNION ALL\nSELECT \n    product,\n    'Feb' AS month,\n    feb AS sales\nFROM pivot_data;",
+    "explanation": "Pivot tables transform data for reporting. CASE aggregation is the most portable approach. Crosstab (PostgreSQL) is more efficient for large datasets. Unpivot converts back to row format.",
+    "recallHint": "CASE with SUM for pivot, crosstab for PostgreSQL.",
+    "practice": [
+      "Create a pivot table by product and month.",
+      "Use crosstab for dynamic pivot.",
+      "Unpivot a pivot table."
+    ]
+  },
+  {
+    "id": "sql-033",
+    "category": "sql",
+    "concept": "Full-Text Search",
+    "priority": "important",
+    "question": "How do you implement full-text search in SQL?",
+    "answer": "Use database-specific full-text search: PostgreSQL with tsvector/tsquery, MySQL with MATCH AGAINST, or Elasticsearch as a dedicated search engine.",
+    "code": "-- PostgreSQL full-text search\n-- Create table with text column\nCREATE TABLE articles (\n    id SERIAL PRIMARY KEY,\n    title TEXT,\n    content TEXT,\n    published_at TIMESTAMP\n);\n\n-- Create tsvector column for search\nALTER TABLE articles ADD COLUMN tsv TSVECTOR;\n\n-- Populate tsvector\nUPDATE articles SET tsv = \n    setweight(to_tsvector('english', title), 'A') || \n    setweight(to_tsvector('english', content), 'B');\n\n-- Create index for fast search\nCREATE INDEX idx_articles_tsv ON articles USING GIN (tsv);\n\n-- Simple search\nSELECT * FROM articles\nWHERE tsv @@ to_tsquery('english', 'database & performance');\n\n-- Search with ranking\nSELECT \n    *,\n    ts_rank(tsv, to_tsquery('english', 'database & performance')) AS rank\nFROM articles\nWHERE tsv @@ to_tsquery('english', 'database & performance')\nORDER BY rank DESC;\n\n-- Search with highlighting\nSELECT \n    ts_headline(title, to_tsquery('english', 'database'), 'StartSel=<b>, StopSel=</b>') AS title,\n    ts_headline(content, to_tsquery('english', 'database')) AS content\nFROM articles\nWHERE tsv @@ to_tsquery('english', 'database');\n\n-- Search with weights\nSELECT \n    *,\n    ts_rank(\n        setweight(to_tsvector('english', title), 'A') || \n        setweight(to_tsvector('english', content), 'B'),\n        to_tsquery('english', 'database')\n    ) AS rank\nFROM articles\nWHERE tsv @@ to_tsquery('english', 'database')\nORDER BY rank DESC;\n\n-- Phrase search\nSELECT * FROM articles\nWHERE tsv @@ to_tsquery('english', 'database <-> performance');\n\n-- MySQL full-text search\nALTER TABLE articles ADD FULLTEXT INDEX idx_content (title, content);\n\nSELECT * FROM articles\nWHERE MATCH(title, content) AGAINST('database performance' IN NATURAL LANGUAGE MODE);\n\nSELECT * FROM articles\nWHERE MATCH(title, content) AGAINST('database +performance' IN BOOLEAN MODE);\n\n-- Search with relevance\nSELECT \n    *, \n    MATCH(title, content) AGAINST('database performance') AS relevance\nFROM articles\nWHERE MATCH(title, content) AGAINST('database performance')\nORDER BY relevance DESC;\n\n-- Trigram similarity (PostgreSQL)\nCREATE EXTENSION pg_trgm;\nCREATE INDEX idx_articles_trgm ON articles USING GIN (title gin_trgm_ops);\n\nSELECT * FROM articles\nWHERE title % 'databas'; -- Fuzzy match\nSELECT similarity(title, 'databas') FROM articles;",
+    "explanation": "Full-text search enables powerful text searching. Use tsvector/tsquery for advanced features (ranking, highlighting). Consider dedicated search engines (Elasticsearch) for large-scale applications.",
+    "recallHint": "tsvector/tsquery (PostgreSQL), MATCH AGAINST (MySQL), ranking, highlighting.",
+    "practice": [
+      "Set up full-text search on articles.",
+      "Add ranking to search results.",
+      "Implement phrase search."
+    ]
+  },
+  {
+    "id": "sql-034",
+    "category": "sql",
+    "concept": "Database Design Best Practices",
+    "priority": "must-know",
+    "question": "What are the best practices for database design?",
+    "answer": "Best practices: proper normalization, meaningful naming, appropriate data types, primary/foreign keys, indexes on query columns, avoid NULLs, use constraints, document schema, and plan for growth.",
+    "code": "-- 1. Meaningful naming\n-- Bad: t1, c1, data\n-- Good: users, customers, order_items\n\nCREATE TABLE customers (\n    customer_id SERIAL PRIMARY KEY,\n    first_name VARCHAR(100) NOT NULL,\n    last_name VARCHAR(100) NOT NULL,\n    email VARCHAR(100) UNIQUE NOT NULL,\n    phone VARCHAR(20),\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);\n\n-- 2. Appropriate data types\n-- Use INT for IDs, DECIMAL for money, VARCHAR for text, TIMESTAMP for dates\n-- Bad: storing numbers as text\n-- Good: proper types\n\n-- 3. Primary keys\n-- Use surrogate keys (SERIAL/UUID) for most tables\n-- Natural keys only when guaranteed unique and stable\n\n-- 4. Foreign key constraints\nALTER TABLE orders \nADD CONSTRAINT fk_customer \nFOREIGN KEY (customer_id) REFERENCES customers(customer_id);\n\n-- 5. Index strategy\nCREATE INDEX idx_customers_email ON customers(email);\nCREATE INDEX idx_orders_customer_date ON orders(customer_id, order_date);\n\n-- 6. Avoid NULLs\n-- Use NOT NULL when possible\n-- Provide defaults\n-- Use NULL for truly optional data\n\n-- 7. Use CHECK constraints for data validation\nALTER TABLE orders \nADD CONSTRAINT positive_amount CHECK (total_amount > 0);\n\n-- 8. Regular normalization (3NF as standard)\n-- Denormalize only for performance when necessary\n\n-- 9. Soft delete pattern\nALTER TABLE customers ADD COLUMN deleted_at TIMESTAMP;\n-- Instead of DELETE, set deleted_at\n\n-- 10. Audit columns\nALTER TABLE customers \nADD COLUMN created_by VARCHAR(100),\nADD COLUMN updated_by VARCHAR(100);\n\n-- 11. Partition large tables by date\nCREATE TABLE orders_2024 PARTITION OF orders \nFOR VALUES FROM ('2024-01-01') TO ('2025-01-01');\n\n-- 12. Documentation\nCOMMENT ON TABLE customers IS 'Stores customer information';\nCOMMENT ON COLUMN customers.email IS 'Primary contact email, must be unique';\n\n-- 13. Versioning\n-- Use separate test/production environments\n-- Maintain migration scripts\n\n-- 14. Backup strategy\n-- Regular backups with point-in-time recovery\n\n-- 15. Monitoring setup\n-- Track query performance, connections, size growth\n\n-- 16. Naming conventions (consistent)\n-- Tables: plural (customers)\n-- Columns: singular (customer_id)\n-- Primary key: id or tablename_id\n-- Foreign key: referenced_tablename_id",
+    "explanation": "Good database design prevents problems and ensures scalability. Focus on data integrity, performance, and maintainability. Document decisions and plan for future growth.",
+    "recallHint": "Normalization, naming, data types, constraints, indexes, documentation.",
+    "practice": [
+      "Design a schema for an e-commerce app.",
+      "Apply best practices to an existing schema.",
+      "Document a database design."
+    ]
+  },
+  {
+    "id": "sql-035",
+    "category": "sql",
+    "concept": "SQL Injection Prevention",
+    "priority": "must-know",
+    "question": "How do you prevent SQL injection attacks?",
+    "answer": "Use parameterized queries/prepared statements, never concatenate user input, validate input, use ORM frameworks, and implement least privilege access.",
+    "code": "-- BAD: String concatenation (vulnerable)\n-- const query = `SELECT * FROM users WHERE email = '${userInput}'`;\n-- SELECT * FROM users WHERE email = '' OR '1'='1';\n\n-- GOOD: Parameterized queries (PostgreSQL)\nconst result = await client.query(\n    'SELECT * FROM users WHERE email = $1',\n    [userInput]\n);\n\n-- GOOD: Parameterized queries (MySQL)\nconst result = await mysql.query(\n    'SELECT * FROM users WHERE email = ?',\n    [userInput]\n);\n\n-- GOOD: Prepared statements\nconst stmt = await client.prepare('SELECT * FROM users WHERE email = $1');\nconst result = await stmt.execute([userInput]);\n\n-- GOOD: ORM (TypeORM, Sequelize, Prisma)\nconst user = await User.findOne({ where: { email: userInput } });\n\n-- BAD: Dynamic table/column names\n-- const query = `SELECT * FROM users ORDER BY ${userInput}`;\n\n-- GOOD: Whitelist validation for dynamic names\nconst allowedColumns = ['name', 'email', 'created_at'];\nconst orderBy = allowedColumns.includes(userInput) ? userInput : 'created_at';\nconst query = `SELECT * FROM users ORDER BY ${orderBy}`;\n\n-- BAD: Stored procedure with concatenation\nCREATE PROCEDURE get_user(VARCHAR user_input)\nAS $$\nBEGIN\n    EXECUTE 'SELECT * FROM users WHERE email = ''' || user_input || ''''; -- Vulnerable\nEND;\n\n-- GOOD: Stored procedure with parameters\nCREATE PROCEDURE get_user(email VARCHAR)\nAS $$\nBEGIN\n    SELECT * FROM users WHERE email = $1; -- Safe\nEND;\n\n-- Additional protections\n-- 1. Input validation\nfunction validateEmail(email) {\n    const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$/;\n    return emailRegex.test(email);\n}\n\n-- 2. Least privilege\n-- Create read-only user for reports\nCREATE USER reports_user WITH PASSWORD 'secure';\nGRANT SELECT ON ALL TABLES IN SCHEMA public TO reports_user;\n\n-- 3. Use database-specific escaping\n-- 4. Limit query result size\n-- 5. Use Web Application Firewall (WAF)\n\n-- Testing for vulnerabilities\n-- Input: ' OR '1'='1\n-- Input: '; DROP TABLE users; --\n-- Input: ' UNION SELECT * FROM users --",
+    "explanation": "SQL injection is a critical security vulnerability. Parameterized queries are the primary defense. Always validate input, use prepared statements, and apply least privilege principles.",
+    "recallHint": "Parameterized queries, prepared statements, input validation, least privilege.",
+    "practice": [
+      "Write a safe query with parameters.",
+      "Explain SQL injection risks.",
+      "Implement input validation."
+    ]
+  },
+  {
+    "id": "sql-036",
+    "category": "sql",
+    "concept": "Database Migration",
+    "priority": "important",
+    "question": "How do you manage database schema migrations?",
+    "answer": "Use migration tools (Flyway, Liquibase, Alembic) for version-controlled schema changes. Maintain up/down migrations, test migrations, and use CI/CD for automated deployment.",
+    "code": "-- Migration example (Flyway)\n-- V1__create_users_table.sql\nCREATE TABLE users (\n    id SERIAL PRIMARY KEY,\n    name VARCHAR(100),\n    email VARCHAR(100) UNIQUE\n);\n\n-- V2__add_password_to_users.sql\nALTER TABLE users ADD COLUMN password_hash VARCHAR(255);\n\n-- V3__create_orders_table.sql\nCREATE TABLE orders (\n    id SERIAL PRIMARY KEY,\n    user_id INT REFERENCES users(id),\n    amount DECIMAL(10,2),\n    status VARCHAR(50)\n);\n\n-- V4__add_created_at.sql\nALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;\nALTER TABLE orders ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;\n\n-- V5__add_indexes.sql\nCREATE INDEX idx_users_email ON users(email);\nCREATE INDEX idx_orders_user_id ON orders(user_id);\n\n-- V6__fix_constraints.sql\nALTER TABLE users ADD CONSTRAINT positive_id CHECK (id > 0);\n\n-- Migration with rollback (undo)\n-- U1__drop_users_table.sql\nDROP TABLE IF EXISTS users;\n\n-- Migration best practices\n-- 1. Every migration should be reversible\n-- 2. Test migrations on development environment\n-- 3. Use transactions for safety\n-- 4. Document breaking changes\n-- 5. Migrate during maintenance window\n\n-- Database migration tools\n-- Flyway: Java-based, supports multiple databases\n-- Liquibase: XML/YAML/JSON/SQL based\n-- Alembic: Python-based (SQLAlchemy)\n-- TypeORM Migrations: Node.js\n\n-- TypeORM migration example\n// npm run typeorm migration:create -n CreateUsersTable\n\n// 1234567890-CreateUsersTable.ts\nimport { MigrationInterface, QueryRunner } from \"typeorm\";\n\nexport class CreateUsersTable1234567890 implements MigrationInterface {\n    async up(queryRunner: QueryRunner): Promise<void> {\n        await queryRunner.query(`\n            CREATE TABLE users (\n                id SERIAL PRIMARY KEY,\n                name VARCHAR(100),\n                email VARCHAR(100) UNIQUE\n            )\n        `);\n    }\n    \n    async down(queryRunner: QueryRunner): Promise<void> {\n        await queryRunner.query(`DROP TABLE users`);\n    }\n}\n\n// Run migrations\n// npm run typeorm migration:run\n// npm run typeorm migration:revert",
+    "explanation": "Database migrations enable version control and automated deployment of schema changes. Always test migrations, have rollback plans, and use CI/CD for consistent deployments.",
+    "recallHint": "Version-controlled schema changes, up/down migrations, automated deployment.",
+    "practice": [
+      "Create a migration for a new table.",
+      "Add a column with a migration.",
+      "Write a rollback script."
+    ]
+  },
+  {
+    "id": "sql-037",
+    "category": "sql",
+    "concept": "Database Connection Pooling",
+    "priority": "important",
+    "question": "What is connection pooling and how does it work?",
+    "answer": "Connection pooling maintains a cache of database connections that can be reused across requests. It reduces connection overhead, improves performance, and prevents connection exhaustion.",
+    "code": "-- Node.js with pg-pool (PostgreSQL)\nconst { Pool } = require('pg');\n\nconst pool = new Pool({\n    host: 'localhost',\n    port: 5432,\n    database: 'myapp',\n    user: 'app_user',\n    password: 'secure_password',\n    max: 20, // Maximum connections in pool\n    idleTimeoutMillis: 30000, // Close idle connections after 30s\n    connectionTimeoutMillis: 2000 // Timeout for getting connection\n});\n\nasync function query(sql, params) {\n    const client = await pool.connect();\n    try {\n        const result = await client.query(sql, params);\n        return result.rows;\n    } finally {\n        client.release(); // Return connection to pool\n    }\n}\n\n-- Node.js with MySQL\nconst mysql = require('mysql2/promise');\n\nconst pool = mysql.createPool({\n    host: 'localhost',\n    user: 'app_user',\n    password: 'secure_password',\n    database: 'myapp',\n    waitForConnections: true,\n    connectionLimit: 20,\n    queueLimit: 0\n});\n\nasync function getUsers() {\n    const [rows] = await pool.query('SELECT * FROM users');\n    return rows;\n}\n\n-- Java with HikariCP\nHikariConfig config = new HikariConfig();\nconfig.setJdbcUrl(\"jdbc:postgresql://localhost:5432/myapp\");\nconfig.setUsername(\"app_user\");\nconfig.setPassword(\"secure_password\");\nconfig.setMaximumPoolSize(20);\nconfig.setIdleTimeout(300000); // 5 minutes\nconfig.setConnectionTimeout(30000); // 30 seconds\n\nHikariDataSource dataSource = new HikariDataSource(config);\n\n-- Python with SQLAlchemy\nfrom sqlalchemy import create_engine\nfrom sqlalchemy.pool import QueuePool\n\nengine = create_engine(\n    'postgresql://app_user:secure_password@localhost/myapp',\n    poolclass=QueuePool,\n    pool_size=20,\n    max_overflow=10,\n    pool_timeout=30,\n    pool_recycle=3600\n);\n\n-- Connection pool monitoring\nSELECT \n    pid,\n    usename,\n    application_name,\n    client_addr,\n    state,\n    query\nFROM pg_stat_activity;\n\n-- Pool metrics\n-- 1. Active connections\n-- 2. Idle connections\n-- 3. Wait time\n-- 4. Connection errors\n-- 5. Total requests\n\n-- Best practices\n-- 1. Pool size = (max concurrent users) * (avg connection time)\n-- 2. Monitor pool usage and adjust\n-- 3. Set timeouts to prevent hanging\n-- 4. Use connection pooling libraries\n-- 5. Test connection health (validation queries)",
+    "explanation": "Connection pooling is essential for production applications. It reduces latency, prevents resource exhaustion, and improves application performance. Monitor pool metrics and adjust configuration.",
+    "recallHint": "Reuse connections, reduce overhead, prevent exhaustion.",
+    "practice": [
+      "Configure connection pool in your language.",
+      "Monitor pool usage.",
+      "Explain pool size calculation."
+    ]
+  },
+  {
+    "id": "sql-038",
+    "category": "sql",
+    "concept": "Transaction Isolation Levels",
+    "priority": "important",
+    "question": "What are transaction isolation levels and when would you use each?",
+    "answer": "Isolation levels control visibility of changes between concurrent transactions: Read Uncommitted (dirty reads), Read Committed (no dirty reads), Repeatable Read (consistent reads), Serializable (full isolation).",
+    "code": "-- Read Uncommitted (lowest isolation)\n-- Can read uncommitted changes (dirty reads)\nSET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;\n\n-- Read Committed (default in PostgreSQL)\n-- Only reads committed data, no dirty reads\nSET TRANSACTION ISOLATION LEVEL READ COMMITTED;\n\n-- Repeatable Read\n-- Consistent snapshot, no non-repeatable reads\nSET TRANSACTION ISOLATION LEVEL REPEATABLE READ;\n\n-- Serializable (highest isolation)\n-- Fully isolated, prevents all anomalies\nSET TRANSACTION ISOLATION LEVEL SERIALIZABLE;\n\n-- Example: Anomaly scenarios\n-- Dirty Read: Read Uncommitted data\n-- Transaction A: UPDATE users SET balance = 100 WHERE id = 1\n-- Transaction B: SELECT balance FROM users WHERE id = 1 -- Sees 100 before commit\n\n-- Non-Repeatable Read: Same query returns different results\n-- Transaction A: SELECT * FROM users WHERE id = 1\n-- Transaction B: UPDATE users SET name = 'Jane' WHERE id = 1; COMMIT\n-- Transaction A: SELECT * FROM users WHERE id = 1 -- Different result\n\n-- Phantom Read: New rows appear\n-- Transaction A: SELECT * FROM users WHERE age > 18\n-- Transaction B: INSERT INTO users (age) VALUES (25); COMMIT\n-- Transaction A: SELECT * FROM users WHERE age > 18 -- New row appears\n\n-- PostgreSQL isolation levels\n-- DEFAULT: Read Committed\n-- Read Committed: No dirty reads, non-repeatable reads possible\n-- Repeatable Read: Consistent snapshots, phantom reads possible\n-- Serializable: Full isolation, may have serialization failures\n\n-- MySQL isolation levels\n-- DEFAULT: Repeatable Read\n-- READ COMMITTED: No dirty reads, lost updates possible\n-- REPEATABLE READ: Consistent reads, phantom reads possible\n-- SERIALIZABLE: Full isolation with locking\n\n-- Check current isolation level\nSHOW TRANSACTION ISOLATION LEVEL; -- PostgreSQL\nSELECT @@transaction_isolation; -- MySQL\n\n-- Use cases\n-- 1. Reporting: Read Committed (balance of performance)\n-- 2. Financial transactions: Serializable (data integrity)\n-- 3. Analytics: Read Uncommitted (acceptable with fresh data)\n-- 4. Shopping cart: Repeatable Read (consistent cart view)",
+    "explanation": "Higher isolation levels provide more consistency but can reduce performance and increase deadlocks. Choose the lowest level that meets your data consistency requirements.",
+    "recallHint": "Read Uncommitted < Read Committed < Repeatable Read < Serializable.",
+    "practice": [
+      "Explain each isolation level.",
+      "Choose appropriate level for different scenarios.",
+      "Handle serialization failures."
+    ]
+  },
+  {
+    "id": "sql-039",
+    "category": "sql",
+    "concept": "Database Deadlocks",
+    "priority": "important",
+    "question": "What are deadlocks and how do you resolve them?",
+    "answer": "Deadlocks occur when two or more transactions wait for each other indefinitely. Resolve by: consistent locking order, timeouts, retry logic, and reducing transaction duration.",
+    "code": "-- Example deadlock scenario\n-- Transaction 1\nBEGIN;\nUPDATE accounts SET balance = balance - 100 WHERE id = 1;\nUPDATE accounts SET balance = balance + 100 WHERE id = 2;\nCOMMIT;\n\n-- Transaction 2 (runs concurrently)\nBEGIN;\nUPDATE accounts SET balance = balance + 100 WHERE id = 2;\nUPDATE accounts SET balance = balance - 100 WHERE id = 1;\nCOMMIT;\n\n-- Deadlock occurs when:\n-- T1 locks account 1, waits for account 2\n-- T2 locks account 2, waits for account 1\n\n-- Fix: Consistent locking order\n-- Always update account 1 before account 2\n-- T1: UPDATE account 1, then account 2\n-- T2: UPDATE account 1, then account 2\n\n-- Detect deadlocks\n-- PostgreSQL: Deadlocks logged\n-- SET log_lock_waits = on;\n\n-- Prevent deadlocks\n-- 1. Access tables in consistent order\n-- 2. Keep transactions short\n-- 3. Use lower isolation levels\n-- 4. Use advisory locks\n\n-- PostgreSQL advisory locks\nSELECT pg_advisory_lock(1); -- Lock with application-defined ID\nSELECT pg_advisory_unlock(1);\n\n-- Lock timeout\nSET lock_timeout = '5s';\nSET statement_timeout = '10s';\n\n-- Retry logic (application)\nconst maxRetries = 3;\nfor (let i = 0; i < maxRetries; i++) {\n    try {\n        await client.query('BEGIN');\n        await client.query('UPDATE ...');\n        await client.query('UPDATE ...');\n        await client.query('COMMIT');\n        break;\n    } catch (err) {\n        await client.query('ROLLBACK');\n        if (err.message.includes('deadlock') && i < maxRetries - 1) {\n            await sleep(Math.pow(2, i) * 100); // Exponential backoff\n            continue;\n        }\n        throw err;\n    }\n}\n\n-- Monitor lock contention\nSELECT \n    blocked_locks.pid AS blocked_pid,\n    blocking_locks.pid AS blocking_pid,\n    blocked_activity.query AS blocked_query,\n    blocking_activity.query AS blocking_query\nFROM pg_locks blocked_locks\nJOIN pg_stat_activity blocked_activity ON blocked_locks.pid = blocked_activity.pid\nJOIN pg_locks blocking_locks ON blocked_locks.locktype = blocking_locks.locktype\nJOIN pg_stat_activity blocking_activity ON blocking_locks.pid = blocking_activity.pid\nWHERE NOT blocked_locks.granted;\n\n-- Kill blocking transaction\nSELECT pg_terminate_backend(pid);",
+    "explanation": "Deadlocks are a fact of life in concurrent systems. Design transactions to minimize lock contention, use retry logic with exponential backoff, and monitor for deadlocks in production.",
+    "recallHint": "Consistent locking order, short transactions, retry with backoff.",
+    "practice": [
+      "Explain how deadlocks occur.",
+      "Implement retry logic for deadlocks.",
+      "Monitor lock contention."
+    ]
+  },
+  {
+    "id": "sql-040",
+    "category": "sql",
+    "concept": "Data Types - Advanced",
+    "priority": "important",
+    "question": "What are advanced data types in SQL?",
+    "answer": "Advanced data types include: JSON/JSONB (PostgreSQL), arrays, range types, geometric types, UUID, HSTORE (key-value), and custom types. They enable flexible data modeling.",
+    "code": "-- PostgreSQL arrays\nCREATE TABLE products (\n    id SERIAL PRIMARY KEY,\n    name TEXT,\n    tags TEXT[] -- Array of text\n);\n\nINSERT INTO products (name, tags) \nVALUES ('Laptop', ARRAY['electronics', 'computers', 'portable']);\n\nSELECT * FROM products WHERE 'electronics' = ANY(tags);\nSELECT * FROM products WHERE tags @> ARRAY['electronics', 'computers'];\nSELECT * FROM products WHERE tags && ARRAY['electronics', 'computers'];\n\n-- Range types\nCREATE TABLE events (\n    id SERIAL PRIMARY KEY,\n    name TEXT,\n    duration TSRANGE -- Time range\n);\n\nINSERT INTO events (name, duration) \nVALUES ('Conference', '[2024-01-01 09:00, 2024-01-01 17:00)');\n\nSELECT * FROM events WHERE duration @> '2024-01-01 12:00'::timestamp;\nSELECT * FROM events WHERE duration && '[2024-01-01 10:00, 2024-01-01 14:00)'::tsrange;\n\n-- UUID\nCREATE TABLE users (\n    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    name TEXT\n);\n\n-- Geometric types\nCREATE TABLE locations (\n    id SERIAL PRIMARY KEY,\n    name TEXT,\n    position POINT,\n    polygon POLYGON\n);\n\nINSERT INTO locations (name, position) \nVALUES ('Home', POINT(40.7128, -74.0060));\n\nSELECT * FROM locations \nWHERE position <@> POINT(40.7128, -74.0060) < 1000; -- Distance in miles\n\n-- HSTORE (key-value)\nCREATE EXTENSION hstore;\n\nCREATE TABLE settings (\n    user_id INT,\n    preferences HSTORE\n);\n\nINSERT INTO settings (user_id, preferences) \nVALUES (1, 'theme => dark, notifications => true, language => en');\n\nSELECT preferences->'theme' AS theme FROM settings;\n\n-- Custom types (ENUM)\nCREATE TYPE user_status AS ENUM ('active', 'inactive', 'pending', 'suspended');\n\nCREATE TABLE users (\n    id SERIAL PRIMARY KEY,\n    name TEXT,\n    status user_status\n);\n\n-- Custom composite type\nCREATE TYPE address AS (\n    street TEXT,\n    city TEXT,\n    state TEXT,\n    zip TEXT\n);\n\nCREATE TABLE customers (\n    id SERIAL PRIMARY KEY,\n    name TEXT,\n    mailing_address address\n);\n\n-- JSONB indexing\nCREATE INDEX idx_users_metadata ON users USING GIN (metadata);\nCREATE INDEX idx_users_age ON users ((metadata->>'age'));\n\n-- JSONB constraints\nCREATE TABLE users (\n    id SERIAL PRIMARY KEY,\n    metadata JSONB,\n    CHECK (metadata ? 'email')\n);",
+    "explanation": "Advanced data types enable sophisticated data modeling. JSONB is flexible for semi-structured data. Arrays and ranges simplify complex queries. Choose the right type for your use case.",
+    "recallHint": "JSONB, arrays, ranges, UUID, ENUM, custom types.",
+    "practice": [
+      "Use JSONB for flexible data.",
+      "Use arrays for tags.",
+      "Create a custom ENUM type."
+    ]
+  },
+  {
+    "id": "sql-041",
+    "category": "sql",
+    "concept": "Explain Plan Analysis",
+    "priority": "advanced",
+    "question": "How do you analyze and optimize a query plan?",
+    "answer": "Use EXPLAIN ANALYZE to get actual execution plan. Look for sequential scans, expensive joins, and high estimated rows. Analyze cost, rows, and actual timing.",
+    "code": "-- Basic EXPLAIN\nEXPLAIN SELECT * FROM users WHERE email = 'john@example.com';\n\n-- With actual execution (PostgreSQL)\nEXPLAIN (ANALYZE, BUFFERS, TIMING, FORMAT JSON)\nSELECT * FROM users u\nJOIN orders o ON u.id = o.user_id\nWHERE u.status = 'active'\n  AND o.created_at > '2024-01-01'\nGROUP BY u.id, u.name\nHAVING COUNT(o.id) > 5;\n\n-- Output interpretation\n-- Seq Scan on users: cost=0.00..123.45 rows=1000 width=72\n--   Filter: (status = 'active')\n-- Hash Join: cost=123.45..456.78 rows=500 width=120\n--   Hash Cond: (o.user_id = u.id)\n\n-- Cost units: cost=startup..total\n-- Startup: cost before first row\n-- Total: total cost to complete\n-- Actual rows vs estimated rows\n\n-- Common issues\n-- 1. Seq Scan on large tables (missing index)\n-- 2. Large difference between estimated and actual rows (stale statistics)\n-- 3. Hash Join with large hash tables\n-- 4. Nested Loop with large datasets\n\n-- Fixes\n-- 1. Create indexes\nCREATE INDEX idx_users_status ON users(status);\nCREATE INDEX idx_orders_user_created ON orders(user_id, created_at);\n\n-- 2. Update statistics\nANALYZE users;\nANALYZE orders;\n\n-- 3. Rewrite query\n-- Use EXISTS instead of LEFT JOIN when checking existence\n-- Use UNION ALL instead of UNION when duplicates acceptable\n\n-- 4. Tune configuration\nSET work_mem = '64MB'; -- For hash joins\nSET enable_seqscan = false; -- Force index scan (testing only)\n\n-- 5. Use partitioned tables\n-- 6. Materialize expensive subqueries (CTE materialization)\n\n-- Analyzing with pg_stat_statements\nSELECT \n    query,\n    calls,\n    total_time,\n    mean_time,\n    rows,\n    100.0 * shared_blks_hit / nullif(shared_blks_hit + shared_blks_read, 0) AS cache_hit_ratio\nFROM pg_stat_statements\nORDER BY mean_time DESC\nLIMIT 10;\n\n-- Index recommendations\nSELECT \n    schemaname,\n    tablename,\n    seq_scan,\n    seq_tup_read,\n    idx_scan,\n    idx_tup_fetch\nFROM pg_stat_user_tables\nWHERE seq_scan > 0\nORDER BY seq_scan DESC;",
+    "explanation": "Reading execution plans is crucial for performance optimization. Focus on the most expensive operations first. Use ANALYZE for accurate statistics. Test changes in a staging environment.",
+    "recallHint": "EXPLAIN ANALYZE, cost, rows, sequential scans, indexes.",
+    "practice": [
+      "Analyze a query plan for a slow query.",
+      "Identify a missing index.",
+      "Use pg_stat_statements for performance monitoring."
+    ]
+  },
+  {
+    "id": "sql-042",
+    "category": "sql",
+    "concept": "Database Security",
+    "priority": "must-know",
+    "question": "What are database security best practices?",
+    "answer": "Best practices: least privilege, strong passwords, network isolation, encryption, audit logging, regular patching, secure backups, and SQL injection prevention.",
+    "code": "-- 1. Least privilege\n-- Create specific roles\nCREATE ROLE read_only;\nCREATE ROLE read_write;\n\n-- Grant minimal permissions\nGRANT CONNECT ON DATABASE myapp TO read_only;\nGRANT USAGE ON SCHEMA public TO read_only;\nGRANT SELECT ON ALL TABLES IN SCHEMA public TO read_only;\n\n-- For read-write\nGRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO read_write;\nGRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO read_write;\n\n-- 2. Strong passwords\n-- Use password encryption\nALTER USER app_user WITH PASSWORD 'complex_password_123';\n-- Use SCRAM-SHA-256 (PostgreSQL 14+)\nSET password_encryption = 'scram-sha-256';\n\n-- 3. Network security\n-- Bind to localhost\nlisten_addresses = 'localhost'\n-- Or specific interface\nlisten_addresses = '10.0.0.1'\n\n-- 4. SSL/TLS encryption\nssl = on\nssl_cert_file = 'server.crt'\nssl_key_file = 'server.key'\n\n-- Force SSL for connections\nhostssl all all 0.0.0.0/0 md5\n\n-- 5. Audit logging\nlog_statement = 'ddl' -- Log schema changes\nlog_connections = on\nlog_disconnections = on\nlog_duration = on\n\n-- 6. Database auditing\n-- Create audit trigger (as shown in trigger section)\n\n-- 7. Row-level security (PostgreSQL)\nALTER TABLE users ENABLE ROW LEVEL SECURITY;\n\nCREATE POLICY user_isolation ON users\nUSING (id = current_setting('app.current_user_id')::INT);\n\n-- 8. Secure backups\n-- Encrypt backups\npg_dump mydb | gpg --encrypt --recipient backup@example.com > mydb.sql.gpg\n\n-- 9. Regular vulnerability scanning\n-- 10. Patch management\n-- 11. Remove unused extensions\nDROP EXTENSION IF EXISTS unused_extension;\n\n-- 12. Monitor failed login attempts\nSELECT \n    usename,\n    application_name,\n    client_addr,\n    state\nFROM pg_stat_activity\nWHERE state = 'idle in transaction'\n  AND usename != 'postgres';\n\n-- 13. Password expiration\nALTER USER app_user VALID UNTIL '2025-01-01';\n\n-- 14. Database permissions review\nSELECT \n    grantee,\n    privilege_type,\n    table_name\nFROM information_schema.table_privileges\nWHERE grantee != 'postgres'\nORDER BY grantee, table_name;",
+    "explanation": "Database security requires a defense-in-depth approach. Implement multiple layers: network security, strong authentication, least privilege, encryption, and monitoring.",
+    "recallHint": "Least privilege, strong passwords, SSL, audit logging, row-level security.",
+    "practice": [
+      "Create read-only and read-write roles.",
+      "Enable SSL/TLS encryption.",
+      "Set up audit logging."
+    ]
+  },
+  {
+    "id": "sql-043",
+    "category": "sql",
+    "concept": "Backup and Recovery",
+    "priority": "must-know",
+    "question": "What are database backup and recovery strategies?",
+    "answer": "Strategies include: full backups, incremental backups, point-in-time recovery (PITR), binary logs/WAL archiving, and testing recovery procedures regularly.",
+    "code": "-- PostgreSQL backup strategies\n\n-- 1. Full backup with pg_dump\npg_dump -h localhost -U postgres -d mydb > mydb_$(date +%Y%m%d).sql\n\n-- 2. Compressed backup\npg_dump -h localhost -U postgres -d mydb | gzip > mydb_$(date +%Y%m%d).sql.gz\n\n-- 3. Custom format (parallel restore)\npg_dump -h localhost -U postgres -d mydb -Fc -f mydb.dump\n\n-- 4. Directory format (parallel dump)\npg_dump -h localhost -U postgres -d mydb -Fd -f backup_dir/\n\n-- 5. Database-only backup (no schema)\npg_dump -h localhost -U postgres -d mydb --data-only > data.sql\n\n-- 6. Schema-only backup\npg_dump -h localhost -U postgres -d mydb --schema-only > schema.sql\n\n-- 7. WAL archiving (Point-in-time recovery)\n-- postgresql.conf\narchive_mode = on\narchive_command = 'cp %p /archive/%f'\nwal_level = replica\n\n-- 8. Base backup with WAL (hot standby)\n# Create base backup\npg_basebackup -h localhost -D /var/lib/postgresql/backup -U postgres\n\n# Restore Point-in-time\n# 1. Stop database\n# 2. Restore base backup\n# 3. Configure recovery.conf\nrestore_command = 'cp /archive/%f %p'\nrecovery_target_time = '2024-01-01 12:00:00'\n\n# 4. Start database\n\n-- MySQL backup strategies\n-- 1. MySQL dump\nmysqldump -u root -p mydb > mydb_$(date +%Y%m%d).sql\n\n-- 2. All databases\nmysqldump -u root -p --all-databases > all_dbs.sql\n\n-- 3. Binary log backup (PITR)\n-- Enable binary logging\n[mysqld]\nlog-bin=mysql-bin\nserver-id=1\n\n-- 4. Incremental backup (binary logs)\nmysqlbinlog mysql-bin.000001 > incremental.sql\n\n-- 5. Restore\nmysql -u root -p mydb < mydb_backup.sql\n\n-- Backup testing\n-- 1. Test restore on non-production environment\n-- 2. Verify data integrity\n-- 3. Test recovery time\n\n-- Backup strategy: 3-2-1 rule\n-- 3 copies of data\n-- 2 different media\n-- 1 off-site copy\n\n-- Automated backup script (cron)\n#!/bin/bash\nBACKUP_DIR=/backup/postgres\nDATE=$(date +%Y%m%d_%H%M%S)\n\n# Full backup\npg_dump -h localhost -U postgres -d mydb | gzip > $BACKUP_DIR/mydb_$DATE.sql.gz\n\n# Cleanup old backups (keep 30 days)\nfind $BACKUP_DIR -name \"*.sql.gz\" -mtime +30 -delete\n\n# Verify backup\ngunzip -t $BACKUP_DIR/mydb_$DATE.sql.gz\n\n# Email notification\necho \"Backup completed: $DATE\" | mail -s \"Database Backup\" admin@example.com",
+    "explanation": "Regular backups are essential for disaster recovery. Test recovery procedures regularly. Use the 3-2-1 backup strategy and implement monitoring for backup failures.",
+    "recallHint": "Full + incremental backups, WAL archiving, test recovery regularly.",
+    "practice": [
+      "Create a backup script.",
+      "Test a restore process.",
+      "Set up WAL archiving."
+    ]
+  },
+  {
+    "id": "sql-044",
+    "category": "sql",
+    "concept": "Database Index Types",
+    "priority": "important",
+    "question": "What are the different types of database indexes and when to use each?",
+    "answer": "Index types: B-tree (default, equality/range), Hash (equality only), GiST (geospatial), GIN (full-text/JSON), BRIN (large tables), and Partial (conditional).",
+    "code": "-- B-tree index (default, most common)\nCREATE INDEX idx_users_email ON users(email);\n-- Good for: =, >, <, >=, <=, BETWEEN, LIKE (without leading %)\n\n-- Hash index (PostgreSQL)\nCREATE INDEX idx_users_email_hash ON users USING HASH(email);\n-- Good for: = only, faster for equality\n-- Bad for: range queries, sorting\n\n-- GiST index (geospatial, full-text, range)\nCREATE EXTENSION btree_gist;\nCREATE INDEX idx_events_duration ON events USING GIST(duration);\n-- Good for: overlap, contains, intersects\n-- Geospatial: points, polygons\n\n-- GIN index (full-text, JSON, arrays)\nCREATE INDEX idx_articles_tsv ON articles USING GIN(to_tsvector('english', content));\nCREATE INDEX idx_users_metadata ON users USING GIN(metadata);\n-- Good for: array containment, full-text search, JSON queries\n-- Bad for: many writes (slower updates)\n\n-- BRIN index (large tables, ordered data)\nCREATE INDEX idx_orders_created ON orders USING BRIN(created_at);\n-- Good for: very large tables, where blocks are physically sorted\n-- Bad for: random data distribution\n\n-- Partial index (condition)\nCREATE INDEX idx_active_users ON users(email) WHERE status = 'active';\n-- Good for: filtering on common values, reducing index size\n\n-- Covering index (INCLUDE columns)\nCREATE INDEX idx_orders_user_status ON orders(user_id, status) INCLUDE (amount, created_at);\n-- Good for: queries that need data from index without table access\n\n-- Composite index (multi-column)\nCREATE INDEX idx_users_city_status ON users(city, status);\n-- Column order matters: most selective first\n-- Can use: city = 'NYC' AND status = 'active'\n-- Can use: city = 'NYC'\n-- Cannot use: status = 'active' (skips first column)\n\n-- Filter index with where clause\nCREATE INDEX idx_orders_large ON orders(amount) WHERE amount > 1000;\n\n-- Functional index (PostgreSQL)\nCREATE INDEX idx_users_lower_email ON users(LOWER(email));\nSELECT * FROM users WHERE LOWER(email) = 'john@example.com';\n\n-- Compare index types\n-- B-tree: Best overall, supports range queries\n-- Hash: Fastest for equality, no range\n-- GIN: Best for full-text and JSON\n-- GiST: Best for geospatial\n-- BRIN: Best for very large tables with sequential data",
+    "explanation": "Choose the right index type based on your query patterns. B-tree is usually best for most use cases. GIN for text and JSON, GiST for geospatial, BRIN for huge tables.",
+    "recallHint": "B-tree = general, Hash = equality, GIN = text/JSON, GiST = spatial, BRIN = large tables.",
+    "practice": [
+      "Choose the right index for a query.",
+      "Create a partial index.",
+      "Explain when to use each index type."
+    ]
+  },
+  {
+    "id": "sql-045",
+    "category": "sql",
+    "concept": "Query Rewriting",
+    "priority": "advanced",
+    "question": "How do you rewrite queries for better performance?",
+    "answer": "Rewrite queries by: using EXISTS instead of IN, avoiding functions in WHERE, using UNION ALL instead of UNION, using CTEs for readability, and avoiding SELECT *.",
+    "code": "-- 1. EXISTS vs IN\n-- Bad: IN subquery\nSELECT * FROM users\nWHERE id IN (SELECT user_id FROM orders WHERE amount > 1000);\n\n-- Good: EXISTS (stops at first match)\nSELECT * FROM users u\nWHERE EXISTS (SELECT 1 FROM orders o WHERE o.user_id = u.id AND o.amount > 1000);\n\n-- 2. UNION vs UNION ALL\n-- Bad: UNION (deduplicates, slower)\nSELECT name FROM users WHERE city = 'NYC'\nUNION\nSELECT name FROM users WHERE city = 'LA';\n\n-- Good: UNION ALL (faster, no dedupe)\nSELECT name FROM users WHERE city = 'NYC'\nUNION ALL\nSELECT name FROM users WHERE city = 'LA';\n\n-- 3. Avoid functions in WHERE (index usage)\n-- Bad: Function on column\nSELECT * FROM orders WHERE DATE(created_at) = '2024-01-01';\n\n-- Good: Range query\nSELECT * FROM orders WHERE created_at >= '2024-01-01' AND created_at < '2024-01-02';\n\n-- 4. Avoid OR when possible\n-- Bad: OR condition\nSELECT * FROM users WHERE city = 'NYC' OR city = 'LA';\n\n-- Good: IN\nSELECT * FROM users WHERE city IN ('NYC', 'LA');\n\n-- Or: UNION ALL\nSELECT * FROM users WHERE city = 'NYC'\nUNION ALL\nSELECT * FROM users WHERE city = 'LA';\n\n-- 5. Use CTEs for complex queries\n-- Bad: Nested subqueries\nSELECT * FROM (\n    SELECT *, ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at DESC) AS rn\n    FROM orders\n) ranked\nWHERE rn = 1;\n\n-- Good: CTE\nWITH ranked_orders AS (\n    SELECT *, ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at DESC) AS rn\n    FROM orders\n)\nSELECT * FROM ranked_orders WHERE rn = 1;\n\n-- 6. Avoid SELECT *\n-- Bad: SELECT *\nSELECT * FROM users u\nJOIN orders o ON u.id = o.user_id;\n\n-- Good: Specific columns\nSELECT u.id, u.name, o.amount, o.status\nFROM users u\nJOIN orders o ON u.id = o.user_id;\n\n-- 7. Use COUNT(*) vs COUNT(column)\n-- COUNT(*) and COUNT(1) are fastest (counts rows)\n-- COUNT(column) counts non-null values (slower)\n\n-- 8. Use LIMIT for testing\n-- Add LIMIT 10 to test queries before running on full dataset\n\n-- 9. Use batch operations\n-- Bad: Multiple queries\nINSERT INTO logs (user_id, action) VALUES (1, 'login');\nINSERT INTO logs (user_id, action) VALUES (2, 'login');\n\n-- Good: Bulk insert\nINSERT INTO logs (user_id, action) VALUES \n    (1, 'login'),\n    (2, 'login');\n\n-- 10. Avoid correlated subqueries when possible\n-- Bad: Correlated subquery\nSELECT \n    u.*,\n    (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) AS order_count\nFROM users u;\n\n-- Good: JOIN with GROUP BY\nSELECT \n    u.*,\n    COUNT(o.id) AS order_count\nFROM users u\nLEFT JOIN orders o ON u.id = o.user_id\nGROUP BY u.id;",
+    "explanation": "Query rewriting can dramatically improve performance. Focus on index usage, eliminating unnecessary work, and writing clear, maintainable queries.",
+    "recallHint": "EXISTS > IN, UNION ALL > UNION, avoid functions, specific columns.",
+    "practice": [
+      "Rewrite a slow query with EXISTS.",
+      "Replace UNION with UNION ALL.",
+      "Use CTEs for complex queries."
+    ]
+  },
+  {
+    "id": "sql-046",
+    "category": "sql",
+    "concept": "Database Partitioning",
+    "priority": "advanced",
+    "question": "What is database partitioning and what are the different types?",
+    "answer": "Partitioning splits large tables into smaller pieces based on a partition key. Types: Range (by date), List (by value), Hash (by hash of key), and Composite (multiple keys).",
+    "code": "-- PostgreSQL range partitioning\nCREATE TABLE orders (\n    id SERIAL,\n    order_date DATE,\n    user_id INT,\n    amount DECIMAL,\n    PRIMARY KEY (id, order_date)\n) PARTITION BY RANGE (order_date);\n\n-- Create partitions for each year\nCREATE TABLE orders_2023 PARTITION OF orders\nFOR VALUES FROM ('2023-01-01') TO ('2024-01-01');\n\nCREATE TABLE orders_2024 PARTITION OF orders\nFOR VALUES FROM ('2024-01-01') TO ('2025-01-01');\n\nCREATE TABLE orders_2025 PARTITION OF orders\nFOR VALUES FROM ('2025-01-01') TO ('2026-01-01');\n\n-- List partitioning\nCREATE TABLE products (\n    id SERIAL,\n    name TEXT,\n    category TEXT\n) PARTITION BY LIST (category);\n\nCREATE TABLE products_electronics PARTITION OF products\nFOR VALUES IN ('electronics', 'computers');\n\nCREATE TABLE products_clothing PARTITION OF products\nFOR VALUES IN ('clothing', 'shoes');\n\n-- Hash partitioning\nCREATE TABLE users (\n    id SERIAL,\n    name TEXT,\n    email TEXT\n) PARTITION BY HASH (id);\n\nCREATE TABLE users_0 PARTITION OF users\nFOR VALUES WITH (MODULUS 4, REMAINDER 0);\n\nCREATE TABLE users_1 PARTITION OF users\nFOR VALUES WITH (MODULUS 4, REMAINDER 1);\n\n-- Query partition maintenance\n-- Attach partition\nALTER TABLE orders ATTACH PARTITION orders_2026\nFOR VALUES FROM ('2026-01-01') TO ('2027-01-01');\n\n-- Detach partition\nALTER TABLE orders DETACH PARTITION orders_2023;\n\n-- Drop old partitions\nDROP TABLE orders_2023;\n\n-- PostgreSQL: Partition pruning\nEXPLAIN SELECT * FROM orders WHERE order_date BETWEEN '2024-01-01' AND '2024-12-31';\n-- Only queries relevant partitions\n\n-- MySQL partitioning\nCREATE TABLE orders (\n    id INT,\n    order_date DATE,\n    amount DECIMAL\n) PARTITION BY RANGE (YEAR(order_date)) (\n    PARTITION p2023 VALUES LESS THAN (2024),\n    PARTITION p2024 VALUES LESS THAN (2025),\n    PARTITION p2025 VALUES LESS THAN (2026),\n    PARTITION p_future VALUES LESS THAN MAXVALUE\n);\n\n-- Benefits\n-- 1. Improved query performance (partition pruning)\n-- 2. Easier maintenance (drop old partitions)\n-- 3. Better load balancing\n-- 4. Simplified archiving\n\n-- When to use partitioning\n-- 1. Tables > 100GB\n-- 2. Time-series data\n-- 3. Data with natural partitions (dates, categories)\n-- 4. Need for data retention policies",
+    "explanation": "Partitioning improves performance and manageability for large tables. Choose the right partition key based on query patterns. Use range partitioning for time-series data.",
+    "recallHint": "Range (dates), List (categories), Hash (distribution).",
+    "practice": [
+      "Create a partitioned table by date.",
+      "Add a new partition for the next year.",
+      "Drop an old partition."
+    ]
+  },
+  {
+    "id": "sql-047",
+    "category": "sql",
+    "concept": "Database Views - Advanced",
+    "priority": "advanced",
+    "question": "What are updatable views and materialized view refresh strategies?",
+    "answer": "Updatable views allow INSERT/UPDATE/DELETE on simple views. Materialized views can be refreshed: FULL (complete rebuild) or INCREMENTAL (fast refresh with triggers).",
+    "code": "-- Updatable view requirements\n-- 1. Single table in FROM\n-- 2. No DISTINCT, GROUP BY, HAVING\n-- 3. No set operations (UNION)\n-- 4. No window functions\n\nCREATE VIEW active_users AS\nSELECT id, name, email, status\nFROM users\nWHERE status = 'active';\n\n-- This view is updatable\nINSERT INTO active_users (id, name, email, status) \nVALUES (100, 'John', 'john@email.com', 'active');\n\nUPDATE active_users SET email = 'john.new@email.com' WHERE id = 100;\nDELETE FROM active_users WHERE id = 100;\n\n-- INSTEAD OF triggers for non-updatable views\nCREATE VIEW user_summary AS\nSELECT \n    u.id,\n    u.name,\n    COUNT(o.id) AS order_count\nFROM users u\nLEFT JOIN orders o ON u.id = o.user_id\nGROUP BY u.id, u.name;\n\nCREATE OR REPLACE FUNCTION update_user_summary()\nRETURNS TRIGGER\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    IF TG_OP = 'INSERT' THEN\n        -- Handle insert\n        RETURN NEW;\n    ELSIF TG_OP = 'UPDATE' THEN\n        -- Handle update\n        UPDATE users SET name = NEW.name WHERE id = NEW.id;\n        RETURN NEW;\n    ELSIF TG_OP = 'DELETE' THEN\n        -- Handle delete\n        DELETE FROM users WHERE id = OLD.id;\n        RETURN OLD;\n    END IF;\nEND;\n$$;\n\nCREATE TRIGGER update_user_summary\nINSTEAD OF INSERT OR UPDATE OR DELETE ON user_summary\nFOR EACH ROW EXECUTE FUNCTION update_user_summary();\n\n-- Materialized view refresh\nCREATE MATERIALIZED VIEW monthly_sales AS\nSELECT \n    DATE_TRUNC('month', order_date) AS month,\n    SUM(amount) AS total_sales,\n    COUNT(*) AS order_count\nFROM orders\nGROUP BY DATE_TRUNC('month', order_date);\n\n-- Full refresh (default)\nREFRESH MATERIALIZED VIEW monthly_sales;\n\n-- Concurrent refresh (PostgreSQL)\nREFRESH MATERIALIZED VIEW CONCURRENTLY monthly_sales;\n\n-- PostgreSQL: Incremental refresh (with triggers)\nCREATE OR REPLACE FUNCTION refresh_monthly_sales()\nRETURNS TRIGGER\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    REFRESH MATERIALIZED VIEW CONCURRENTLY monthly_sales;\n    RETURN NULL;\nEND;\n$$;\n\nCREATE TRIGGER refresh_sales_after_order\nAFTER INSERT OR UPDATE OR DELETE ON orders\nFOR EACH STATEMENT\nEXECUTE FUNCTION refresh_monthly_sales();\n\n-- Refresh strategies\n-- 1. Manual: On-demand refresh\n-- 2. Scheduled: Cron job\n-- 3. Trigger: On data change (overhead)\n-- 4. Hybrid: Incremental + batch\n\n-- Materialized view with indexes\nCREATE INDEX idx_monthly_sales_month ON monthly_sales(month);\n\n-- Performance tips\n-- 1. Use CONCURRENTLY for minimal locking\n-- 2. Schedule refresh during low-traffic hours\n-- 3. Consider incremental refresh for large datasets\n-- 4. Monitor refresh performance",
+    "explanation": "Updatable views simplify data manipulation. Materialized views improve performance for expensive queries. Choose refresh strategy based on data freshness requirements.",
+    "recallHint": "Simple views = updatable, complex views = INSTEAD OF triggers, materialized = stored results.",
+    "practice": [
+      "Create an updatable view.",
+      "Create an INSTEAD OF trigger for a view.",
+      "Implement materialized view with scheduled refresh."
+    ]
+  },
+  {
+    "id": "sql-048",
+    "category": "sql",
+    "concept": "Database Monitoring Tools",
+    "priority": "advanced",
+    "question": "What tools do you use for database monitoring?",
+    "answer": "Tools include: pgAdmin (PostgreSQL), MySQL Workbench, DataGrip, DBeaver, Prometheus + Grafana (metrics), pgBadger (log analysis), and APM tools for application-level monitoring.",
+    "code": "-- PostgreSQL monitoring setup\n-- 1. pg_stat_statements\nCREATE EXTENSION IF NOT EXISTS pg_stat_statements;\n\nSELECT \n    query,\n    calls,\n    total_time,\n    mean_time,\n    rows,\n    100.0 * shared_blks_hit / nullif(shared_blks_hit + shared_blks_read, 0) AS cache_hit_ratio\nFROM pg_stat_statements\nWHERE calls > 100\nORDER BY mean_time DESC\nLIMIT 20;\n\n-- 2. pg_stat_activity (active queries)\nSELECT \n    pid,\n    usename,\n    application_name,\n    client_addr,\n    state,\n    wait_event,\n    wait_event_type,\n    NOW() - query_start AS duration,\n    query\nFROM pg_stat_activity\nWHERE state = 'active'\nORDER BY duration DESC;\n\n-- 3. Database metrics\nSELECT \n    (SELECT count(*) FROM pg_stat_activity) AS connections,\n    (SELECT count(*) FROM pg_stat_activity WHERE state = 'active') AS active_connections,\n    pg_database_size(current_database()) / 1024 / 1024 AS size_mb,\n    (SELECT count(*) FROM pg_stat_user_tables) AS table_count,\n    (SELECT count(*) FROM pg_stat_user_indexes) AS index_count;\n\n-- 4. Table statistics\nSELECT \n    schemaname,\n    tablename,\n    seq_scan,\n    seq_tup_read,\n    idx_scan,\n    idx_tup_fetch,\n    n_tup_ins,\n    n_tup_upd,\n    n_tup_del,\n    n_live_tup,\n    n_dead_tup\nFROM pg_stat_user_tables\nORDER BY seq_scan DESC;\n\n-- 5. Log analysis with pgbadger\n-- pgbadger -o report.html postgresql.log\n\n-- 6. Prometheus exporter\n-- Install postgres_exporter\n\n-- 7. Grafana dashboards\n-- Pre-built dashboards available for PostgreSQL\n\n-- MySQL monitoring\n-- 1. Performance Schema\nSELECT \n    DIGEST_TEXT,\n    COUNT_STAR,\n    AVG_TIMER_WAIT,\n    MAX_TIMER_WAIT\nFROM performance_schema.events_statements_summary_by_digest\nORDER BY AVG_TIMER_WAIT DESC\nLIMIT 20;\n\n-- 2. Server status\nSHOW STATUS;\nSHOW VARIABLES;\n\n-- 3. MySQL Workbench dashboards\n\n-- Monitoring metrics\n-- 1. Query performance (slow queries, average duration)\n-- 2. Connections (total, active, idle)\n-- 3. Resource usage (CPU, memory, disk I/O)\n-- 4. Replication lag\n-- 5. Lock contention\n-- 6. Buffer cache hit ratio\n-- 7. Table/index usage\n-- 8. Size growth\n\n-- Alert thresholds\n-- 1. Connection count > 80% of max\n-- 2. Query duration > 1s\n-- 3. Replication lag > 1 minute\n-- 4. Cache hit ratio < 95%\n-- 5. Disk space < 20%\n-- 6. Deadlocks detected",
+    "explanation": "Comprehensive monitoring is essential for production databases. Use a combination of built-in views, logs, and external tools to get a complete picture of database health.",
+    "recallHint": "pg_stat_statements for query performance, pg_stat_activity for connections.",
+    "practice": [
+      "Set up pg_stat_statements.",
+      "Monitor active connections.",
+      "Create a Grafana dashboard."
+    ]
+  },
+  {
+    "id": "sql-049",
+    "category": "sql",
+    "concept": "Database Capacity Planning",
+    "priority": "advanced",
+    "question": "How do you plan for database capacity and growth?",
+    "answer": "Capacity planning involves: monitoring growth patterns, forecasting storage needs, tracking query performance trends, planning for peak loads, and scaling strategy (vertical/horizontal).",
+    "code": "-- 1. Storage growth monitoring\nWITH growth AS (\n    SELECT \n        schemaname,\n        tablename,\n        pg_total_relation_size(schemaname||'.'||tablename) / 1024 / 1024 AS size_mb,\n        n_live_tup AS row_count\n    FROM pg_stat_user_tables\n)\nSELECT \n    *,\n    size_mb / NULLIF(row_count, 0) AS avg_row_size_mb\nFROM growth\nORDER BY size_mb DESC;\n\n-- 2. Historical growth (with daily snapshots)\n-- Create a growth tracking table\nCREATE TABLE storage_history (\n    snapshot_date DATE,\n    table_name TEXT,\n    size_mb BIGINT,\n    row_count BIGINT\n);\n\n-- Daily snapshot\nINSERT INTO storage_history\nSELECT \n    CURRENT_DATE,\n    tablename,\n    pg_total_relation_size(tablename) / 1024 / 1024,\n    n_live_tup\nFROM pg_tables\nJOIN pg_stat_user_tables ON pg_tables.tablename = pg_stat_user_tables.tablename;\n\n-- 3. Growth forecast\nSELECT \n    table_name,\n    AVG(size_mb) AS avg_size,\n    MAX(size_mb) - MIN(size_mb) AS growth_mb,\n    EXTRACT(DAY FROM MAX(snapshot_date) - MIN(snapshot_date)) AS days,\n    ROUND((MAX(size_mb) - MIN(size_mb)) / EXTRACT(DAY FROM MAX(snapshot_date) - MIN(snapshot_date)), 2) AS daily_growth_mb,\n    ROUND((MAX(size_mb) - MIN(size_mb)) / EXTRACT(DAY FROM MAX(snapshot_date) - MIN(snapshot_date)) * 30, 2) AS monthly_growth_mb,\n    ROUND((MAX(size_mb) - MIN(size_mb)) / EXTRACT(DAY FROM MAX(snapshot_date) - MIN(snapshot_date)) * 365, 2) AS yearly_growth_mb\nFROM storage_history\nGROUP BY table_name\nORDER BY yearly_growth_mb DESC;\n\n-- 4. Query performance trends\nSELECT \n    DATE_TRUNC('day', query_start) AS day,\n    COUNT(*) AS query_count,\n    AVG(EXTRACT(EPOCH FROM (now() - query_start))) AS avg_duration_seconds,\n    MAX(EXTRACT(EPOCH FROM (now() - query_start))) AS max_duration_seconds\nFROM pg_stat_activity\nWHERE state = 'active'\nGROUP BY DATE_TRUNC('day', query_start)\nORDER BY day;\n\n-- 5. Connection usage\nSELECT \n    DATE_TRUNC('hour', query_start) AS hour,\n    COUNT(*) AS connections,\n    COUNT(DISTINCT usename) AS unique_users,\n    COUNT(DISTINCT client_addr) AS unique_clients\nFROM pg_stat_activity\nGROUP BY DATE_TRUNC('hour', query_start)\nORDER BY hour;\n\n-- Capacity planning factors\n-- 1. Data growth rate (daily/monthly/yearly)\n-- 2. Peak concurrent connections\n-- 3. Query complexity and duration\n-- 4. Storage requirements\n-- 5. Backup storage\n-- 6. Index overhead\n\n-- Scaling strategies\n-- Vertical: Larger instance (CPU, RAM, storage)\n-- Horizontal: Read replicas, sharding\n\n-- Checklist\n-- 1. Monitor growth trends\n-- 2. Project 12-24 months ahead\n-- 3. Plan for peak loads (holiday, events)\n-- 4. Include disaster recovery\n-- 5. Budget for infrastructure",
+    "explanation": "Capacity planning prevents unexpected outages. Track key metrics over time, forecast growth, and plan scaling before hitting limits. Review and update plans regularly.",
+    "recallHint": "Track growth, forecast needs, plan scaling, monitor trends.",
+    "practice": [
+      "Calculate database growth rate.",
+      "Forecast storage needs for 12 months.",
+      "Plan a scaling strategy."
+    ]
+  },
+  {
+    "id": "sql-050",
+    "category": "sql",
+    "concept": "Query Design Patterns",
+    "priority": "advanced",
+    "question": "What are common query design patterns for common problems?",
+    "answer": "Common patterns: top-N per group, date series, gap detection, change tracking, rolling averages, stratified sampling, deduplication, and hierarchical aggregations.",
+    "code": "-- 1. Top-N per group (most recent order per user)\nWITH ranked AS (\n    SELECT \n        *,\n        ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY order_date DESC) AS rn\n    FROM orders\n)\nSELECT * FROM ranked WHERE rn <= 1;\n\n-- 2. Date series (fill missing dates)\nWITH date_series AS (\n    SELECT generate_series(\n        '2024-01-01'::DATE,\n        '2024-12-31'::DATE,\n        '1 day'::INTERVAL\n    ) AS date\n)\nSELECT \n    ds.date,\n    COALESCE(SUM(o.amount), 0) AS total_sales\nFROM date_series ds\nLEFT JOIN orders o ON ds.date = o.order_date\nGROUP BY ds.date\nORDER BY ds.date;\n\n-- 3. Gap detection (missing IDs)\nWITH all_ids AS (\n    SELECT generate_series(1, (SELECT MAX(id) FROM users)) AS id\n)\nSELECT ai.id\nFROM all_ids ai\nLEFT JOIN users u ON ai.id = u.id\nWHERE u.id IS NULL;\n\n-- 4. Change tracking (records that changed)\n-- With audit_log table as trigger\nSELECT \n    table_name,\n    changed_by,\n    changed_at,\n    old_data->>'status' AS old_status,\n    new_data->>'status' AS new_status\nFROM audit_log\nWHERE table_name = 'users' \n  AND action = 'UPDATE'\nORDER BY changed_at DESC;\n\n-- 5. Rolling average (7-day moving average)\nSELECT \n    order_date,\n    amount,\n    AVG(amount) OVER (\n        ORDER BY order_date \n        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW\n    ) AS rolling_avg_7d,\n    SUM(amount) OVER (\n        ORDER BY order_date \n        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW\n    ) AS rolling_sum_7d\nFROM daily_sales\nORDER BY order_date;\n\n-- 6. Stratified sampling (sample by category)\nWITH sampled AS (\n    SELECT \n        *,\n        ROW_NUMBER() OVER (PARTITION BY category ORDER BY RANDOM()) AS rn\n    FROM products\n)\nSELECT * FROM sampled WHERE rn <= 10;\n\n-- 7. Deduplication (keep latest)\nWITH deduped AS (\n    SELECT \n        *,\n        ROW_NUMBER() OVER (PARTITION BY email ORDER BY created_at DESC) AS rn\n    FROM users\n)\nDELETE FROM users WHERE id IN (\n    SELECT id FROM deduped WHERE rn > 1\n);\n\n-- 8. Hierarchical aggregation (category totals)\nWITH RECURSIVE category_tree AS (\n    SELECT id, name, parent_id, 0 AS level, id AS root_id\n    FROM categories\n    WHERE parent_id IS NULL\n    \n    UNION ALL\n    \n    SELECT c.id, c.name, c.parent_id, ct.level + 1, ct.root_id\n    FROM categories c\n    INNER JOIN category_tree ct ON c.parent_id = ct.id\n)\nSELECT \n    root_id,\n    COUNT(*) AS total_products\nFROM category_tree ct\nJOIN products p ON ct.id = p.category_id\nGROUP BY root_id;",
+    "explanation": "Query design patterns solve common problems efficiently. Learn these patterns to write better queries and solve complex requirements.",
+    "recallHint": "Top-N per group, date series, gap detection, rolling averages.",
+    "practice": [
+      "Implement top-N per group pattern.",
+      "Fill missing dates in a report.",
+      "Calculate rolling average."
+    ]
+  },
+  {
+    "id": "sql-051",
+    "category": "sql",
+    "concept": "Database Cursor",
+    "priority": "advanced",
+    "question": "What are cursors and when should you use them?",
+    "answer": "Cursors allow row-by-row processing of result sets. Use them for complex row operations, data migration, or when set-based operations are not possible. Avoid cursors when possible.",
+    "code": "-- PostgreSQL cursor example\n-- 1. DECLARE cursor\nDECLARE user_cursor CURSOR FOR\nSELECT id, name, email FROM users WHERE status = 'pending';\n\n-- 2. FETCH rows\nFETCH NEXT FROM user_cursor;\nFETCH 10 FROM user_cursor;\nFETCH ALL FROM user_cursor;\n\n-- 3. Close cursor\nCLOSE user_cursor;\n\n-- Cursor with loop\nDO $$\nDECLARE\n    user_cursor CURSOR FOR SELECT id, name FROM users WHERE status = 'pending';\n    user_record RECORD;\nBEGIN\n    OPEN user_cursor;\n    LOOP\n        FETCH user_cursor INTO user_record;\n        EXIT WHEN NOT FOUND;\n        \n        -- Process each record\n        RAISE NOTICE 'Processing user: %', user_record.name;\n        -- UPDATE users SET status = 'active' WHERE id = user_record.id;\n    END LOOP;\n    CLOSE user_cursor;\nEND $$;\n\n-- Better: Use set-based operations\nUPDATE users SET status = 'active' WHERE status = 'pending';\n\n-- MySQL cursor example\nDELIMITER //\nCREATE PROCEDURE process_users()\nBEGIN\n    DECLARE done INT DEFAULT FALSE;\n    DECLARE user_id INT;\n    DECLARE user_name VARCHAR(100);\n    DECLARE user_cursor CURSOR FOR SELECT id, name FROM users WHERE status = 'pending';\n    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;\n    \n    OPEN user_cursor;\n    \n    read_loop: LOOP\n        FETCH user_cursor INTO user_id, user_name;\n        IF done THEN\n            LEAVE read_loop;\n        END IF;\n        \n        -- Process user\n        INSERT INTO user_audit (user_id, action) VALUES (user_id, 'processed');\n    END LOOP;\n    \n    CLOSE user_cursor;\nEND //\nDELIMITER ;\n\n-- When to use cursors\n-- 1. Complex row-by-row processing\n-- 2. Data migration with transformations\n-- 3. Integration with external systems\n-- 4. When set-based operations are impossible\n\n-- When NOT to use cursors\n-- 1. Simple UPDATE operations\n-- 2. Data that can be processed in SET operations\n-- 3. Large datasets (performance impact)\n-- 4. Reporting (use set-based queries)\n\n-- Alternative: Batch processing\n-- Instead of cursor loop, process in batches\nDO $$\nDECLARE\n    batch_size INT := 1000;\n    processed INT := 0;\nBEGIN\n    LOOP\n        WITH batch AS (\n            SELECT id FROM users \n            WHERE status = 'pending' \n            LIMIT batch_size\n        )\n        UPDATE users \n        SET status = 'active' \n        WHERE id IN (SELECT id FROM batch);\n        \n        GET DIAGNOSTICS processed = ROW_COUNT;\n        \n        EXIT WHEN processed = 0;\n        \n        RAISE NOTICE 'Processed % rows', processed;\n        COMMIT; -- Commit each batch\n    END LOOP;\nEND $$;",
+    "explanation": "Cursors should be a last resort. Set-based operations are almost always more efficient. If you need cursors, keep them simple and process in batches to avoid performance issues.",
+    "recallHint": "Row-by-row processing, avoid when possible, use for complex operations.",
+    "practice": [
+      "Write a cursor for data migration.",
+      "Explain when to use cursors.",
+      "Convert a cursor to set-based operation."
+    ]
+  },
+  {
+    "id": "sql-052",
+    "category": "sql",
+    "concept": "Database Functions vs Stored Procedures",
+    "priority": "important",
+    "question": "What is the difference between database functions and stored procedures?",
+    "answer": "Functions return a single value and can be used in queries. Procedures perform operations and can have output parameters. Functions are called in SELECT, procedures use CALL.",
+    "code": "-- Function (returns value)\nCREATE FUNCTION get_user_count_by_status(status_param VARCHAR)\nRETURNS INTEGER\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    RETURN (SELECT COUNT(*) FROM users WHERE status = status_param);\nEND;\n$$;\n\n-- Use function in SELECT\nSELECT \n    name,\n    get_user_count_by_status('active') AS active_users\nFROM users;\n\n-- Function with table return\nCREATE FUNCTION get_users_by_status(status_param VARCHAR)\nRETURNS TABLE(user_id INT, user_name TEXT)\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    RETURN QUERY\n    SELECT id, name FROM users WHERE status = status_param;\nEND;\n$$;\n\n-- Use in FROM clause\nSELECT * FROM get_users_by_status('active');\n\n-- Procedure (no return value)\nCREATE PROCEDURE update_user_status(user_id INT, new_status VARCHAR)\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    UPDATE users SET status = new_status WHERE id = user_id;\n    \n    -- Log action\n    INSERT INTO audit_log (user_id, action, changed_at)\n    VALUES (user_id, 'status_update', NOW());\nEND;\n$$;\n\n-- Call procedure\nCALL update_user_status(1, 'active');\n\n-- Procedure with transaction control\nCREATE PROCEDURE transfer_funds(sender INT, receiver INT, amount DECIMAL)\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    -- Transaction control allowed in procedures\n    UPDATE accounts SET balance = balance - amount WHERE id = sender;\n    UPDATE accounts SET balance = balance + amount WHERE id = receiver;\n    \n    -- Can COMMIT/ROLLBACK within procedure\n    -- Functions cannot have transaction control\nEND;\n$$;\n\n-- Key differences\n-- Functions: RETURN value, used in SELECT, NO transaction control\n-- Procedures: NO return value, CALL statement, CAN use transaction control\n\n-- MySQL\nCREATE FUNCTION get_user_count(status_param VARCHAR(50))\nRETURNS INT\nDETERMINISTIC\nBEGIN\n    DECLARE user_count INT;\n    SELECT COUNT(*) INTO user_count FROM users WHERE status = status_param;\n    RETURN user_count;\nEND;\n\n-- MySQL procedure\nCREATE PROCEDURE update_user_status(\n    IN user_id INT,\n    IN new_status VARCHAR(50),\n    OUT result VARCHAR(100)\n)\nBEGIN\n    UPDATE users SET status = new_status WHERE id = user_id;\n    SET result = 'User updated successfully';\nEND;\n\nCALL update_user_status(1, 'active', @result);\nSELECT @result;",
+    "explanation": "Functions are for calculations and data retrieval in queries. Procedures are for operations, business logic, and transaction control. Choose based on use case.",
+    "recallHint": "Function = returns value, used in SELECT. Procedure = operations, CALL.",
+    "practice": [
+      "Create a function to calculate user statistics.",
+      "Create a procedure for user updates.",
+      "Explain the differences."
+    ]
+  },
+  {
+    "id": "sql-053",
+    "category": "sql",
+    "concept": "Database Encryption",
+    "priority": "important",
+    "question": "How do you implement encryption in SQL databases?",
+    "answer": "Implement encryption at multiple levels: TLS/SSL for network, TDE for data-at-rest, column-level encryption for sensitive data, and application-level encryption for the highest security.",
+    "code": "-- PostgreSQL column encryption (pgcrypto)\nCREATE EXTENSION pgcrypto;\n\n-- Encrypt data on insert\nCREATE TABLE users (\n    id SERIAL PRIMARY KEY,\n    name TEXT,\n    email TEXT,\n    ssn TEXT, -- Encrypted\n    created_at TIMESTAMP\n);\n\n-- Encrypt\nINSERT INTO users (name, email, ssn)\nVALUES (\n    'John Doe',\n    'john@example.com',\n    pgp_sym_encrypt('123-45-6789', 'encryption_key')\n);\n\n-- Decrypt on read\nSELECT \n    name,\n    email,\n    pgp_sym_decrypt(ssn, 'encryption_key') AS ssn\nFROM users;\n\n-- Encrypt with public/private key\n-- Generate keys\n-- gpg --gen-key\n\nINSERT INTO users (name, ssn)\nVALUES (\n    'John Doe',\n    pgp_pub_encrypt('123-45-6789', dearmor('-----BEGIN PGP PUBLIC KEY BLOCK-----'))\n);\n\n-- PostgreSQL TDE (Transparent Data Encryption)\n-- Enterprise edition only\n\n-- MySQL encryption\n-- AES encryption\nINSERT INTO users (name, ssn)\nVALUES (\n    'John Doe',\n    AES_ENCRYPT('123-45-6789', 'encryption_key')\n);\n\nSELECT \n    name,\n    AES_DECRYPT(ssn, 'encryption_key') AS ssn\nFROM users;\n\n-- MySQL SHA2 hashing (one-way)\nINSERT INTO users (name, password_hash)\nVALUES ('John Doe', SHA2('password123', 256));\n\n-- Hash comparison\nSELECT * FROM users \nWHERE password_hash = SHA2('password123', 256);\n\n-- Application-level encryption (preferred)\n-- Encrypt in application before storing\n-- Node.js example\nconst crypto = require('crypto');\n\nfunction encrypt(text) {\n    const cipher = crypto.createCipher('aes-256-cbc', 'key');\n    let encrypted = cipher.update(text, 'utf8', 'hex');\n    encrypted += cipher.final('hex');\n    return encrypted;\n}\n\nfunction decrypt(encrypted) {\n    const decipher = crypto.createDecipher('aes-256-cbc', 'key');\n    let decrypted = decipher.update(encrypted, 'hex', 'utf8');\n    decrypted += decipher.final('utf8');\n    return decrypted;\n}\n\n-- Key management\n-- 1. Use separate key management service (KMS)\n-- 2. Rotate keys regularly\n-- 3. Store keys separately from data\n-- 4. Use environment variables for keys\n\n-- Best practices\n-- 1. Encrypt at application level when possible\n-- 2. Use TLS for all connections\n-- 3. Encrypt backups\n-- 4. Use strong encryption algorithms (AES-256)\n-- 5. Implement key rotation",
+    "explanation": "Database encryption is multi-layered. Column-level encryption for sensitive data (SSN, credit cards), TLS for network, and encryption at rest for backups. Use key management best practices.",
+    "recallHint": "TLS for network, column-level for sensitive data, key management.",
+    "practice": [
+      "Implement column-level encryption.",
+      "Set up TLS for database connection.",
+      "Use application-level encryption."
+    ]
+  },
+  {
+    "id": "sql-054",
+    "category": "sql",
+    "concept": "Database Auditing",
+    "priority": "advanced",
+    "question": "How do you implement comprehensive database auditing?",
+    "answer": "Implement auditing with: triggers for DML operations, pgAudit for statement logging, application-level logging, and regular audit reviews.",
+    "code": "-- 1. Audit table with detailed changes\nCREATE TABLE audit_log (\n    id SERIAL PRIMARY KEY,\n    table_name TEXT,\n    operation TEXT,\n    old_values JSONB,\n    new_values JSONB,\n    changed_by TEXT,\n    changed_at TIMESTAMP DEFAULT NOW(),\n    ip_address TEXT,\n    application_name TEXT\n);\n\n-- 2. Trigger function for auditing\nCREATE OR REPLACE FUNCTION audit_trigger()\nRETURNS TRIGGER\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    INSERT INTO audit_log (\n        table_name,\n        operation,\n        old_values,\n        new_values,\n        changed_by,\n        ip_address,\n        application_name\n    )\n    VALUES (\n        TG_TABLE_NAME,\n        TG_OP,\n        CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN row_to_json(OLD) ELSE NULL END,\n        CASE WHEN TG_OP IN ('INSERT', 'UPDATE') THEN row_to_json(NEW) ELSE NULL END,\n        current_user,\n        current_setting('app.ip_address', true),\n        current_setting('app.application_name', true)\n    );\n    \n    RETURN NULL;\nEND;\n$$;\n\n-- 3. Apply trigger to table\nCREATE TRIGGER audit_users\nAFTER INSERT OR UPDATE OR DELETE ON users\nFOR EACH ROW EXECUTE FUNCTION audit_trigger();\n\n-- 4. pgAudit (PostgreSQL extension)\n-- Enable pgAudit\nCREATE EXTENSION pgaudit;\n\n-- Configure logging\nSET pgaudit.log = 'READ,WRITE,DDL';\nSET pgaudit.log_catalog = 'off';\nSET pgaudit.log_parameter = 'on';\nSET pgaudit.log_relation = 'on';\n\n-- 5. Session-level audit\nSET pgaudit.log = 'DDL,ROLE';\nALTER ROLE audit_user SET pgaudit.log = 'DDL,ROLE';\n\n-- 6. Application-level audit\n-- Node.js example\nfunction logAction(userId, action, details) {\n    const query = `\n        INSERT INTO user_audit (user_id, action, details, ip_address, timestamp)\n        VALUES ($1, $2, $3, $4, NOW())\n    `;\n    pool.query(query, [userId, action, details, req.ip]);\n}\n\n-- 7. Audit reporting\nCREATE VIEW audit_summary AS\nSELECT \n    DATE_TRUNC('month', changed_at) AS month,\n    table_name,\n    operation,\n    changed_by,\n    COUNT(*) AS count\nFROM audit_log\nGROUP BY DATE_TRUNC('month', changed_at), table_name, operation, changed_by\nORDER BY month DESC;\n\n-- 8. Compliance audit\nCREATE VIEW sensitive_access AS\nSELECT \n    changed_at,\n    changed_by,\n    old_values->>'ssn' AS old_ssn,\n    new_values->>'ssn' AS new_ssn,\n    ip_address\nFROM audit_log\nWHERE table_name = 'users' \n  AND (old_values->>'ssn' IS NOT NULL OR new_values->>'ssn' IS NOT NULL);\n\n-- 9. Audit retention policy\nDELETE FROM audit_log WHERE changed_at < NOW() - INTERVAL '90 days';\n\n-- 10. Testing audit\n-- Create separate audit role\nCREATE ROLE auditor;\nGRANT SELECT ON audit_log TO auditor;\n\n-- Best practices\n-- 1. Log who, what, when, where\n-- 2. Include IP address and application context\n-- 3. Encrypt or protect audit logs\n-- 4. Implement retention policy\n-- 5. Regular audit review\n-- 6. Alert on suspicious patterns",
+    "explanation": "Comprehensive auditing is essential for compliance and security. Include detailed context, monitor access to sensitive data, and regularly review logs for suspicious activity.",
+    "recallHint": "Trigger audit, pgAudit, application logging, sensitive data monitoring.",
+    "practice": [
+      "Create an audit trigger for a table.",
+      "Set up pgAudit logging.",
+      "Create an audit review report."
+    ]
+  },
+  {
+    "id": "sql-055",
+    "category": "sql",
+    "concept": "Database Migrations - Advanced",
+    "priority": "advanced",
+    "question": "How do you handle complex database migrations without downtime?",
+    "answer": "Zero-downtime migrations use: phased deployment, backward-compatible changes, dual-writes, and blue-green deployment. Strategy depends on the type of change.",
+    "code": "-- Zero-downtime migration strategies\n\n-- 1. Add column (non-breaking)\n-- Step 1: Add column with default\nALTER TABLE users ADD COLUMN new_column VARCHAR(100) DEFAULT 'default_value';\n-- Step 2: Backfill gradually\nUPDATE users SET new_column = old_column WHERE new_column IS NULL;\n-- Step 3: Make NOT NULL if needed\nALTER TABLE users ALTER COLUMN new_column SET NOT NULL;\n\n-- 2. Rename column (multi-step)\n-- Step 1: Add new column\nALTER TABLE users ADD COLUMN new_name VARCHAR(100);\n-- Step 2: Dual-write (application writes to both)\n-- INSERT INTO users (name, new_name) VALUES ('John', 'John');\n-- Step 3: Backfill\nUPDATE users SET new_name = name WHERE new_name IS NULL;\n-- Step 4: Switch reads to new column\n-- Application reads from new_name\n-- Step 5: Drop old column\nALTER TABLE users DROP COLUMN name;\n-- Step 6: Rename new column\nALTER TABLE users RENAME COLUMN new_name TO name;\n\n-- 3. Split table (normalization)\n-- Step 1: Create new table\nCREATE TABLE user_profiles (user_id INT PRIMARY KEY, bio TEXT);\n-- Step 2: Dual-write (application writes to both)\n-- Step 3: Backfill\nINSERT INTO user_profiles (user_id, bio)\nSELECT id, bio FROM users WHERE bio IS NOT NULL;\n-- Step 4: Remove column from original\nALTER TABLE users DROP COLUMN bio;\n\n-- 4. Add index (concurrently)\nCREATE INDEX CONCURRENTLY idx_users_email ON users(email);\n-- Wait for index to complete\n-- Verify index\n\n-- 5. Add foreign key\n-- Step 1: Add column without constraint\nALTER TABLE orders ADD COLUMN user_id INT;\n-- Step 2: Backfill data\nUPDATE orders SET user_id = (SELECT id FROM users WHERE users.name = orders.name);\n-- Step 3: Add constraint (validate)\nALTER TABLE orders ADD CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) NOT VALID;\n-- Step 4: Validate constraint\nALTER TABLE orders VALIDATE CONSTRAINT fk_user;\n\n-- 6. Change data type (with casting)\n-- Step 1: Add new column with correct type\nALTER TABLE users ADD COLUMN new_id UUID;\n-- Step 2: Convert data\nUPDATE users SET new_id = id::TEXT::UUID;\n-- Step 3: Rename\nALTER TABLE users RENAME COLUMN id TO old_id;\nALTER TABLE users RENAME COLUMN new_id TO id;\nALTER TABLE users ALTER COLUMN id SET NOT NULL;\nALTER TABLE users ADD PRIMARY KEY (id);\n\n-- 7. Partitioning existing table\n-- Step 1: Create new partitioned table\nCREATE TABLE orders_new (LIKE orders INCLUDING ALL) PARTITION BY RANGE (order_date);\n-- Step 2: Create partitions\nCREATE TABLE orders_2024 PARTITION OF orders_new FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');\n-- Step 3: Copy data (batch)\nINSERT INTO orders_new SELECT * FROM orders WHERE order_date >= '2024-01-01';\n-- Step 4: Switch tables\nALTER TABLE orders RENAME TO orders_old;\nALTER TABLE orders_new RENAME TO orders;\n-- Step 5: Clean up\nDROP TABLE orders_old;\n\n-- Migration tools for zero-downtime\n-- 1. Flyway with versioned migrations\n-- 2. Liquibase with changelogs\n-- 3. Custom scripts with checks\n\n-- Checklist\n-- 1. Test on staging\n-- 2. Have rollback plan\n-- 3. Monitor during migration\n-- 4. Use maintenance windows\n-- 5. Communicate with team",
+    "explanation": "Zero-downtime migrations require careful planning and multiple steps. Always test in staging, have rollback plans, and monitor the migration process closely.",
+    "recallHint": "Add then remove, concurrent indexes, NOT VALID constraints, rename strategy.",
+    "practice": [
+      "Plan a zero-downtime column rename.",
+      "Add a foreign key without downtime.",
+      "Partition an existing table."
+    ]
+  },
+  {
+    "id": "sql-056",
+    "category": "sql",
+    "concept": "Database Cost Optimization",
+    "priority": "advanced",
+    "question": "How do you optimize database costs in cloud environments?",
+    "answer": "Cost optimization strategies: right-sizing instances, using reserved instances, storage tiering, query optimization (reduce IO), caching, and archiving old data.",
+    "code": "-- 1. Storage optimization\n-- Identify large tables\nSELECT \n    schemaname,\n    tablename,\n    pg_total_relation_size(schemaname||'.'||tablename) / 1024 / 1024 / 1024 AS size_gb\nFROM pg_tables\nWHERE schemaname = 'public'\nORDER BY size_gb DESC;\n\n-- 2. Archive old data\n-- Create archive table\nCREATE TABLE orders_archive (LIKE orders INCLUDING ALL);\n\n-- Move old data\nINSERT INTO orders_archive \nSELECT * FROM orders WHERE order_date < '2023-01-01';\n\nDELETE FROM orders WHERE order_date < '2023-01-01';\n\n-- Reclaim space\nVACUUM FULL orders;\n\n-- 3. Compression (with TOAST)\nALTER TABLE large_text_table SET (toast_tuple_target = 128);\n\n-- 4. Index optimization\n-- Remove unused indexes\nSELECT \n    schemaname,\n    tablename,\n    indexname,\n    idx_scan,\n    idx_tup_read,\n    idx_tup_fetch\nFROM pg_stat_user_indexes\nWHERE idx_scan = 0\nORDER BY idx_tup_read DESC;\n\n-- 5. Query optimization examples\n-- Replace expensive subquery\n-- Bad\nSELECT * FROM users WHERE id IN (\n    SELECT user_id FROM orders WHERE amount > 1000\n);\n\n-- Good\nSELECT u.*\nFROM users u\nJOIN orders o ON u.id = o.user_id\nWHERE o.amount > 1000\nGROUP BY u.id;\n\n-- 6. Caching strategy\n-- Use Redis for frequently queried data\n-- Node.js example with Redis\nconst cachedData = await redis.get('users:all');\nif (cachedData) {\n    return JSON.parse(cachedData);\n}\nconst data = await pool.query('SELECT * FROM users');\nawait redis.set('users:all', JSON.stringify(data), 'EX', 3600);\n\n-- 7. Read replicas\n-- Offload reporting queries to replica\n-- Connection URL: postgres://replica-host/db\n\n-- 8. Autovacuum tuning\n-- Reduce dead tuples\nSET autovacuum_vacuum_scale_factor = 0.05; -- Default 0.2\nSET autovacuum_analyze_scale_factor = 0.02;\n\n-- 9. Backup optimization\n-- Use incremental backups\n-- Compress backups\npg_dump mydb | gzip > backup.sql.gz\n\n-- 10. Monitor resource utilization\nSELECT \n    pg_database_size(current_database()) / 1024 / 1024 AS db_size_mb,\n    (SELECT COUNT(*) FROM pg_stat_activity WHERE state = 'active') AS active_connections,\n    (SELECT SUM(seq_scan) FROM pg_stat_user_tables) AS total_seq_scans;\n\n-- Cost optimization checklist\n-- 1. Right-size instances\n-- 2. Use reserved instances\n-- 3. Implement data retention policy\n-- 4. Optimize queries\n-- 5. Use read replicas\n-- 6. Implement caching\n-- 7. Regular maintenance (vacuum, analyze)\n-- 8. Remove unused indexes\n-- 9. Compress data\n-- 10. Monitor and alert",
+    "explanation": "Database costs can be significant. Focus on right-sizing, storage optimization, and efficient queries. Regular monitoring and optimization can reduce costs by 30-50%.",
+    "recallHint": "Right-size, archive, optimize queries, use caching, remove unused indexes.",
+    "practice": [
+      "Identify cost optimization opportunities.",
+      "Create a data retention policy.",
+      "Implement query caching."
+    ]
+  },
+  {
+    "id": "sql-057",
+    "category": "sql",
+    "concept": "PostgreSQL vs MySQL",
+    "priority": "important",
+    "question": "What are the key differences between PostgreSQL and MySQL?",
+    "answer": "PostgreSQL: more features, SQL standard compliance, advanced data types, MVCC, and extensibility. MySQL: simpler, faster for reads, replication, and larger ecosystem.",
+    "code": "-- PostgreSQL features not in MySQL\n-- 1. Array types\nCREATE TABLE products (tags TEXT[]);\n\n-- 2. JSONB with indexing\nCREATE TABLE users (metadata JSONB);\nCREATE INDEX idx_metadata ON users USING GIN(metadata);\n\n-- 3. Window functions (MySQL 8+ has them)\nSELECT *, ROW_NUMBER() OVER (PARTITION BY category ORDER BY price) FROM products;\n\n-- 4. Full-text search\nSELECT * FROM articles WHERE to_tsvector(content) @@ to_tsquery('search');\n\n-- 5. Geospatial (PostGIS)\n-- SELECT ST_Distance(ST_Point(1,1), ST_Point(2,2));\n\n-- 6. Custom types (ENUM, composite)\nCREATE TYPE address AS (street TEXT, city TEXT);\n\n-- 7. Advanced indexing\nCREATE INDEX idx_gin ON table USING GIN(column);\n\n-- MySQL features\n-- 1. Simpler setup\n-- 2. Faster reads (MyISAM/InnoDB)\n-- 3. Replication\n-- 4. Memcached integration\n-- 5. Group Replication (multi-master)\n\n-- Performance comparison\n-- PostgreSQL: Better for complex queries, analytics, writes\n-- MySQL: Better for simple reads, high volume\n\n-- When to choose PostgreSQL\n-- 1. Complex queries and analytics\n-- 2. Data integrity requirements\n-- 3. Custom data types\n-- 4. JSON document storage\n-- 5. Geographic data\n\n-- When to choose MySQL\n-- 1. Simple CRUD applications\n-- 2. Read-heavy workloads\n-- 3. Need for replication\n-- 4. Familiarity with MySQL\n-- 5. Cost-sensitive (less resource hungry)\n\n-- Benchmarks (approximate)\n-- PostgreSQL: Better for complex queries 30-40% faster\n-- MySQL: Better for simple reads 20-30% faster\n-- PostgreSQL: Better for data integrity\n-- MySQL: Better for replication and HA\n\n-- Migration considerations\n-- 1. Data type differences\n-- 2. SQL syntax differences\n-- 3. Performance tuning differences\n-- 4. Feature availability\n\n-- Both support JSON, but PostgreSQL's JSONB is more efficient",
+    "explanation": "Choose PostgreSQL for complex data, advanced features, and integrity. Choose MySQL for simpler applications and read-heavy workloads. Both are excellent databases.",
+    "recallHint": "PostgreSQL = features, integrity, complex. MySQL = simplicity, read-heavy.",
+    "practice": [
+      "Explain the key differences.",
+      "Choose the right database for a use case.",
+      "Plan a migration from MySQL to PostgreSQL."
+    ]
+  },
+  {
+    "id": "sql-058",
+    "category": "sql",
+    "concept": "Data Warehouse vs OLTP",
+    "priority": "important",
+    "question": "What is the difference between OLTP and OLAP databases?",
+    "answer": "OLTP (Online Transaction Processing): many small transactions, high concurrency, normalized schema. OLAP (Online Analytical Processing): complex queries, large scans, denormalized schema (star/snowflake).",
+    "code": "-- OLTP Schema (Normalized)\nCREATE TABLE orders (\n    id SERIAL PRIMARY KEY,\n    customer_id INT,\n    order_date TIMESTAMP,\n    total DECIMAL\n);\n\nCREATE TABLE order_items (\n    id SERIAL PRIMARY KEY,\n    order_id INT REFERENCES orders(id),\n    product_id INT,\n    quantity INT,\n    price DECIMAL\n);\n\nCREATE TABLE customers (\n    id SERIAL PRIMARY KEY,\n    name TEXT,\n    email TEXT\n);\n\n-- Typical OLTP query (single record)\nSELECT * FROM orders WHERE id = 1;\n\n-- OLAP Schema (Star Schema)\nCREATE TABLE fact_sales (\n    sale_id INT,\n    date_id INT,\n    customer_id INT,\n    product_id INT,\n    store_id INT,\n    quantity INT,\n    price DECIMAL,\n    total DECIMAL\n);\n\nCREATE TABLE dim_date (\n    date_id INT PRIMARY KEY,\n    date DATE,\n    year INT,\n    month INT,\n    quarter INT,\n    day_of_week VARCHAR(10)\n);\n\nCREATE TABLE dim_product (\n    product_id INT PRIMARY KEY,\n    name TEXT,\n    category TEXT,\n    subcategory TEXT,\n    brand TEXT\n);\n\nCREATE TABLE dim_customer (\n    customer_id INT PRIMARY KEY,\n    name TEXT,\n    region TEXT,\n    segment TEXT\n);\n\n-- Typical OLAP query (large aggregates)\nSELECT \n    d.year,\n    p.category,\n    SUM(f.total) AS total_sales,\n    COUNT(*) AS order_count\nFROM fact_sales f\nJOIN dim_date d ON f.date_id = d.date_id\nJOIN dim_product p ON f.product_id = p.product_id\nWHERE d.year = 2024\nGROUP BY d.year, p.category\nORDER BY total_sales DESC;\n\n-- Characteristics\n-- OLTP: Row-based, high concurrency, small transactions\n-- OLAP: Column-based (often), large scans, aggregations\n\n-- PostgreSQL: Can handle both (with proper design)\n-- Columnar extensions: Citus, TimescaleDB\n\n-- Best practices\n-- OLTP: 3NF, indexes on foreign keys, frequent small commits\n-- OLAP: Denormalized, materialized views, aggregates\n\n-- Hybrid: HTAP (Hybrid Transaction/Analytical Processing)\n-- Databases that handle both: Google Spanner, Azure Cosmos DB",
+    "explanation": "OLTP handles transactions, OLAP handles analytics. They have different optimization goals: OLTP for writes, OLAP for reads. Use appropriate design patterns for each.",
+    "recallHint": "OLTP = transactions (writes), OLAP = analytics (reads).",
+    "practice": [
+      "Design an OLTP schema for e-commerce.",
+      "Design an OLAP schema for reporting.",
+      "Explain the differences."
+    ]
+  },
+  {
+    "id": "sql-059",
+    "category": "sql",
+    "concept": "Database Anti-Patterns",
+    "priority": "advanced",
+    "question": "What are common database anti-patterns and how do you avoid them?",
+    "answer": "Anti-patterns include: SELECT *, entity-attribute-value (EAV), storing comma-separated lists, using NULL for unknown values, and not normalizing.",
+    "code": "-- Anti-pattern 1: SELECT *\n-- Bad\nSELECT * FROM users;\n\n-- Good\nSELECT id, name, email FROM users;\n\n-- Anti-pattern 2: EAV (Entity-Attribute-Value)\n-- Bad\nCREATE TABLE product_attributes (\n    product_id INT,\n    attribute_name TEXT,\n    attribute_value TEXT\n);\n\n-- Good\nCREATE TABLE products (\n    id INT PRIMARY KEY,\n    name TEXT,\n    color TEXT,\n    size TEXT,\n    weight DECIMAL\n);\n\n-- Anti-pattern 3: CSV in column\n-- Bad\nCREATE TABLE products (\n    id INT PRIMARY KEY,\n    name TEXT,\n    tags TEXT -- 'electronics,portable,new'\n);\n\n-- Good (many-to-many)\nCREATE TABLE tags (\n    id INT PRIMARY KEY,\n    name TEXT\n);\n\nCREATE TABLE product_tags (\n    product_id INT,\n    tag_id INT\n);\n\n-- Anti-pattern 4: Polymorphic associations\n-- Bad\nCREATE TABLE comments (\n    id INT PRIMARY KEY,\n    commentable_type TEXT, -- 'Post' or 'Photo'\n    commentable_id INT\n);\n\n-- Good\nCREATE TABLE comments (\n    id INT PRIMARY KEY,\n    post_id INT,\n    photo_id INT,\n    CHECK (num_nonnulls(post_id, photo_id) = 1)\n);\n\n-- Anti-pattern 5: Magic numbers\n-- Bad\nSELECT * FROM users WHERE status = 1; -- What is 1?\n\n-- Good\nCREATE TYPE user_status AS ENUM ('active', 'inactive', 'pending');\nSELECT * FROM users WHERE status = 'active';\n\n-- Anti-pattern 6: Not using schemas\n-- Create separate schemas for different modules\nCREATE SCHEMA sales;\nCREATE SCHEMA inventory;\n\n-- Anti-pattern 7: Over-indexing\n-- Too many indexes slow down writes\n-- Remove unused indexes\nSELECT * FROM pg_stat_user_indexes WHERE idx_scan = 0;\n\n-- Anti-pattern 8: Not using transactions\n-- Bad (partial failures)\nUPDATE accounts SET balance = balance - 100 WHERE id = 1;\nUPDATE accounts SET balance = balance + 100 WHERE id = 2;\n\n-- Good\nBEGIN;\nUPDATE accounts SET balance = balance - 100 WHERE id = 1;\nUPDATE accounts SET balance = balance + 100 WHERE id = 2;\nCOMMIT;\n\n-- Anti-pattern 9: Generic columns\n-- Bad\nCREATE TABLE settings (\n    id INT PRIMARY KEY,\n    setting_name TEXT,\n    setting_value TEXT\n);\n\n-- Good\nCREATE TABLE user_settings (\n    user_id INT,\n    theme TEXT,\n    notifications BOOLEAN,\n    language TEXT\n);",
+    "explanation": "Avoiding anti-patterns improves performance, maintainability, and data integrity. Recognize these patterns in existing databases and refactor gradually.",
+    "recallHint": "SELECT *, EAV, CSV columns, magic numbers, over-indexing.",
+    "practice": [
+      "Identify anti-patterns in a legacy database.",
+      "Refactor an EAV design.",
+      "Replace CSV columns with proper relationships."
+    ]
+  },
+  {
+    "id": "sql-060",
+    "category": "sql",
+    "concept": "Database Testing",
+    "priority": "advanced",
+    "question": "How do you test database code and migrations?",
+    "answer": "Test with: unit tests for functions/procedures, integration tests with test database, migration testing, and performance testing. Use test containers for isolated testing.",
+    "code": "-- 1. Unit test a function\n-- Test file: test_functions.sql\nDO $$\nDECLARE\n    result INTEGER;\nBEGIN\n    -- Test get_user_count function\n    result := get_user_count('active');\n    \n    IF result != 10 THEN\n        RAISE EXCEPTION 'Expected 10 active users, got %', result;\n    END IF;\n    \n    RAISE NOTICE 'All tests passed!';\nEND $$;\n\n-- 2. Test a procedure\nDO $$\nDECLARE\n    user_count_before INTEGER;\n    user_count_after INTEGER;\nBEGIN\n    SELECT COUNT(*) INTO user_count_before FROM users WHERE status = 'active';\n    \n    -- Test procedure\n    CALL update_user_status(1, 'active');\n    \n    SELECT COUNT(*) INTO user_count_after FROM users WHERE status = 'active';\n    \n    IF user_count_after != user_count_before + 1 THEN\n        RAISE EXCEPTION 'User status update failed';\n    END IF;\n    \n    RAISE NOTICE 'Procedure test passed!';\nEND $$;\n\n-- 3. Test migration\n-- Create test database\nCREATE DATABASE test_myapp;\n\n-- Run migrations\n-- psql -d test_myapp -f V1__create_tables.sql\n\n-- Verify tables\nSELECT \n    table_name,\n    table_schema\nFROM information_schema.tables\nWHERE table_schema = 'public';\n\n-- Rollback test\n-- psql -d test_myapp -f U1__drop_tables.sql\n\n-- 4. Performance test\n-- Use pgbench for PostgreSQL\n-- pgbench -i -s 100 test_db\n-- pgbench -c 10 -j 2 -t 1000 test_db\n\n-- 5. Integration test with test database\n-- TypeORM test configuration\ntest:\n  type: 'postgres'\n  host: 'localhost'\n  port: 5432\n  database: 'test_myapp'\n  synchronize: true\n  dropSchema: true\n\n-- 6. Use test containers\nconst { Client } = require('pg');\nconst { GenericContainer } = require('testcontainers');\n\nconst container = await new GenericContainer('postgres:15')\n    .withEnv('POSTGRES_PASSWORD', 'test')\n    .withExposedPorts(5432)\n    .start();\n\nconst client = new Client({\n    host: container.getHost(),\n    port: container.getMappedPort(5432),\n    database: 'postgres',\n    user: 'postgres',\n    password: 'test'\n});\n\nawait client.connect();\n// Run tests\nawait client.end();\nawait container.stop();\n\n-- 7. Migration testing checklist\n-- 1. Test on staging environment\n-- 2. Test rollback\n-- 3. Test with production-like data volume\n-- 4. Verify data integrity\n-- 5. Performance test\n-- 6. Test application compatibility\n\n-- 8. Validation queries\nSELECT \n    COUNT(*) AS row_count,\n    MIN(created_at) AS first_record,\n    MAX(created_at) AS last_record\nFROM users;\n\n-- 9. Data consistency tests\nSELECT \n    CASE \n        WHEN COUNT(*) = 0 THEN 'All references valid'\n        ELSE 'Orphaned records found'\n    END AS status\nFROM orders o\nLEFT JOIN users u ON o.user_id = u.id\nWHERE u.id IS NULL;",
+    "explanation": "Database testing is crucial for reliability. Use automated tests in CI/CD pipelines. Test migrations on staging before production. Include performance testing.",
+    "recallHint": "Unit tests for functions, integration tests, migration testing, test containers.",
+    "practice": [
+      "Write a unit test for a database function.",
+      "Set up integration tests with test containers.",
+      "Test a migration on a test database."
+    ]
+  }
+]

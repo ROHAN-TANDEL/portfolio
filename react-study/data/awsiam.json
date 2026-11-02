@@ -1,0 +1,44 @@
+[
+  {
+    "id": "iam-001",
+    "category": "IAM",
+    "concept": "IAM Users vs Roles",
+    "priority": "must-know",
+    "question": "What is the difference between an IAM User and an IAM Role?",
+    "answer": "An IAM User is a permanent identity with long-term credentials (username/password or access keys). An IAM Role is a temporary identity assumed by trusted entities (EC2, Lambda, another AWS account) with short-lived credentials via STS.",
+    "explanation": "Use roles for services and cross-account access. Use users for humans or applications that need permanent credentials.",
+    "recallHint": "Users = permanent. Roles = temporary + assumable.",
+    "practice": [
+      "Create an IAM role for an EC2 instance to access S3 without hardcoding credentials.",
+      "Explain why roles are preferred over users for AWS service-to-service communication."
+    ]
+  },
+  {
+    "id": "iam-002",
+    "category": "IAM",
+    "concept": "IAM Policies",
+    "priority": "must-know",
+    "question": "What are the two main types of IAM policies?",
+    "answer": "Identity-based policies (attached to users/roles/groups) and resource-based policies (attached to resources like S3 buckets or SQS queues). Identity-based control what the identity can do; resource-based control who can access the resource.",
+    "explanation": "Both must allow access for cross-account scenarios — an explicit deny anywhere overrides all allows.",
+    "recallHint": "Identity policy = what can YOU do. Resource policy = who can access ME.",
+    "practice": [
+      "Write a minimal S3 policy allowing GetObject on a specific bucket.",
+      "Explain when you need both an identity policy and a resource policy."
+    ]
+  },
+  {
+    "id": "iam-003",
+    "category": "IAM",
+    "concept": "Principle of Least Privilege",
+    "priority": "must-know",
+    "question": "What does least privilege mean in IAM?",
+    "answer": "Grant only the permissions required to perform a specific task — nothing more. Start with zero permissions and add only what is needed.",
+    "explanation": "Reduces blast radius if credentials are compromised. AWS recommends auditing with IAM Access Analyzer to identify over-permissive policies.",
+    "recallHint": "If in doubt, leave it out.",
+    "practice": [
+      "Audit an existing IAM role and remove permissions that are not actively used.",
+      "Use IAM Access Analyzer to find publicly accessible resources."
+    ]
+  }
+]

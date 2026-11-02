@@ -1,0 +1,418 @@
+[
+  {
+    "id": "aws-001",
+    "category": "aws",
+    "concept": "VPC Overview",
+    "priority": "must-know",
+    "question": "What is Amazon VPC and why is it important for AWS infrastructure?",
+    "answer": "Amazon VPC (Virtual Private Cloud) is a logically isolated section of the AWS cloud where you launch AWS resources in a virtual network that you define. It provides complete control over IP addressing, subnets, route tables, and network gateways[citation:2].",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyVPC\": {\n      \"Type\": \"AWS::EC2::VPC\",\n      \"Properties\": {\n        \"CidrBlock\": \"10.0.0.0/16\",\n        \"EnableDnsSupport\": true,\n        \"EnableDnsHostnames\": true\n      }\n    }\n  }\n}\n```",
+    "explanation": "A properly designed VPC provides security, high availability, and control over your cloud network. Key components include CIDR blocks, public/private subnets, route tables, and Internet/NAT gateways[citation:2][citation:6].",
+    "recallHint": "Isolated cloud network, complete control over networking.",
+    "practice": [
+      "Explain the core components of a VPC.",
+      "Design a VPC for a production application.",
+      "What is the difference between a default and custom VPC?"
+    ]
+  },
+  {
+    "id": "aws-002",
+    "category": "aws",
+    "concept": "VPC Subnets",
+    "priority": "must-know",
+    "question": "What is the difference between public and private subnets?",
+    "answer": "A public subnet has a direct route to an Internet Gateway (IGW) and can communicate with the internet. A private subnet does not have a route to an IGW and can only access the internet via a NAT Gateway or NAT Instance[citation:9][citation:10].",
+    "code": "```json\n{\n  \"Resources\": {\n    \"PublicSubnet\": {\n      \"Type\": \"AWS::EC2::Subnet\",\n      \"Properties\": {\n        \"VpcId\": { \"Ref\": \"MyVPC\" },\n        \"CidrBlock\": \"10.0.1.0/24\",\n        \"MapPublicIpOnLaunch\": true,\n        \"AvailabilityZone\": \"us-east-1a\"\n      }\n    },\n    \"PrivateSubnet\": {\n      \"Type\": \"AWS::EC2::Subnet\",\n      \"Properties\": {\n        \"VpcId\": { \"Ref\": \"MyVPC\" },\n        \"CidrBlock\": \"10.0.2.0/24\",\n        \"MapPublicIpOnLaunch\": false,\n        \"AvailabilityZone\": \"us-east-1a\"\n      }\n    }\n  }\n}\n```",
+    "explanation": "The key distinction is whether the subnet has a route to the Internet Gateway. Public subnets are used for load balancers, bastion hosts, and NAT gateways. Private subnets host application servers and databases that shouldn't be directly accessible from the internet[citation:9][citation:10].",
+    "recallHint": "Public = route to Internet Gateway, Private = no direct internet access.",
+    "practice": [
+      "Design a VPC with public and private subnets.",
+      "Explain why databases should be in private subnets.",
+      "What resources would you place in each subnet?"
+    ]
+  },
+  {
+    "id": "aws-003",
+    "category": "aws",
+    "concept": "Internet Gateway vs NAT Gateway",
+    "priority": "must-know",
+    "question": "What is the difference between an Internet Gateway and a NAT Gateway?",
+    "answer": "An Internet Gateway (IGW) enables bidirectional communication between resources in a VPC and the internet. A NAT Gateway enables outbound internet access for resources in private subnets while preventing inbound access from the internet[citation:2][citation:10].",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyIGW\": {\n      \"Type\": \"AWS::EC2::InternetGateway\"\n    },\n    \"AttachGateway\": {\n      \"Type\": \"AWS::EC2::VPCGatewayAttachment\",\n      \"Properties\": {\n        \"VpcId\": { \"Ref\": \"MyVPC\" },\n        \"InternetGatewayId\": { \"Ref\": \"MyIGW\" }\n      }\n    },\n    \"NATGateway\": {\n      \"Type\": \"AWS::EC2::NatGateway\",\n      \"Properties\": {\n        \"SubnetId\": { \"Ref\": \"PublicSubnet\" },\n        \"AllocationId\": { \"Fn::GetAtt\": [\"EIP\", \"AllocationId\"] }\n      }\n    }\n  }\n}\n```",
+    "explanation": "The IGW allows both inbound and outbound traffic. NAT Gateway sits in a public subnet and allows private subnet resources to initiate outbound connections (like downloading updates) but prevents inbound connections from the internet[citation:2][citation:10].",
+    "recallHint": "IGW = full internet access, NAT = outbound-only for private subnets.",
+    "practice": [
+      "Explain why private subnets need a NAT Gateway.",
+      "Set up a NAT Gateway for private subnets.",
+      "What are the pros and cons of NAT Gateway vs NAT Instance?"
+    ]
+  },
+  {
+    "id": "aws-004",
+    "category": "aws",
+    "concept": "Security Groups vs NACLs",
+    "priority": "must-know",
+    "question": "What is the difference between a Security Group and a Network ACL (NACL)?",
+    "answer": "Security Groups are stateful, instance-level firewalls that only support Allow rules and evaluate all rules together. NACLs are stateless, subnet-level firewalls that support both Allow and Deny rules with numbered priority evaluation[citation:4][citation:8][citation:12].",
+    "code": "```json\n// Security Group (Stateful, Instance-level)\n{\n  \"Resources\": {\n    \"WebServerSG\": {\n      \"Type\": \"AWS::EC2::SecurityGroup\",\n      \"Properties\": {\n        \"GroupDescription\": \"Allow HTTP/HTTPS\",\n        \"SecurityGroupIngress\": [\n          {\n            \"IpProtocol\": \"tcp\",\n            \"FromPort\": 80,\n            \"ToPort\": 80,\n            \"CidrIp\": \"0.0.0.0/0\"\n          }\n        ]\n      }\n    }\n  }\n}\n\n// NACL (Stateless, Subnet-level, with numbered rules)\n{\n  \"Resources\": {\n    \"MyNACL\": {\n      \"Type\": \"AWS::EC2::NetworkAcl\",\n      \"Properties\": {\n        \"VpcId\": { \"Ref\": \"MyVPC\" }\n      }\n    },\n    \"InboundRule\": {\n      \"Type\": \"AWS::EC2::NetworkAclEntry\",\n      \"Properties\": {\n        \"NetworkAclId\": { \"Ref\": \"MyNACL\" },\n        \"RuleNumber\": 100,\n        \"Protocol\": 6,\n        \"RuleAction\": \"allow\",\n        \"CidrBlock\": \"0.0.0.0/0\",\n        \"PortRange\": { \"From\": 80, \"To\": 80 }\n      }\n    },\n    \"OutboundRule\": {\n      \"Type\": \"AWS::EC2::NetworkAclEntry\",\n      \"Properties\": {\n        \"NetworkAclId\": { \"Ref\": \"MyNACL\" },\n        \"RuleNumber\": 100,\n        \"Protocol\": 6,\n        \"RuleAction\": \"allow\",\n        \"CidrBlock\": \"0.0.0.0/0\",\n        \"PortRange\": { \"From\": 1024, \"To\": 65535 }\n      }\n    }\n  }\n}\n```",
+    "explanation": "Security Groups are stateful - if you allow inbound traffic, the return outbound traffic is automatically allowed. NACLs are stateless - you need to explicitly allow both inbound and outbound traffic. Use both for defense in depth - NACLs provide subnet-level protection, Security Groups provide instance-level control[citation:4][citation:8][citation:12].",
+    "recallHint": "SG = Instance-level, Stateful, Allow-only. NACL = Subnet-level, Stateless, Allow+Deny.",
+    "practice": [
+      "Explain stateful vs stateless in AWS networking.",
+      "When would you use NACLs instead of Security Groups?",
+      "Why is using both considered 'Defense in Depth'?"
+    ]
+  },
+  {
+    "id": "aws-005",
+    "category": "aws",
+    "concept": "VPC Peering and Transit Gateway",
+    "priority": "important",
+    "question": "What is the difference between VPC Peering and Transit Gateway?",
+    "answer": "VPC Peering connects two VPCs directly with a non-transitive connection. Transit Gateway connects multiple VPCs and on-premises networks in a hub-and-spoke model with transitive routing. Transit Gateway scales better for multiple VPCs[citation:6][citation:10].",
+    "code": "```json\n// VPC Peering\n{\n  \"Resources\": {\n    \"VPCPeering\": {\n      \"Type\": \"AWS::EC2::VPCPeeringConnection\",\n      \"Properties\": {\n        \"VpcId\": { \"Ref\": \"VPC1\" },\n        \"PeerVpcId\": { \"Ref\": \"VPC2\" }\n      }\n    }\n  }\n}\n\n// Transit Gateway\n{\n  \"Resources\": {\n    \"TransitGateway\": {\n      \"Type\": \"AWS::EC2::TransitGateway\"\n    },\n    \"TransitGatewayAttachment1\": {\n      \"Type\": \"AWS::EC2::TransitGatewayVpcAttachment\",\n      \"Properties\": {\n        \"TransitGatewayId\": { \"Ref\": \"TransitGateway\" },\n        \"VpcId\": { \"Ref\": \"VPC1\" },\n        \"SubnetIds\": [ { \"Ref\": \"Subnet1\" } ]\n      }\n    }\n  }\n}\n```",
+    "explanation": "VPC Peering is simple for one-to-one connections but doesn't support transitive routing (VPC A to VPC B to VPC C requires separate peers). Transit Gateway acts as a central hub, managing connectivity between multiple VPCs and on-premises networks, making it ideal for complex architectures[citation:6][citation:10].",
+    "recallHint": "Peering = one-to-one, non-transitive. Transit Gateway = hub-and-spoke, transitive.",
+    "practice": [
+      "When would you choose VPC Peering vs Transit Gateway?",
+      "What is a transitive routing issue?",
+      "How do you connect multiple VPCs in an organization?"
+    ]
+  },
+  {
+    "id": "aws-006",
+    "category": "aws",
+    "concept": "VPC Endpoints",
+    "priority": "important",
+    "question": "What are VPC Endpoints and what types are available?",
+    "answer": "VPC Endpoints enable private connectivity between your VPC and AWS services without traversing the public internet. Gateway Endpoints (S3, DynamoDB) and Interface Endpoints (powered by PrivateLink for many services)[citation:6][citation:10].",
+    "code": "```json\n// Gateway Endpoint (S3)\n{\n  \"Resources\": {\n    \"GatewayEndpoint\": {\n      \"Type\": \"AWS::EC2::VPCEndpoint\",\n      \"Properties\": {\n        \"VpcId\": { \"Ref\": \"MyVPC\" },\n        \"ServiceName\": \"com.amazonaws.us-east-1.s3\",\n        \"RouteTableIds\": [ { \"Ref\": \"PrivateRouteTable\" } ]\n      }\n    }\n  }\n}\n\n// Interface Endpoint (SSM)\n{\n  \"Resources\": {\n    \"InterfaceEndpoint\": {\n      \"Type\": \"AWS::EC2::VPCEndpoint\",\n      \"Properties\": {\n        \"VpcId\": { \"Ref\": \"MyVPC\" },\n        \"ServiceName\": \"com.amazonaws.us-east-1.ssm\",\n        \"VpcEndpointType\": \"Interface\",\n        \"SubnetIds\": [ { \"Ref\": \"PrivateSubnet\" } ],\n        \"PrivateDnsEnabled\": true\n      }\n    }\n  }\n}\n```",
+    "explanation": "Gateway Endpoints are free and only support S3 and DynamoDB. Interface Endpoints are powered by PrivateLink, have a cost, and support many services like SSM, Secrets Manager, and API Gateway. Both keep traffic within the AWS network[citation:6][citation:10].",
+    "recallHint": "Gateway = S3/DynamoDB only, free. Interface = many services, PrivateLink.",
+    "practice": [
+      "When would you use a Gateway Endpoint vs an Interface Endpoint?",
+      "How do VPC Endpoints improve security?",
+      "What are the cost implications of VPC Endpoints?"
+    ]
+  },
+  {
+    "id": "aws-007",
+    "category": "aws",
+    "concept": "IAM Users vs Roles",
+    "priority": "must-know",
+    "question": "What is the difference between an IAM User and an IAM Role?",
+    "answer": "IAM Users are identities with long-term credentials (access keys) typically used by humans. IAM Roles provide temporary credentials (via STS) that can be assumed by AWS services, applications, or federated users. Roles are more secure and should be used for services[citation:1][citation:3][citation:9].",
+    "code": "```json\n// IAM User (long-term credentials)\n{\n  \"Resources\": {\n    \"MyUser\": {\n      \"Type\": \"AWS::IAM::User\",\n      \"Properties\": {\n        \"UserName\": \"developer\",\n        \"Groups\": [ { \"Ref\": \"DevelopersGroup\" } ],\n        \"LoginProfile\": {\n          \"Password\": \"temporary-password\"\n        }\n      }\n    }\n  }\n}\n\n// IAM Role (temporary credentials)\n{\n  \"Resources\": {\n    \"EC2S3Role\": {\n      \"Type\": \"AWS::IAM::Role\",\n      \"Properties\": {\n        \"RoleName\": \"ec2-s3-access\",\n        \"AssumeRolePolicyDocument\": {\n          \"Statement\": [\n            {\n              \"Effect\": \"Allow\",\n              \"Principal\": { \"Service\": \"ec2.amazonaws.com\" },\n              \"Action\": \"sts:AssumeRole\"\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "The best practice is to use IAM Roles for AWS services (like EC2, Lambda) and IAM Users only for human access. Roles provide temporary credentials automatically rotated by AWS, eliminating the need to store and manage long-term access keys[citation:1][citation:3][citation:9].",
+    "recallHint": "User = long-term credentials for people, Role = temporary credentials for services.",
+    "practice": [
+      "Why should EC2 instances use IAM Roles instead of access keys?",
+      "What is STS AssumeRole?",
+      "How do you secure IAM Users with MFA?"
+    ]
+  },
+  {
+    "id": "aws-008",
+    "category": "aws",
+    "concept": "IAM Policies",
+    "priority": "must-know",
+    "question": "What are IAM Policies and how do they work?",
+    "answer": "IAM Policies define permissions - what actions are allowed or denied on which resources. They are JSON documents containing Effect, Action, and Resource statements. Policies are attached to Users, Groups, or Roles[citation:3][citation:11].",
+    "code": "```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"s3:GetObject\",\n        \"s3:PutObject\"\n      ],\n      \"Resource\": [\n        \"arn:aws:s3:::my-bucket/*\"\n      ]\n    },\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"ec2:DescribeInstances\"\n      ],\n      \"Resource\": \"*\"\n    },\n    {\n      \"Effect\": \"Deny\",\n      \"Action\": [\n        \"s3:DeleteBucket\"\n      ],\n      \"Resource\": [\n        \"arn:aws:s3:::my-bucket\"\n      ]\n    }\n  ]\n}\n```",
+    "explanation": "Policies follow the principle of least privilege - grant only the permissions needed. Deny rules override Allow rules. There are three policy types: AWS Managed (maintained by AWS), Customer Managed (you maintain), and Inline (embedded directly)[citation:3][citation:11].",
+    "recallHint": "JSON with Effect, Action, Resource. Deny overrides Allow.",
+    "practice": [
+      "Write an IAM policy for read-only S3 access.",
+      "Explain the difference between Managed and Inline policies.",
+      "What happens when conflicting policies are attached?"
+    ]
+  },
+  {
+    "id": "aws-009",
+    "category": "aws",
+    "concept": "IAM Groups",
+    "priority": "must-know",
+    "question": "What is an IAM Group and why is it used?",
+    "answer": "An IAM Group is a collection of IAM Users. Instead of attaching policies to individual users, you attach policies to the group, and all users in the group inherit those permissions. This simplifies permission management at scale[citation:3].",
+    "code": "```json\n{\n  \"Resources\": {\n    \"DevelopersGroup\": {\n      \"Type\": \"AWS::IAM::Group\",\n      \"Properties\": {\n        \"GroupName\": \"developers\",\n        \"Policies\": [\n          {\n            \"PolicyName\": \"DevPolicy\",\n            \"PolicyDocument\": {\n              \"Statement\": [\n                {\n                  \"Effect\": \"Allow\",\n                  \"Action\": [\n                    \"ec2:Describe*\",\n                    \"s3:ListBucket\"\n                  ],\n                  \"Resource\": \"*\"\n                }\n              ]\n            }\n          }\n        ]\n      }\n    }\n  }\n}\n```",
+    "explanation": "Groups are the recommended way to manage human user permissions. Create groups based on job functions (Admins, Developers, ReadOnlyUsers) and add users to the appropriate groups. This follows the least privilege principle[citation:3].",
+    "recallHint": "Group = collection of users, permissions managed at group level.",
+    "practice": [
+      "Design IAM Groups for a DevOps organization.",
+      "What's the difference between adding policies to a user vs a group?",
+      "How do you handle a user needing different permissions?"
+    ]
+  },
+  {
+    "id": "aws-010",
+    "category": "aws",
+    "concept": "IAM Best Practices",
+    "priority": "must-know",
+    "question": "What are IAM best practices for securing AWS infrastructure?",
+    "answer": "Key best practices: Use the root account only for initial setup, enable MFA for all users, use IAM Roles instead of access keys for services, follow least privilege, use groups for user management, and regularly rotate credentials[citation:3][citation:9][citation:11].",
+    "code": "```json\n// MFA policy condition\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Deny\",\n      \"Action\": [\n        \"ec2:StartInstances\",\n        \"ec2:StopInstances\"\n      ],\n      \"Resource\": \"*\",\n      \"Condition\": {\n        \"BoolIfExists\": {\n          \"aws:MultiFactorAuthPresent\": \"false\"\n        }\n      }\n    }\n  ]\n}\n```",
+    "explanation": "The root account has unrestricted access - never use it for daily operations. Enable CloudTrail to audit all IAM actions. Use SCPs (Service Control Policies) in multi-account organizations for centralized permission enforcement at the organizational level[citation:3][citation:11].",
+    "recallHint": "No root account access, least privilege, MFA, audit logging.",
+    "practice": [
+      "What would you do if you suspect an IAM user's credentials are compromised?",
+      "How do you enforce MFA for all users?",
+      "Why should you never use the root account?"
+    ]
+  },
+  {
+    "id": "aws-011",
+    "category": "aws",
+    "concept": "Cross-Account Access",
+    "priority": "important",
+    "question": "How do you implement cross-account IAM access securely?",
+    "answer": "Use IAM Roles with STS AssumeRole to grant cross-account access. The account containing the resource creates a role with a trust policy allowing the external account to assume it. The external account grants users permission to AssumeRole[citation:11].",
+    "code": "```json\n// Account A (Resource Account) - Role to assume\n{\n  \"Resources\": {\n    \"CrossAccountRole\": {\n      \"Type\": \"AWS::IAM::Role\",\n      \"Properties\": {\n        \"RoleName\": \"CrossAccountAccess\",\n        \"AssumeRolePolicyDocument\": {\n          \"Statement\": [\n            {\n              \"Effect\": \"Allow\",\n              \"Principal\": {\n                \"AWS\": \"arn:aws:iam::123456789012:root\"\n              },\n              \"Action\": \"sts:AssumeRole\"\n            }\n          ]\n        },\n        \"Policies\": [\n          {\n            \"PolicyName\": \"S3ReadPolicy\",\n            \"PolicyDocument\": {\n              \"Statement\": [\n                {\n                  \"Effect\": \"Allow\",\n                  \"Action\": [\"s3:GetObject\"],\n                  \"Resource\": \"arn:aws:s3:::shared-bucket/*\"\n                }\n              ]\n            }\n          }\n        ]\n      }\n    }\n  }\n}\n\n// Account B (User Account) - User assumes the role\n// aws sts assume-role --role-arn arn:aws:iam::111111111111:role/CrossAccountAccess --role-session-name cross-session\n```",
+    "explanation": "Cross-account IAM roles are the recommended pattern for secure access between accounts. The resource account defines the role and permissions, the user account users assume the role via STS. Never share access keys across accounts[citation:11].",
+    "recallHint": "AssumeRole with trust policy and permission policy.",
+    "practice": [
+      "Explain the cross-account role assumption flow.",
+      "What are the security considerations for cross-account access?",
+      "How do you audit cross-account role usage?"
+    ]
+  },
+  {
+    "id": "aws-012",
+    "category": "aws",
+    "concept": "VPC Flow Logs",
+    "priority": "important",
+    "question": "What are VPC Flow Logs and how do you use them?",
+    "answer": "VPC Flow Logs capture IP traffic information for network interfaces in your VPC. They help with security monitoring, troubleshooting connectivity issues, and analyzing network traffic patterns. Logs can be sent to CloudWatch Logs or S3[citation:2][citation:6].",
+    "code": "```json\n{\n  \"Resources\": {\n    \"FlowLog\": {\n      \"Type\": \"AWS::EC2::FlowLog\",\n      \"Properties\": {\n        \"ResourceId\": { \"Ref\": \"MyVPC\" },\n        \"ResourceType\": \"VPC\",\n        \"TrafficType\": \"ALL\",\n        \"LogGroupName\": \"vpc-flow-logs\",\n        \"MaxAggregationInterval\": 60\n      }\n    }\n  }\n}\n\n// CloudWatch Logs Insights query for rejected traffic\n// fields @timestamp, srcAddr, dstAddr, srcPort, dstPort, action\n// | filter action = \"REJECT\"\n// | sort @timestamp desc\n// | limit 50\n```",
+    "explanation": "Flow Logs are essential for VPC troubleshooting and security monitoring. They can identify rejected traffic (often caused by misconfigured security groups or NACLs), analyze traffic patterns, and provide evidence for compliance audits[citation:2][citation:6].",
+    "recallHint": "Captures IP traffic metadata, use for troubleshooting and security monitoring.",
+    "practice": [
+      "How would you use Flow Logs to troubleshoot a connection issue?",
+      "What is the difference between Flow Logs and CloudTrail?",
+      "How do you query Flow Logs for rejected traffic?"
+    ]
+  },
+  {
+    "id": "aws-013",
+    "category": "aws",
+    "concept": "NAT Gateway vs NAT Instance",
+    "priority": "important",
+    "question": "What is the difference between a NAT Gateway and a NAT Instance?",
+    "answer": "NAT Gateway is a managed AWS service with automatic high availability and scalability. NAT Instance is a self-managed EC2 instance running NAT software. NAT Gateway is preferred for production due to its high availability, maintainability, and better bandwidth[citation:1][citation:2].",
+    "code": "```json\n// NAT Gateway (Managed, Highly Available)\n{\n  \"Resources\": {\n    \"NATGateway\": {\n      \"Type\": \"AWS::EC2::NatGateway\",\n      \"Properties\": {\n        \"SubnetId\": { \"Ref\": \"PublicSubnet\" },\n        \"AllocationId\": { \"Fn::GetAtt\": [\"EIP\", \"AllocationId\"] }\n      }\n    }\n  }\n}\n\n// NAT Instance (Self-managed, requires AMI with NAT software)\n// Launch EC2 instance with Amazon Linux AMI\n// Enable source/destination check = false\n// Add route to private subnet route table\n```",
+    "explanation": "NAT Gateway is fully managed - AWS handles HA and scaling, but costs more. NAT Instance is cheaper but requires management of instance patching, health monitoring, and scaling. For production, NAT Gateway is the recommended approach[citation:1][citation:2].",
+    "recallHint": "Gateway = managed, HA, cost. Instance = self-managed, cheaper, more control.",
+    "practice": [
+      "Why would you choose NAT Gateway over NAT Instance?",
+      "What are the cost considerations?",
+      "How do you make a NAT Instance highly available?"
+    ]
+  },
+  {
+    "id": "aws-014",
+    "category": "aws",
+    "concept": "Security Groups Troubleshooting",
+    "priority": "must-know",
+    "question": "An EC2 instance has port 443 allowed in its Security Group, but users still cannot access the application. What do you check?",
+    "answer": "Check: 1) Network ACLs (stateless - need both inbound and outbound rules), 2) Route tables (is there a route to the internet?), 3) Instance firewall (OS-level like iptables), 4) Application is actually listening on port 443, 5) NACLs are evaluated first[citation:1][citation:4][citation:8].",
+    "code": "```bash\n# Check Security Group\naws ec2 describe-security-groups --group-ids sg-12345\n\n# Check NACL rules\naws ec2 describe-network-acls --network-acl-ids acl-12345\n\n# Check route table\naws ec2 describe-route-tables --route-table-ids rtb-12345\n\n# Check application listening\nss -tulpn | grep 443\nnetstat -tulpn | grep 443\n\n# Test connectivity\ntelnet ec2-public-ip 443\ncurl -v https://ec2-public-ip\n```",
+    "explanation": "The classic troubleshooting path: 1) Security Groups allow the traffic, 2) NACLs are stateless - check outbound rules too, 3) Check route tables for internet connectivity, 4) Verify the application is running and binding to the correct interface[citation:4][citation:8].",
+    "recallHint": "Security Group → NACL → Route Table → Application → OS Firewall.",
+    "practice": [
+      "Explain the traffic flow from internet to EC2.",
+      "Why would users still not connect if Security Group is open?",
+      "How do you test network connectivity to an EC2 instance?"
+    ]
+  },
+  {
+    "id": "aws-015",
+    "category": "aws",
+    "concept": "Hybrid Cloud Connectivity",
+    "priority": "important",
+    "question": "How do you connect an on-premises network to AWS VPC?",
+    "answer": "Two primary options: Site-to-Site VPN (quick setup, encrypted, uses internet) and AWS Direct Connect (dedicated private connection, more reliable, lower latency). Production setups often use Direct Connect as primary with VPN as failover[citation:2][citation:10].",
+    "code": "```json\n// Site-to-Site VPN\n{\n  \"Resources\": {\n    \"VPNGateway\": {\n      \"Type\": \"AWS::EC2::VPNGateway\",\n      \"Properties\": {\n        \"Type\": \"ipsec.1\"\n      }\n    },\n    \"AttachGateway\": {\n      \"Type\": \"AWS::EC2::VPCGatewayAttachment\",\n      \"Properties\": {\n        \"VpcId\": { \"Ref\": \"MyVPC\" },\n        \"VpnGatewayId\": { \"Ref\": \"VPNGateway\" }\n      }\n    }\n  }\n}\n\n// Direct Connect (requires AWS Direct Connect connection)\n// Create Virtual Interface and connect to VPC\n```",
+    "explanation": "Site-to-Site VPN is easier and faster to set up but uses the public internet. Direct Connect provides a private, dedicated connection with consistent performance but takes longer to provision and costs more[citation:2][citation:10].",
+    "recallHint": "VPN = quick, internet-based. Direct Connect = private, dedicated.",
+    "practice": [
+      "Compare VPN and Direct Connect.",
+      "When would you use both?",
+      "How do you ensure high availability for hybrid connectivity?"
+    ]
+  },
+  {
+    "id": "aws-016",
+    "category": "aws",
+    "concept": "High Availability VPC Design",
+    "priority": "important",
+    "question": "How do you design a VPC for high availability?",
+    "answer": "Design for high availability by: 1) Using multiple Availability Zones (at least 2), 2) Placing NAT Gateways in each AZ's public subnet, 3) Using Application Load Balancers across AZs, 4) Spreading application resources across AZs, 5) Using auto scaling groups[citation:1][citation:2][citation:6].",
+    "code": "```json\n{\n  \"Resources\": {\n    \"VPC\": {\n      \"Type\": \"AWS::EC2::VPC\",\n      \"Properties\": {\n        \"CidrBlock\": \"10.0.0.0/16\"\n      }\n    },\n    \"PublicSubnetAZ1\": {\n      \"Type\": \"AWS::EC2::Subnet\",\n      \"Properties\": {\n        \"VpcId\": { \"Ref\": \"VPC\" },\n        \"CidrBlock\": \"10.0.1.0/24\",\n        \"AvailabilityZone\": \"us-east-1a\"\n      }\n    },\n    \"PublicSubnetAZ2\": {\n      \"Type\": \"AWS::EC2::Subnet\",\n      \"Properties\": {\n        \"VpcId\": { \"Ref\": \"VPC\" },\n        \"CidrBlock\": \"10.0.2.0/24\",\n        \"AvailabilityZone\": \"us-east-1b\"\n      }\n    },\n    \"PrivateSubnetAZ1\": {\n      \"Type\": \"AWS::EC2::Subnet\",\n      \"Properties\": {\n        \"VpcId\": { \"Ref\": \"VPC\" },\n        \"CidrBlock\": \"10.0.3.0/24\",\n        \"AvailabilityZone\": \"us-east-1a\"\n      }\n    },\n    \"PrivateSubnetAZ2\": {\n      \"Type\": \"AWS::EC2::Subnet\",\n      \"Properties\": {\n        \"VpcId\": { \"Ref\": \"VPC\" },\n        \"CidrBlock\": \"10.0.4.0/24\",\n        \"AvailabilityZone\": \"us-east-1b\"\n      }\n    }\n  }\n}\n```",
+    "explanation": "Single NAT Gateway or load balancer in one AZ is a single point of failure. Distribute resources across AZs and use AWS managed services (ALB, NAT Gateway) that can span AZs. Auto Scaling groups should be configured to launch in multiple AZs[citation:1][citation:6].",
+    "recallHint": "Multiple AZs, multiple NAT Gateways, ALB across AZs.",
+    "practice": [
+      "Design a highly available VPC for a web application.",
+      "What are the failure scenarios in a single-AZ design?",
+      "How do you handle database HA in a VPC?"
+    ]
+  },
+  {
+    "id": "aws-017",
+    "category": "aws",
+    "concept": "IAM Policy Evaluation",
+    "priority": "important",
+    "question": "How does AWS evaluate IAM policies when multiple policies are attached?",
+    "answer": "AWS evaluates all policies attached to a user, group, or role. The evaluation process: 1) Explicit Deny overrides any Allow, 2) If no explicit Deny, the Allow is granted, 3) If no explicit Allow, access is denied by default[citation:11].",
+    "code": "```json\n// Deny overrides Allow - Example\n// Policy 1: Allows S3 read access\n{\n  \"Effect\": \"Allow\",\n  \"Action\": [\"s3:GetObject\"],\n  \"Resource\": [\"arn:aws:s3:::my-bucket/*\"]\n}\n\n// Policy 2: Denies access to specific folder\n{\n  \"Effect\": \"Deny\",\n  \"Action\": [\"s3:GetObject\"],\n  \"Resource\": [\"arn:aws:s3:::my-bucket/secret/*\"]\n}\n// Result: User can access all files EXCEPT secret folder\n\n// Implicit Deny - No policy allows access\n// Result: Access denied by default\n```",
+    "explanation": "The evaluation order: 1) Deny always wins, 2) Allow grants access, 3) No policy = implicit Deny. This makes permission boundaries effective - they act as a Deny on all allowed actions, ensuring users can't exceed their boundary even if other policies are more permissive[citation:11].",
+    "recallHint": "Deny overrides Allow, Implicit Deny by default.",
+    "practice": [
+      "What happens when a Deny and Allow conflict?",
+      "How do Permission Boundaries work?",
+      "Explain the evaluation logic step by step."
+    ]
+  },
+  {
+    "id": "aws-018",
+    "category": "aws",
+    "concept": "IAM Service-Linked Roles",
+    "priority": "advanced",
+    "question": "What are Service-Linked Roles in AWS IAM?",
+    "answer": "Service-Linked Roles are predefined IAM roles that allow AWS services to perform actions on your behalf. They are created by AWS services and include permissions specific to that service. Examples: AWSServiceRoleForEC2Spot, AWSServiceRoleForRDS[citation:11].",
+    "code": "```json\n// Example: EC2 Spot Service-Linked Role\n// Role: AWSServiceRoleForEC2Spot\n// Trust Policy: Allows ec2.amazonaws.com to assume the role\n// Permission Policy: Contains EC2 spot instance management permissions\n\n// Cannot be manually modified or deleted\n// Managed by AWS - automatically created and deleted\n\n// List Service-Linked Roles\naws iam list-roles --query \"Roles[?Path=='/aws-service-role/']\"\n```",
+    "explanation": "Service-Linked Roles are essential for AWS services that need to perform operations across AWS resources. You typically don't need to create them manually - AWS creates them when you enable the relevant feature. They simplify service configuration and follow security best practices[citation:11].",
+    "recallHint": "Predefined roles for AWS services, managed by AWS, cannot be deleted manually.",
+    "practice": [
+      "What is a Service-Linked Role and when is it created?",
+      "How do Service-Linked Roles differ from standard IAM roles?",
+      "Can you modify a Service-Linked Role?"
+    ]
+  },
+  {
+    "id": "aws-019",
+    "category": "aws",
+    "concept": "IAM Permission Boundaries",
+    "priority": "advanced",
+    "question": "What are IAM Permission Boundaries and when would you use them?",
+    "answer": "Permission Boundaries are a set of maximum permissions that an IAM entity (user or role) can have. They use an IAM policy to define the boundary. Even if other policies grant more permissions, the boundary limits the effective permissions[citation:11].",
+    "code": "```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"ec2:Describe*\",\n        \"s3:GetObject\"\n      ],\n      \"Resource\": \"*\"\n    }\n  ]\n}\n\n// This boundary would limit a user or role to:\n// - Only EC2 Describe actions\n// - Only S3 GetObject\n// Even if attached policies grant more, these are the maximum\n```",
+    "explanation": "Permission Boundaries are useful for delegating IAM administration. A delegated admin can attach policies but cannot grant permissions that exceed the boundary. Common use cases: restricting developers to only their regions, limiting service creation, and enforcing governance[citation:11].",
+    "recallHint": "Maximum effective permissions, even other policies cannot exceed this boundary.",
+    "practice": [
+      "What is the difference between a Permission Boundary and a regular policy?",
+      "How do Permission Boundaries work with Organizations SCPs?",
+      "When would you use a Permission Boundary?"
+    ]
+  },
+  {
+    "id": "aws-020",
+    "category": "aws",
+    "concept": "VPC CIDR Planning",
+    "priority": "important",
+    "question": "How do you choose a CIDR block for a VPC and what are the considerations?",
+    "answer": "Choose CIDR blocks from RFC 1918 ranges: 10.0.0.0/8, 172.16.0.0/12, or 192.168.0.0/16. Consider: 1) Avoid CIDR overlap with on-premises networks, 2) Reserve IPs for future growth, 3) VPCs need non-overlapping CIDRs for peering, 4) Each subnet needs its own CIDR[citation:6][citation:10].",
+    "code": "```json\n// Common VPC CIDR sizes\n// /16 = 65,536 IPs (large, for production with many subnets)\n// /20 = 4,096 IPs (medium, typical for most workloads)\n// /24 = 256 IPs (small, for non-production)\n\n{\n  \"Resources\": {\n    \"MyVPC\": {\n      \"Type\": \"AWS::EC2::VPC\",\n      \"Properties\": {\n        \"CidrBlock\": \"10.0.0.0/16\"\n      }\n    },\n    \"Subnet1\": {\n      \"Type\": \"AWS::EC2::Subnet\",\n      \"Properties\": {\n        \"VpcId\": { \"Ref\": \"MyVPC\" },\n        \"CidrBlock\": \"10.0.1.0/24\",\n        \"AvailabilityZone\": \"us-east-1a\"\n      }\n    },\n    \"Subnet2\": {\n      \"Type\": \"AWS::EC2::Subnet\",\n      \"Properties\": {\n        \"VpcId\": { \"Ref\": \"MyVPC\" },\n        \"CidrBlock\": \"10.0.2.0/24\",\n        \"AvailabilityZone\": \"us-east-1b\"\n      }\n    }\n  }\n}\n```",
+    "explanation": "Reserve larger CIDR blocks than initially needed (e.g., /16 for production). AWS reserves 5 IP addresses per subnet (network, gateway, DNS, etc.). Plan subnets for all AZs you might use and for all resource types[citation:6][citation:10].",
+    "recallHint": "Use RFC 1918 ranges, avoid overlaps, plan for growth.",
+    "practice": [
+      "What CIDR range would you choose for a VPC?",
+      "How do you expand a VPC's CIDR range after creation?",
+      "Why is CIDR overlap problematic for VPC Peering?"
+    ]
+  },
+  {
+    "id": "aws-021",
+    "category": "aws",
+    "concept": "VPC Troubleshooting",
+    "priority": "must-know",
+    "question": "Two EC2 instances in the same subnet can't reach each other. How do you troubleshoot?",
+    "answer": "Check: 1) Security Groups on both instances - ensure the required port is allowed inbound from the other instance's SG or IP, 2) Network ACLs on the subnet (stateless - need both inbound and outbound rules), 3) Route tables, 4) Instance OS firewall (iptables)[citation:1][citation:10].",
+    "code": "```bash\n# Check Security Group rules\naws ec2 describe-security-groups --group-ids sg-12345\n\n# Check Network ACLs\naws ec2 describe-network-acls --filters \"Name=vpc-id,Values=vpc-12345\"\n\n# Check instances are in the same subnet\naws ec2 describe-instances --instance-ids i-12345 i-67890\n\n# Test connectivity\nping private-ip-address\ntelnet private-ip-address port\n```",
+    "explanation": "The classic gotcha: Security Groups are stateful (return traffic automatically allowed), but NACLs are not. People often forget to open the outbound rule on the NACL and wonder why the connection still fails[citation:10][citation:12].",
+    "recallHint": "Security Group → NACL → Route Table → OS Firewall.",
+    "practice": [
+      "Why would instances in the same subnet not communicate?",
+      "What is the typical order of network controls?",
+      "How do you verify Security Group rules are applied?"
+    ]
+  },
+  {
+    "id": "aws-022",
+    "category": "aws",
+    "concept": "Lambda VPC Integration",
+    "priority": "important",
+    "question": "You've deployed a Lambda function inside a VPC and now it can't reach the internet. Why and how do you fix it?",
+    "answer": "Lambda inside a VPC loses default internet access. Fix by: 1) Routing Lambda's subnet through a NAT Gateway (if it needs public internet), or 2) Using VPC Endpoints for AWS services (S3, DynamoDB, etc.)[citation:10].",
+    "code": "```json\n// Lambda with VPC configuration\n{\n  \"Resources\": {\n    \"MyFunction\": {\n      \"Type\": \"AWS::Lambda::Function\",\n      \"Properties\": {\n        \"VpcConfig\": {\n          \"SecurityGroupIds\": [ { \"Ref\": \"LambdaSG\" } ],\n          \"SubnetIds\": [ { \"Ref\": \"PrivateSubnet\" } ]\n        }\n      }\n    }\n  }\n}\n\n// Fix: Add NAT Gateway or VPC Endpoints\n// 1. NAT Gateway in public subnet for outbound internet\n// 2. VPC Endpoint for S3/DynamoDB if Lambda only needs these\n```",
+    "explanation": "When Lambda is placed in a VPC, it loses default internet access through AWS's public endpoint. The solution depends on what the Lambda needs: 1) If it calls external APIs, use NAT Gateway. 2) If it only accesses AWS services, use VPC Endpoints (saves cost and reduces latency)[citation:10].",
+    "recallHint": "Lambda in VPC loses internet access. NAT Gateway or VPC Endpoints.",
+    "practice": [
+      "Why does Lambda lose internet access in a VPC?",
+      "What's the most cost-effective solution for Lambda accessing S3?",
+      "How do you configure Lambda in a private subnet?"
+    ]
+  },
+  {
+    "id": "aws-023",
+    "category": "aws",
+    "concept": "VPC Endpoints Cost Optimization",
+    "priority": "advanced",
+    "question": "What are the cost implications of using VPC Endpoints and how do you optimize?",
+    "answer": "Interface Endpoints (PrivateLink) have hourly costs and data processing charges. Gateway Endpoints (S3, DynamoDB) are free. Optimize by: using Gateway Endpoints when possible, consolidating Interface Endpoints, and using VPC Endpoint policies to limit access[citation:10].",
+    "code": "```json\n// Cost comparison\n// Gateway Endpoint: $0/hour + $0 per GB processed\n// Interface Endpoint: $0.01/hour + $0.01 per GB processed\n\n// For Lambda frequently accessing S3\n// Gateway Endpoint costs $0/month vs Interface Endpoint $7/month + data\n\n// VPC Endpoint policy to limit access\n{\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Principal\": \"*\",\n      \"Action\": [\"s3:GetObject\"],\n      \"Resource\": [\"arn:aws:s3:::my-bucket/*\"]\n    }\n  ]\n}\n```",
+    "explanation": "Gateway Endpoints are free and should be used for S3 and DynamoDB. Interface Endpoints cost ~$7/month plus data charges. Use Interface Endpoints only when Gateway Endpoints aren't available. Endpoint policies can improve security and limit which resources are accessible[citation:10].",
+    "recallHint": "Gateway = free (S3/DynamoDB), Interface = hourly + data charges.",
+    "practice": [
+      "Compare the cost of Gateway vs Interface Endpoints.",
+      "How do you optimize VPC Endpoint costs?",
+      "What is the use case for Interface Endpoints despite the cost?"
+    ]
+  },
+  {
+    "id": "aws-024",
+    "category": "aws",
+    "concept": "IAM Policy Simulator",
+    "priority": "advanced",
+    "question": "What is the IAM Policy Simulator and how does it help with IAM management?",
+    "answer": "The IAM Policy Simulator is a testing tool in the AWS Console that lets you simulate which actions a user, group, or role can perform. It's invaluable for testing policies before applying them in production and troubleshooting permission issues[citation:11].",
+    "code": "```bash\n# Access Policy Simulator\n# https://console.aws.amazon.com/iam/home#/simulator\n\n# Use AWS CLI to simulate policies\naws iam simulate-custom-policy --policy-input-list file://policy.json\naws iam simulate-principal-policy --policy-source-arn arn:aws:iam::account:user/user\n```",
+    "explanation": "The Policy Simulator evaluates policies with the same logic as AWS. You can test individual actions, wildcards, and conditions. It's especially useful for: 1) Troubleshooting \"access denied\" errors, 2) Testing policy changes before deployment, 3) Validating least privilege design[citation:11].",
+    "recallHint": "Testing tool for IAM policies, troubleshoot access denied errors.",
+    "practice": [
+      "How do you use Policy Simulator to troubleshoot access issues?",
+      "What types of conditions can you test with it?",
+      "How does Policy Simulator handle Deny overrides?"
+    ]
+  },
+  {
+    "id": "aws-025",
+    "category": "aws",
+    "concept": "SCP vs IAM Policy",
+    "priority": "advanced",
+    "question": "What is the difference between Service Control Policies (SCPs) and IAM Policies?",
+    "answer": "SCPs are applied at the AWS Organization level to restrict what actions can be taken in member accounts. IAM Policies are applied within a single account to Users, Groups, and Roles. SCPs are a guardrail, while IAM policies grant permissions[citation:11].",
+    "code": "```json\n// SCP (Organization-level guardrail)\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Deny\",\n      \"Action\": [\n        \"ec2:CreateInternetGateway\",\n        \"ec2:DeleteInternetGateway\"\n      ],\n      \"Resource\": \"*\"\n    }\n  ]\n}\n// This prevents any user/role in the OU from creating/deleting IGWs\n\n// IAM Policy (Within account)\n{\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": [\"ec2:Describe*\"],\n      \"Resource\": \"*\"\n    }\n  ]\n}\n// This allows users with this policy to describe EC2 resources\n```",
+    "explanation": "SCPs are used in multi-account environments to enforce governance. They act as a Deny that cannot be overridden by IAM policies. IAM policies grant permissions within the boundaries set by SCPs. Effective permissions = SCPs ∩ IAM Policies[citation:11].",
+    "recallHint": "SCP = organization-wide guardrail, IAM Policy = account-level permission.",
+    "practice": [
+      "What is the difference between SCPs and IAM Policies?",
+      "How do you use SCPs to enforce compliance?",
+      "What is the effective permission of a user with both SCP and IAM Policy?"
+    ]
+  },
+  {
+    "id": "aws-026",
+    "category": "aws",
+    "concept": "VPC Security Best Practices",
+    "priority": "must-know",
+    "question": "What are the security best practices for VPC design?",
+    "answer": "Best practices: 1) Use multiple Availability Zones, 2) Place resources in private subnets, 3) Use Security Groups with least privilege rules, 4) Use NACLs for subnet-level defense, 5) Enable VPC Flow Logs for monitoring, 6) Use VPC Endpoints for private AWS service access[citation:2][citation:6][citation:10].",
+    "code": "```json\n// Security Best Practices Example\n{\n  \"Resources\": {\n    \"WebServerSG\": {\n      \"Type\": \"AWS::EC2::SecurityGroup\",\n      \"Properties\": {\n        \"SecurityGroupIngress\": [\n          { \"IpProtocol\": \"tcp\", \"FromPort\": 443, \"ToPort\": 443, \"SourceSecurityGroupId\": { \"Ref\": \"LoadBalancerSG\" } }\n        ]\n      }\n    },\n    \"NACL\": {\n      \"Type\": \"AWS::EC2::NetworkAcl\",\n      \"Properties\": {\n        \"VpcId\": { \"Ref\": \"MyVPC\" }\n      }\n    },\n    \"FlowLogs\": {\n      \"Type\": \"AWS::EC2::FlowLog\",\n      \"Properties\": {\n        \"ResourceId\": { \"Ref\": \"MyVPC\" },\n        \"TrafficType\": \"ALL\",\n        \"LogGroupName\": \"vpc-flow-logs\"\n      }\n    }\n  }\n}\n```",
+    "explanation": "A well-designed VPC uses layered security: subnet boundaries (NACLs) as the first layer, instance-level controls (Security Groups) as the second layer. Always use least privilege - only open necessary ports. Enable Flow Logs for visibility into traffic patterns[citation:2][citation:6].",
+    "recallHint": "Multi-AZ, private subnets, least privilege SGs, Flow Logs.",
+    "practice": [
+      "Design a secure VPC for a web application.",
+      "What is Defense in Depth in AWS networking?",
+      "Why should security groups be restrictive?"
+    ]
+  }
+]

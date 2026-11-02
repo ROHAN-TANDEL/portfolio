@@ -1,0 +1,322 @@
+[
+  {
+    "id": "aws-s3-001",
+    "category": "aws-s3",
+    "concept": "S3 Overview",
+    "priority": "must-know",
+    "question": "What is Amazon S3 and what are its key features?",
+    "answer": "Amazon S3 (Simple Storage Service) is a highly scalable, durable, and secure object storage service. Key features: unlimited storage, 99.999999999% durability (11 9s), versioning, lifecycle policies, encryption, replication, and various storage classes.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyBucket\": {\n      \"Type\": \"AWS::S3::Bucket\",\n      \"Properties\": {\n        \"BucketName\": \"my-bucket\",\n        \"VersioningConfiguration\": {\n          \"Status\": \"Enabled\"\n        },\n        \"LifecycleConfiguration\": {\n          \"Rules\": [\n            {\n              \"Id\": \"TransitionRule\",\n              \"Status\": \"Enabled\",\n              \"Transitions\": [\n                {\n                  \"StorageClass\": \"STANDARD_IA\",\n                  \"TransitionInDays\": 30\n                }\n              ],\n              \"NoncurrentVersionExpiration\": {\n                \"NoncurrentDays\": 7\n              }\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "S3 is the foundational storage service in AWS, used for backups, data lakes, static websites, and application data. It's designed for 99.999999999% durability, meaning you can store 10 million objects and expect to lose one every 10,000 years.",
+    "recallHint": "Object storage, 11 9s durability, unlimited scale, versioning.",
+    "practice": [
+      "Explain the key features of S3.",
+      "What is the durability of S3?",
+      "How does S3 ensure data durability?"
+    ]
+  },
+  {
+    "id": "aws-s3-002",
+    "category": "aws-s3",
+    "concept": "S3 Storage Classes",
+    "priority": "must-know",
+    "question": "What are the different S3 storage classes and when would you use each?",
+    "answer": "S3 storage classes: S3 Standard (frequent access), S3 Intelligent-Tiering (automatic tiering), S3 Standard-IA (infrequent access), S3 One Zone-IA (single AZ), S3 Glacier Instant Retrieval, S3 Glacier Flexible Retrieval, S3 Glacier Deep Archive (long-term archive).",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyBucket\": {\n      \"Type\": \"AWS::S3::Bucket\",\n      \"Properties\": {\n        \"LifecycleConfiguration\": {\n          \"Rules\": [\n            {\n              \"Id\": \"TransitionToIA\",\n              \"Status\": \"Enabled\",\n              \"Transitions\": [\n                {\n                  \"StorageClass\": \"STANDARD_IA\",\n                  \"TransitionInDays\": 30\n                }\n              ]\n            },\n            {\n              \"Id\": \"TransitionToGlacier\",\n              \"Status\": \"Enabled\",\n              \"Transitions\": [\n                {\n                  \"StorageClass\": \"GLACIER\",\n                  \"TransitionInDays\": 90\n                }\n              ]\n            },\n            {\n              \"Id\": \"TransitionToDeepArchive\",\n              \"Status\": \"Enabled\",\n              \"Transitions\": [\n                {\n                  \"StorageClass\": \"DEEP_ARCHIVE\",\n                  \"TransitionInDays\": 365\n                }\n              ]\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n\n// Storage Class Comparison\n// Standard: $0.023/GB, ~10ms access\n// Standard-IA: $0.0125/GB, ~10ms access, retrieval fee\n// Glacier Instant: $0.004/GB, ~5ms access, retrieval fee\n// Glacier Flexible: $0.0036/GB, minutes to hours, retrieval fee\n// Glacier Deep Archive: $0.00099/GB, 12-48 hours, retrieval fee\n```",
+    "explanation": "Choose storage class based on access patterns: frequently accessed data → Standard/Intelligent-Tiering, infrequent access → Standard-IA, long-term archive → Glacier classes.",
+    "recallHint": "Standard (active), IA (infrequent), Glacier (archive), Deep Archive (long-term).",
+    "practice": [
+      "What are the S3 storage classes and their use cases?",
+      "What is the difference between Standard-IA and One Zone-IA?",
+      "When would you use S3 Intelligent-Tiering?"
+    ]
+  },
+  {
+    "id": "aws-s3-003",
+    "category": "aws-s3",
+    "concept": "S3 Versioning",
+    "priority": "must-know",
+    "question": "What is S3 Versioning and why is it important?",
+    "answer": "S3 Versioning keeps multiple versions of an object in the same bucket. It protects against accidental deletions or overwrites, enables rollback, and is required for MFA Delete and lifecycle rules on noncurrent versions.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyBucket\": {\n      \"Type\": \"AWS::S3::Bucket\",\n      \"Properties\": {\n        \"VersioningConfiguration\": {\n          \"Status\": \"Enabled\"\n        },\n        \"LifecycleConfiguration\": {\n          \"Rules\": [\n            {\n              \"Id\": \"DeleteOldVersions\",\n              \"Status\": \"Enabled\",\n              \"NoncurrentVersionExpiration\": {\n                \"NoncurrentDays\": 7\n              }\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n\n// AWS CLI commands\n# Enable versioning\naws s3api put-bucket-versioning --bucket my-bucket --versioning-configuration Status=Enabled\n\n# List versions\naws s3api list-object-versions --bucket my-bucket --prefix my-file.txt\n\n# Delete version\naws s3api delete-object --bucket my-bucket --key my-file.txt --version-id version-id\n\n# Restore version\naws s3api get-object --bucket my-bucket --key my-file.txt --version-id version-id output-file.txt\n```",
+    "explanation": "Versioning creates a complete audit trail of object changes. It's critical for data protection and compliance. Versioning is not retroactive - only affects objects uploaded after versioning is enabled.",
+    "recallHint": "Multiple versions, protects against delete/overwrite, required for MFA Delete.",
+    "practice": [
+      "What is S3 Versioning and why is it important?",
+      "How do you restore a previous version of an S3 object?",
+      "What happens when versioning is suspended?"
+    ]
+  },
+  {
+    "id": "aws-s3-004",
+    "category": "aws-s3",
+    "concept": "S3 Lifecycle Policies",
+    "priority": "must-know",
+    "question": "What are S3 Lifecycle Policies and how do they help manage costs?",
+    "answer": "S3 Lifecycle Policies automate the transition of objects between storage classes and expiration. They help reduce storage costs by automatically moving data to cheaper storage classes based on age or access patterns.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyBucket\": {\n      \"Type\": \"AWS::S3::Bucket\",\n      \"Properties\": {\n        \"LifecycleConfiguration\": {\n          \"Rules\": [\n            {\n              \"Id\": \"LogFileLifecycle\",\n              \"Status\": \"Enabled\",\n              \"Prefix\": \"logs/\",\n              \"Transitions\": [\n                {\n                  \"StorageClass\": \"STANDARD_IA\",\n                  \"TransitionInDays\": 30\n                },\n                {\n                  \"StorageClass\": \"GLACIER\",\n                  \"TransitionInDays\": 90\n                }\n              ],\n              \"Expiration\": {\n                \"Days\": 365\n              },\n              \"NoncurrentVersionExpiration\": {\n                \"NoncurrentDays\": 7\n              }\n            },\n            {\n              \"Id\": \"MultipartUploadCleanup\",\n              \"Status\": \"Enabled\",\n              \"AbortIncompleteMultipartUpload\": {\n                \"DaysAfterInitiation\": 3\n              }\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "Lifecycle policies reduce storage costs by 50-80%. Common patterns: transition to IA after 30 days, Glacier after 90 days, expire after 365 days. Always include a policy for incomplete multipart uploads.",
+    "recallHint": "Transition to cheaper storage, expire old data, reduce costs.",
+    "practice": [
+      "What are S3 Lifecycle Policies and how do they work?",
+      "How do you create a lifecycle policy to transition logs to Glacier?",
+      "What is the difference between transition and expiration?"
+    ]
+  },
+  {
+    "id": "aws-s3-005",
+    "category": "aws-s3",
+    "concept": "S3 Security and Encryption",
+    "priority": "must-know",
+    "question": "How do you secure data in S3?",
+    "answer": "Secure S3 with: bucket policies, IAM policies, encryption (SSE-S3, SSE-KMS, SSE-C, client-side), block public access, ACLs, access logs, MFA Delete, and VPC Endpoints.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"SecureBucket\": {\n      \"Type\": \"AWS::S3::Bucket\",\n      \"Properties\": {\n        \"BucketName\": \"secure-bucket\",\n        \"PublicAccessBlockConfiguration\": {\n          \"BlockPublicAcls\": true,\n          \"IgnorePublicAcls\": true,\n          \"BlockPublicPolicy\": true,\n          \"RestrictPublicBuckets\": true\n        },\n        \"BucketEncryption\": {\n          \"ServerSideEncryptionConfiguration\": [\n            {\n              \"ServerSideEncryptionByDefault\": {\n                \"SSEAlgorithm\": \"AES256\"\n              }\n            }\n          ]\n        },\n        \"VersioningConfiguration\": {\n          \"Status\": \"Enabled\"\n        }\n      }\n    },\n    \"BucketPolicy\": {\n      \"Type\": \"AWS::S3::BucketPolicy\",\n      \"Properties\": {\n        \"Bucket\": { \"Ref\": \"SecureBucket\" },\n        \"PolicyDocument\": {\n          \"Statement\": [\n            {\n              \"Effect\": \"Deny\",\n              \"Principal\": \"*\",\n              \"Action\": \"s3:*\",\n              \"Resource\": [\n                { \"Fn::GetAtt\": [\"SecureBucket\", \"Arn\"] },\n                { \"Fn::Join\": [\"\", [{ \"Fn::GetAtt\": [\"SecureBucket\", \"Arn\"] }, \"/*\"]] }\n              ],\n              \"Condition\": {\n                \"Bool\": {\n                  \"aws:SecureTransport\": \"false\"\n                }\n              }\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "Security best practices: Block Public Access by default, use encryption, enforce HTTPS, use bucket policies for access control, enable versioning, and use KMS for encryption key management.",
+    "recallHint": "Block public access, encryption, HTTPS only, IAM/bucket policies.",
+    "practice": [
+      "What are the security best practices for S3?",
+      "How do you enforce encryption in S3?",
+      "What is the difference between SSE-S3 and SSE-KMS?"
+    ]
+  },
+  {
+    "id": "aws-s3-006",
+    "category": "aws-s3",
+    "concept": "S3 Bucket Policies",
+    "priority": "must-know",
+    "question": "What are S3 Bucket Policies and how do they differ from IAM Policies?",
+    "answer": "Bucket policies are resource-based policies attached directly to S3 buckets. They control access at the bucket level. IAM policies are identity-based policies attached to users, groups, or roles. Both can be used together for fine-grained access control.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyBucketPolicy\": {\n      \"Type\": \"AWS::S3::BucketPolicy\",\n      \"Properties\": {\n        \"Bucket\": { \"Ref\": \"MyBucket\" },\n        \"PolicyDocument\": {\n          \"Version\": \"2012-10-17\",\n          \"Statement\": [\n            {\n              \"Effect\": \"Allow\",\n              \"Principal\": {\n                \"AWS\": \"arn:aws:iam::123456789012:role/AppRole\"\n              },\n              \"Action\": [\n                \"s3:GetObject\",\n                \"s3:PutObject\"\n              ],\n              \"Resource\": [\n                { \"Fn::Join\": [\"\", [{ \"Fn::GetAtt\": [\"MyBucket\", \"Arn\"] }, \"/*\"]] }\n              ],\n              \"Condition\": {\n                \"StringEquals\": {\n                  \"aws:SourceAccount\": \"123456789012\"\n                }\n              }\n            },\n            {\n              \"Effect\": \"Deny\",\n              \"Principal\": \"*\",\n              \"Action\": \"s3:*\",\n              \"Resource\": [\n                { \"Fn::GetAtt\": [\"MyBucket\", \"Arn\"] },\n                { \"Fn::Join\": [\"\", [{ \"Fn::GetAtt\": [\"MyBucket\", \"Arn\"] }, \"/*\"]] }\n              ],\n              \"Condition\": {\n                \"Bool\": {\n                  \"aws:SecureTransport\": \"false\"\n                }\n              }\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n\n// Common bucket policy patterns\n// 1. Allow access from specific VPC\n// 2. Enforce HTTPS\n// 3. Restrict to specific IP ranges\n// 4. Cross-account access\n// 5. Read-only access for specific users\n```",
+    "explanation": "Use bucket policies for cross-account access, public access, and conditions (IP, VPC, MFA). IAM policies are more flexible for user-based permissions. Always use least privilege.",
+    "recallHint": "Bucket policies = resource-based, IAM policies = identity-based.",
+    "practice": [
+      "What is the difference between a bucket policy and an IAM policy?",
+      "How do you grant cross-account access to an S3 bucket?",
+      "How do you enforce HTTPS for S3 access?"
+    ]
+  },
+  {
+    "id": "aws-s3-007",
+    "category": "aws-s3",
+    "concept": "S3 Replication",
+    "priority": "important",
+    "question": "What is S3 Replication and what are the different types?",
+    "answer": "S3 Replication automatically copies objects between buckets. Types: Cross-Region Replication (CRR) - copies to different region; Same-Region Replication (SRR) - copies to same region; and replication time control (RTC) for SLA.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"SourceBucket\": {\n      \"Type\": \"AWS::S3::Bucket\",\n      \"Properties\": {\n        \"BucketName\": \"source-bucket\",\n        \"VersioningConfiguration\": {\n          \"Status\": \"Enabled\"\n        }\n      }\n    },\n    \"DestinationBucket\": {\n      \"Type\": \"AWS::S3::Bucket\",\n      \"Properties\": {\n        \"BucketName\": \"destination-bucket\",\n        \"VersioningConfiguration\": {\n          \"Status\": \"Enabled\"\n        }\n      }\n    },\n    \"ReplicationRule\": {\n      \"Type\": \"AWS::S3::Bucket\",\n      \"Properties\": {\n        \"BucketName\": { \"Ref\": \"SourceBucket\" },\n        \"ReplicationConfiguration\": {\n          \"Role\": \"arn:aws:iam::123456789012:role/S3ReplicationRole\",\n          \"Rules\": [\n            {\n              \"Id\": \"ReplicateAll\",\n              \"Status\": \"Enabled\",\n              \"Priority\": 1,\n              \"Filter\": {\n                \"Prefix\": \"\"\n              },\n              \"Destination\": {\n                \"Bucket\": { \"Fn::GetAtt\": [\"DestinationBucket\", \"Arn\"] },\n                \"StorageClass\": \"STANDARD_IA\"\n              },\n              \"DeleteMarkerReplication\": {\n                \"Status\": \"Enabled\"\n              },\n              \"SourceSelectionCriteria\": {\n                \"SseKmsEncryptedObjects\": {\n                  \"Status\": \"Enabled\"\n                }\n              }\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "Replication requires versioning on both buckets. It replicates new objects only (not existing). Use CRR for disaster recovery, SRR for log aggregation. Replication time control (RTC) provides 15-minute SLA.",
+    "recallHint": "CRR = different region, SRR = same region, replication time control.",
+    "practice": [
+      "What is S3 Replication and what types are available?",
+      "What are the prerequisites for S3 Replication?",
+      "How does Replication Time Control (RTC) work?"
+    ]
+  },
+  {
+    "id": "aws-s3-008",
+    "category": "aws-s3",
+    "concept": "S3 Performance Optimization",
+    "priority": "important",
+    "question": "How do you optimize S3 performance for high throughput?",
+    "answer": "Optimize S3 performance by: using random key prefixes for parallel requests, using multipart upload for large objects, using S3 Transfer Acceleration for high latency, and using byte-range fetches.",
+    "code": "```python\n# Multipart upload for large files\nimport boto3\n\ns3 = boto3.client('s3')\nbucket = 'my-bucket'\nkey = 'large-file.zip'\n\n# Initiate multipart upload\nresponse = s3.create_multipart_upload(Bucket=bucket, Key=key)\nupload_id = response['UploadId']\n\n# Upload parts\nparts = []\nfor i, chunk in enumerate(file_chunks):\n    part_number = i + 1\n    response = s3.upload_part(\n        Bucket=bucket,\n        Key=key,\n        PartNumber=part_number,\n        UploadId=upload_id,\n        Body=chunk\n    )\n    parts.append({\n        'ETag': response['ETag'],\n        'PartNumber': part_number\n    })\n\n# Complete upload\ns3.complete_multipart_upload(\n    Bucket=bucket,\n    Key=key,\n    UploadId=upload_id,\n    MultipartUpload={'Parts': parts}\n)\n\n# Byte-range fetch for partial reads\nresponse = s3.get_object(\n    Bucket=bucket,\n    Key=key,\n    Range='bytes=0-1023'\n)\n\n# S3 Transfer Acceleration\ns3 = boto3.client(\n    's3',\n    region_name='us-east-1',\n    config=boto3.Config(s3={'use_accelerate_endpoint': True})\n)\n```",
+    "explanation": "S3 performance is optimized by using parallel requests. Multipart upload improves throughput for large files. S3 Transfer Acceleration uses edge locations for faster uploads over long distances.",
+    "recallHint": "Parallel requests, multipart upload, transfer acceleration.",
+    "practice": [
+      "How do you optimize S3 upload performance?",
+      "What is S3 Transfer Acceleration and when would you use it?",
+      "What is the benefit of using byte-range fetches?"
+    ]
+  },
+  {
+    "id": "aws-s3-009",
+    "category": "aws-s3",
+    "concept": "S3 Presigned URLs",
+    "priority": "must-know",
+    "question": "What are S3 Presigned URLs and when would you use them?",
+    "answer": "S3 Presigned URLs provide temporary access to private objects. They're generated using AWS credentials and have a limited validity period. Use them for temporary access to private objects without changing bucket permissions.",
+    "code": "```python\nimport boto3\nfrom botocore.exceptions import ClientError\n\ns3 = boto3.client('s3')\nbucket = 'my-private-bucket'\nkey = 'report.pdf'\n\n# Generate presigned URL (valid for 1 hour)\ntry:\n    response = s3.generate_presigned_url(\n        'get_object',\n        Params={'Bucket': bucket, 'Key': key},\n        ExpiresIn=3600\n    )\n    print(f\"Download URL: {response}\")\nexcept ClientError as e:\n    print(f\"Error generating URL: {e}\")\n\n# Generate presigned URL for upload\nupload_url = s3.generate_presigned_url(\n    'put_object',\n    Params={'Bucket': bucket, 'Key': 'uploads/new-file.pdf'},\n    ExpiresIn=3600\n)\nprint(f\"Upload URL: {upload_url}\")\n\n# Generate URL with custom headers\nurl = s3.generate_presigned_url(\n    'get_object',\n    Params={\n        'Bucket': bucket,\n        'Key': key,\n        'ResponseContentType': 'application/pdf'\n    },\n    ExpiresIn=3600\n)\n\n# Generate URL with conditions (POST object)\nresponse = s3.generate_presigned_post(\n    Bucket=bucket,\n    Key=f'uploads/{filename}',\n    Fields={\n        'Content-Type': 'application/pdf'\n    },\n    Conditions=[\n        ['content-length-range', 0, 10485760]  # Limit to 10MB\n    ],\n    ExpiresIn=3600\n)\n```",
+    "explanation": "Presigned URLs are ideal for secure file sharing, temporary access for clients, and frontend uploads without exposing AWS credentials. Set appropriate expiration based on use case.",
+    "recallHint": "Temporary URLs for private objects, time-limited access.",
+    "practice": [
+      "What are S3 Presigned URLs and when would you use them?",
+      "How do you generate a presigned URL for uploading?",
+      "What are the security considerations for presigned URLs?"
+    ]
+  },
+  {
+    "id": "aws-s3-010",
+    "category": "aws-s3",
+    "concept": "S3 Event Notifications",
+    "priority": "important",
+    "question": "What are S3 Event Notifications and how do they work?",
+    "answer": "S3 Event Notifications trigger actions when objects are created, modified, or deleted. You can send notifications to SNS, SQS, or Lambda. This enables automated processing workflows.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyBucket\": {\n      \"Type\": \"AWS::S3::Bucket\",\n      \"Properties\": {\n        \"BucketName\": \"my-bucket\",\n        \"VersioningConfiguration\": {\n          \"Status\": \"Enabled\"\n        },\n        \"NotificationConfiguration\": {\n          \"LambdaConfigurations\": [\n            {\n              \"Function\": { \"Fn::GetAtt\": [\"MyFunction\", \"Arn\"] },\n              \"Events\": [\"s3:ObjectCreated:*\"],\n              \"Filter\": {\n                \"S3Key\": {\n                  \"Rules\": [\n                    {\n                      \"Name\": \"prefix\",\n                      \"Value\": \"images/\"\n                    },\n                    {\n                      \"Name\": \"suffix\",\n                      \"Value\": \".jpg\"\n                    }\n                  ]\n                }\n              }\n            }\n          ],\n          \"QueueConfigurations\": [\n            {\n              \"Queue\": { \"Fn::GetAtt\": [\"MyQueue\", \"Arn\"] },\n              \"Events\": [\"s3:ObjectRemoved:*\"]\n            }\n          ],\n          \"TopicConfigurations\": [\n            {\n              \"Topic\": { \"Ref\": \"MyTopic\" },\n              \"Events\": [\"s3:ObjectCreated:Put\"]\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n\n// Lambda handler for S3 event\nexports.handler = async (event) => {\n    for (const record of event.Records) {\n        const bucket = record.s3.bucket.name;\n        const key = record.s3.object.key;\n        const eventName = record.eventName;\n        \n        console.log(`Event: ${eventName} on ${bucket}/${key}`);\n        \n        if (eventName.startsWith('s3:ObjectCreated')) {\n            await processNewObject(bucket, key);\n        } else if (eventName.startsWith('s3:ObjectRemoved')) {\n            await handleObjectDeletion(bucket, key);\n        }\n    }\n};\n```",
+    "explanation": "S3 Event Notifications enable event-driven architectures. Use Lambda for processing, SQS for decoupling, and SNS for notifications. Filters allow targeting specific objects.",
+    "recallHint": "S3 → SNS/SQS/Lambda, event-driven processing.",
+    "practice": [
+      "What are S3 Event Notifications and how do they work?",
+      "How do you trigger a Lambda function when a file is uploaded to S3?",
+      "What are the limitations of S3 Event Notifications?"
+    ]
+  },
+  {
+    "id": "aws-s3-011",
+    "category": "aws-s3",
+    "concept": "S3 CORS",
+    "priority": "important",
+    "question": "What is CORS in S3 and how do you configure it?",
+    "answer": "CORS (Cross-Origin Resource Sharing) in S3 allows web applications to access S3 resources from different domains. Configure CORS rules to specify allowed origins, methods, headers, and max-age.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyBucket\": {\n      \"Type\": \"AWS::S3::Bucket\",\n      \"Properties\": {\n        \"BucketName\": \"my-bucket\",\n        \"CorsConfiguration\": {\n          \"CorsRules\": [\n            {\n              \"AllowedOrigins\": [\n                \"https://myapp.com\",\n                \"https://*.myapp.com\"\n              ],\n              \"AllowedMethods\": [\n                \"GET\",\n                \"PUT\",\n                \"POST\",\n                \"DELETE\",\n                \"HEAD\"\n              ],\n              \"AllowedHeaders\": [\n                \"*\"\n              ],\n              \"ExposedHeaders\": [\n                \"ETag\",\n                \"x-amz-version-id\"\n              ],\n              \"MaxAge\": 3000,\n              \"Id\": \"CORSRule\"\n            },\n            {\n              \"AllowedOrigins\": [\"http://localhost:3000\"],\n              \"AllowedMethods\": [\"GET\", \"PUT\"],\n              \"AllowedHeaders\": [\"*\"]\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n\n// S3 CORS with CloudFront\n// For CloudFront, configure CORS in both S3 and CloudFront\n// CloudFront caches CORS responses\n```",
+    "explanation": "CORS is required for web applications hosted on different domains to access S3. For production, use specific origins instead of wildcards. CORS is not a security mechanism.",
+    "recallHint": "Allow cross-origin requests, configure allowed origins/methods/headers.",
+    "practice": [
+      "What is CORS in S3 and when do you need it?",
+      "How do you configure CORS for S3?",
+      "What are the security implications of CORS?"
+    ]
+  },
+  {
+    "id": "aws-s3-012",
+    "category": "aws-s3",
+    "concept": "S3 Object Lock",
+    "priority": "advanced",
+    "question": "What is S3 Object Lock and when would you use it?",
+    "answer": "S3 Object Lock prevents objects from being deleted or overwritten for a fixed time or indefinitely. It's used for compliance requirements like SEC17a-4, CFTC, and record retention policies.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"LockedBucket\": {\n      \"Type\": \"AWS::S3::Bucket\",\n      \"Properties\": {\n        \"BucketName\": \"locked-bucket\",\n        \"VersioningConfiguration\": {\n          \"Status\": \"Enabled\"\n        },\n        \"ObjectLockConfiguration\": {\n          \"ObjectLockEnabled\": true,\n          \"Rule\": {\n            \"DefaultRetention\": {\n              \"Mode\": \"GOVERNANCE\",\n              \"Days\": 365\n            }\n          }\n        }\n      }\n    }\n  }\n}\n\n// Object Lock modes\n// 1. Governance Mode: Users with special permissions can modify\n// 2. Compliance Mode: No one can modify (including root)\n\n// Set retention on an object\naws s3api put-object-retention \\\n    --bucket my-locked-bucket \\\n    --key my-file.pdf \\\n    --retention '{\"Mode\":\"GOVERNANCE\",\"RetainUntilDate\":\"2024-12-31T23:59:59Z\"}'\n\n// Legal hold (indefinite retention)\naws s3api put-object-legal-hold \\\n    --bucket my-locked-bucket \\\n    --key my-file.pdf \\\n    --legal-hold Status=ON\n```",
+    "explanation": "Object Lock is critical for compliance. Governance mode allows some flexibility for administrators. Compliance mode is absolute. Legal hold is for indefinite retention.",
+    "recallHint": "Prevent delete/overwrite for compliance, Governance or Compliance modes.",
+    "practice": [
+      "What is S3 Object Lock and when would you use it?",
+      "What is the difference between Governance and Compliance mode?",
+      "What is the difference between Object Lock and Legal Hold?"
+    ]
+  },
+  {
+    "id": "aws-s3-013",
+    "category": "aws-s3",
+    "concept": "S3 Access Points",
+    "priority": "advanced",
+    "question": "What are S3 Access Points and how do they simplify bucket access management?",
+    "answer": "S3 Access Points are named endpoints attached to a bucket that simplify access management for shared datasets. Each access point has its own policy, enabling granular access control without modifying bucket policies.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyBucket\": {\n      \"Type\": \"AWS::S3::Bucket\"\n    },\n    \"ReadOnlyAccessPoint\": {\n      \"Type\": \"AWS::S3::AccessPoint\",\n      \"Properties\": {\n        \"Bucket\": { \"Ref\": \"MyBucket\" },\n        \"Name\": \"read-only-access\",\n        \"VpcConfiguration\": {\n          \"VpcId\": \"vpc-12345\"\n        },\n        \"Policy\": {\n          \"Statement\": [\n            {\n              \"Effect\": \"Allow\",\n              \"Principal\": { \"AWS\": \"arn:aws:iam::123456789012:role/ReadOnlyRole\" },\n              \"Action\": [\"s3:GetObject\"],\n              \"Resource\": \"arn:aws:s3:us-east-1:123456789012:accesspoint/read-only-access/object/*\"\n            }\n          ]\n        }\n      }\n    },\n    \"WriteAccessPoint\": {\n      \"Type\": \"AWS::S3::AccessPoint\",\n      \"Properties\": {\n        \"Bucket\": { \"Ref\": \"MyBucket\" },\n        \"Name\": \"write-access\",\n        \"Policy\": {\n          \"Statement\": [\n            {\n              \"Effect\": \"Allow\",\n              \"Principal\": { \"AWS\": \"arn:aws:iam::123456789012:role/WriteRole\" },\n              \"Action\": [\"s3:PutObject\"],\n              \"Resource\": \"arn:aws:s3:us-east-1:123456789012:accesspoint/write-access/object/*\"\n            }\n          ]\n        }\n      }\n    }\n  }\n}\n\n// Using Access Points\n// s3://arn:aws:s3:us-east-1:123456789012:accesspoint/read-only-access/my-file.pdf\n```",
+    "explanation": "Access Points simplify access control for large teams. Each access point gets a unique ARN and policy. Use VPC access points to keep traffic within the VPC.",
+    "recallHint": "Named endpoints for buckets, separate policies, simplified access management.",
+    "practice": [
+      "What are S3 Access Points and when would you use them?",
+      "How do Access Points simplify access management?",
+      "What is the difference between a bucket and an access point?"
+    ]
+  },
+  {
+    "id": "aws-s3-014",
+    "category": "aws-s3",
+    "concept": "S3 Object Ownership",
+    "priority": "advanced",
+    "question": "What is S3 Object Ownership and how does it work?",
+    "answer": "S3 Object Ownership controls who owns objects uploaded to a bucket. Options: Bucket Owner Preferred (recommended), Bucket Owner Enforced, and Bucket Owner Preferred with ACLs disabled. It simplifies access control.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyBucket\": {\n      \"Type\": \"AWS::S3::Bucket\",\n      \"Properties\": {\n        \"BucketName\": \"my-bucket\",\n        \"OwnershipControls\": {\n          \"Rules\": [\n            {\n              \"ObjectOwnership\": \"BucketOwnerEnforced\"\n            }\n          ]\n        },\n        \"PublicAccessBlockConfiguration\": {\n          \"BlockPublicAcls\": true,\n          \"IgnorePublicAcls\": true,\n          \"BlockPublicPolicy\": true,\n          \"RestrictPublicBuckets\": true\n        }\n      }\n    }\n  }\n}\n\n// Object Ownership modes\n// 1. Bucket Owner Preferred: Bucket owner can grant access to objects\n// 2. Bucket Owner Enforced: Bucket owner owns all objects (ACLs disabled)\n// 3. Bucket Owner Preferred with ACLs: ACLs still work\n\n// Best practice: BucketOwnerEnforced\n// - Simplifies permissions\n// - Disables ACLs\n// - Uses bucket policies only\n// - Recommended for new buckets\n```",
+    "explanation": "Bucket Owner Enforced is recommended for new buckets. It disables ACLs and uses bucket policies, simplifying access management. It prevents cross-account ownership issues.",
+    "recallHint": "Controls object ownership, BucketOwnerEnforced recommended.",
+    "practice": [
+      "What is S3 Object Ownership and why is it important?",
+      "What is the recommended Object Ownership setting?",
+      "How does Bucket Owner Enforced affect ACLs?"
+    ]
+  },
+  {
+    "id": "aws-s3-015",
+    "category": "aws-s3",
+    "concept": "S3 Pricing",
+    "priority": "important",
+    "question": "How is S3 pricing calculated and how do you optimize costs?",
+    "answer": "S3 pricing includes: storage (per GB/month), requests (GET/PUT per 1000), data transfer (out to internet), and lifecycle costs. Optimize by using lifecycle policies, right storage class, and compression.",
+    "code": "```bash\n# S3 Pricing Example (us-east-1)\n# Standard: $0.023/GB\n# Standard-IA: $0.0125/GB + $0.01/GB retrieval\n# Glacier Instant: $0.004/GB + $0.002/GB retrieval\n# Glacier Flexible: $0.0036/GB + $0.002/GB retrieval\n# Deep Archive: $0.00099/GB + $0.02/GB retrieval\n\n# Cost optimization\n# 1. Use lifecycle policies (transition to IA/Glacier)\n# 2. Enable Intelligent-Tiering for unpredictable access\n# 3. Compress files (gzip, zip)\n# 4. Use S3 CloudFront for distribution (reduces data transfer)\n# 5. Delete old data\n\n# Calculate monthly cost for 1TB\n# Standard: 1024 * $0.023 = $23.55/month\n# IA: 1024 * $0.0125 = $12.80/month\n# Glacier: 1024 * $0.0036 = $3.69/month\n# Deep Archive: 1024 * $0.00099 = $1.01/month\n```",
+    "explanation": "Storage costs decrease with colder storage classes, but retrieval costs increase. Use Intelligent-Tiering for unpredictable access patterns. Monitor costs with Cost Explorer.",
+    "recallHint": "Storage + requests + data transfer = cost, lifecycle policies reduce costs.",
+    "practice": [
+      "What are the main cost components of S3?",
+      "How do you optimize S3 costs?",
+      "When would you use S3 Intelligent-Tiering for cost optimization?"
+    ]
+  },
+  {
+    "id": "aws-s3-016",
+    "category": "aws-s3",
+    "concept": "S3 Multipart Upload",
+    "priority": "important",
+    "question": "What is S3 Multipart Upload and when should you use it?",
+    "answer": "S3 Multipart Upload allows uploading large objects in parts (up to 10,000 parts of 5GB each, total 5TB). It improves performance, enables resumable uploads, and is recommended for files >100MB.",
+    "code": "```python\nimport boto3\nimport math\n\ns3 = boto3.client('s3')\nbucket = 'my-bucket'\nkey = 'large-file.zip'\nfile_size = 5 * 1024 * 1024 * 1024  # 5GB\npart_size = 100 * 1024 * 1024  # 100MB\n\n# Initiate multipart upload\nresponse = s3.create_multipart_upload(\n    Bucket=bucket,\n    Key=key,\n    StorageClass='STANDARD_IA'\n)\nupload_id = response['UploadId']\n\n# Upload parts in parallel\nparts = []\nnum_parts = math.ceil(file_size / part_size)\n\nfor i in range(num_parts):\n    part_number = i + 1\n    offset = i * part_size\n    \n    # Read part data\n    with open('large-file.zip', 'rb') as f:\n        f.seek(offset)\n        data = f.read(part_size)\n    \n    # Upload part\n    response = s3.upload_part(\n        Bucket=bucket,\n        Key=key,\n        PartNumber=part_number,\n        UploadId=upload_id,\n        Body=data\n    )\n    parts.append({\n        'ETag': response['ETag'],\n        'PartNumber': part_number\n    })\n\n# Complete upload\ns3.complete_multipart_upload(\n    Bucket=bucket,\n    Key=key,\n    UploadId=upload_id,\n    MultipartUpload={'Parts': parts}\n)\n\n# Abort incomplete uploads (lifecycle policy)\n# AbortIncompleteMultipartUpload: DaysAfterInitiation: 7\n```",
+    "explanation": "Multipart upload is essential for large files. It allows parallel uploads, resuming failed uploads, and better throughput. Always clean up incomplete multipart uploads with lifecycle rules.",
+    "recallHint": "Large files >100MB, parallel uploads, resumable.",
+    "practice": [
+      "What is S3 Multipart Upload and when should you use it?",
+      "How do you abort an incomplete multipart upload?",
+      "What is the maximum number of parts and size per part?"
+    ]
+  },
+  {
+    "id": "aws-s3-017",
+    "category": "aws-s3",
+    "concept": "S3 Batch Operations",
+    "priority": "advanced",
+    "question": "What are S3 Batch Operations and when would you use them?",
+    "answer": "S3 Batch Operations perform actions on large numbers of S3 objects at scale. Common operations: copy objects, restore objects, replace tags, modify storage classes, and invoke Lambda functions.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyBatchJob\": {\n      \"Type\": \"AWS::S3::StorageLens\",\n      \"Properties\": {\n        \"Operation\": {\n          \"Type\": \"RESTORE\",\n          \"Manifest\": {\n            \"Location\": {\n              \"Bucket\": \"arn:aws:s3:::manifest-bucket\",\n              \"Key\": \"manifests/restore-manifest.csv\"\n            }\n          },\n          \"Report\": {\n            \"Bucket\": \"arn:aws:s3:::report-bucket\",\n            \"Prefix\": \"reports/\",\n            \"Format\": \"CSV\",\n            \"Enabled\": true\n          }\n        }\n      }\n    }\n  }\n}\n\n// AWS CLI examples\n# Create inventory for manifest\naws s3api put-bucket-inventory-configuration --bucket my-bucket\n\n# Create batch operation job\naws s3control create-job \\\n    --account-id 123456789012 \\\n    --confirmation-required \\\n    --operation '{\"S3InitiateRestoreObject\":{\"ExpirationInDays\":7}}' \\\n    --report '{\"Bucket\":\"arn:aws:s3:::report-bucket\",\"Format\":\"CSV\",\"Enabled\":true}' \\\n    --manifest '{\"Spec\":{\"Format\":\"S3BatchOperations_CSV_20180820\"},\"Location\":{\"ObjectArn\":\"arn:aws:s3:::manifest-bucket/manifest.csv\"}}' \\\n    --priority 1 \\\n    --role-arn arn:aws:iam::123456789012:role/S3BatchRole\n\n# View job status\naws s3control describe-job --account-id 123456789012 --job-id job-id\n```",
+    "explanation": "Batch Operations are ideal for large-scale data management tasks. Use with S3 Inventory for manifest generation. Jobs are auditable and report success/failure.",
+    "recallHint": "Bulk operations on S3 objects, cost-effective, auditable.",
+    "practice": [
+      "What are S3 Batch Operations and when would you use them?",
+      "How do you create a manifest for a batch operation?",
+      "What types of operations are supported?"
+    ]
+  },
+  {
+    "id": "aws-s3-018",
+    "category": "aws-s3",
+    "concept": "S3 Storage Lens",
+    "priority": "advanced",
+    "question": "What is S3 Storage Lens and how does it help with storage management?",
+    "answer": "S3 Storage Lens provides visibility into S3 storage usage and activity across your entire organization. It identifies cost optimization opportunities, security issues, and data protection gaps.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"StorageLensConfig\": {\n      \"Type\": \"AWS::S3::StorageLens\",\n      \"Properties\": {\n        \"StorageLensConfiguration\": {\n          \"Id\": \"my-storage-lens\",\n          \"IsEnabled\": true,\n          \"AccountLevel\": {\n            \"ActivityMetrics\": {\n              \"IsEnabled\": true\n            },\n            \"BucketLevel\": {\n              \"ActivityMetrics\": {\n                \"IsEnabled\": true\n              },\n              \"PrefixLevel\": {\n                \"StorageMetrics\": {\n                  \"IsEnabled\": true\n                }\n              }\n            }\n          },\n          \"Include\": {\n            \"Buckets\": [\"arn:aws:s3:::my-bucket\"]\n          },\n          \"StorageLensAwsOrg\": {\n            \"Arn\": \"arn:aws:organizations::123456789012:organization/o-xxxxx\"\n          }\n        }\n      }\n    }\n  }\n}\n\n// Metrics include:\n// 1. Storage usage (bytes, object count)\n// 2. Activity (requests, data transfer)\n// 3. Storage class distribution\n// 4. Cost optimization opportunities\n// 5. Data protection gaps\n// 6. Security alerts\n```",
+    "explanation": "Storage Lens provides organization-wide visibility. It identifies cost savings opportunities, security issues, and data protection gaps. Use it for large-scale S3 management.",
+    "recallHint": "Organization-wide visibility, cost optimization, security insights.",
+    "practice": [
+      "What is S3 Storage Lens and how does it help?",
+      "What metrics does Storage Lens provide?",
+      "How do you enable Storage Lens for your organization?"
+    ]
+  },
+  {
+    "id": "aws-s3-019",
+    "category": "aws-s3",
+    "concept": "S3 Data Transfer Acceleration",
+    "priority": "advanced",
+    "question": "What is S3 Transfer Acceleration and when should you use it?",
+    "answer": "S3 Transfer Acceleration uses AWS edge locations to speed up data transfer to S3. It's useful for cross-region uploads, large files, and geographically distributed clients.",
+    "code": "```bash\n# Enable Transfer Acceleration\naws s3api put-bucket-accelerate-configuration \\\n    --bucket my-bucket \\\n    --accelerate-configuration Status=Enabled\n\n# Check status\naws s3api get-bucket-accelerate-configuration --bucket my-bucket\n\n# Use Transfer Acceleration endpoint\n# s3-accelerate.amazonaws.com\n\n# AWS CLI with transfer acceleration\naws s3 cp large-file.zip s3://my-bucket/ --endpoint-url https://s3-accelerate.amazonaws.com\n\n# When to use\n# - Cross-region uploads (>100MB)\n# - Large files (>1GB)\n# - Geographically distributed users\n# - Upload speed >100 Mbps\n\n# When NOT to use\n# - Small files (<100MB)\n# - Same region uploads\n# - Low bandwidth (under 100 Mbps)\n\n# Speed test tool\n# https://s3-accelerate-speedtest.s3-accelerate.amazonaws.com/\n```",
+    "explanation": "Transfer Acceleration improves upload speeds over long distances. It's best for: cross-region uploads, large files, and geographically distributed users. Test with the speed test tool.",
+    "recallHint": "Faster uploads over long distances, AWS edge locations.",
+    "practice": [
+      "What is S3 Transfer Acceleration and when should you use it?",
+      "How do you enable Transfer Acceleration for a bucket?",
+      "When would you NOT use Transfer Acceleration?"
+    ]
+  },
+  {
+    "id": "aws-s3-020",
+    "category": "aws-s3",
+    "concept": "S3 Troubleshooting",
+    "priority": "must-know",
+    "question": "Users can't access files in your S3 bucket despite having IAM permissions. What do you check?",
+    "answer": "Check: 1) Bucket policy (explicit denies), 2) Block Public Access settings, 3) Object ownership (ACLs), 4) Encryption key access (SSE-KMS), 5) VPC Endpoint policy, 6) IAM permissions for specific actions.",
+    "code": "```bash\n# Check bucket policy\naws s3api get-bucket-policy --bucket my-bucket\n\n# Check Block Public Access\naws s3api get-public-access-block --bucket my-bucket\n\n# Check object encryption\naws s3api head-object --bucket my-bucket --key my-file.txt\n\n# Check object ownership\naws s3api get-bucket-ownership-controls --bucket my-bucket\n\n# Test permissions\naws s3api get-object --bucket my-bucket --key my-file.txt output.txt\n\n# Check IAM policy\naws iam get-user-policy --user-name user --policy-name policy\n\n# Check KMS key access\naws kms describe-key --key-id my-key\n\n# Common issues\n# 1. Explicit Deny in bucket policy\n# 2. Block Public Access enabled\n# 3. Object is encrypted with a key user lacks access to\n# 4. VPC Endpoint policy doesn't allow access\n# 5. Wrong IAM permissions (s3:GetObject vs s3:GetObjectVersion)\n```",
+    "explanation": "S3 access is determined by a combination of IAM policies, bucket policies, ACLs, and encryption. Block Public Access settings override more permissive policies. KMS permissions are often overlooked.",
+    "recallHint": "Bucket policy, Block Public Access, encryption, IAM permissions.",
+    "practice": [
+      "Why can't a user access an S3 object despite having IAM permissions?",
+      "How do you troubleshoot S3 access issues?",
+      "What is the role of Block Public Access in S3 security?"
+    ]
+  }
+]

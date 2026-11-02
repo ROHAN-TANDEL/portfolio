@@ -1,0 +1,626 @@
+[
+  {
+    "id": "aws-ec2-001",
+    "category": "aws-ec2",
+    "concept": "EC2 Fundamentals",
+    "priority": "must-know",
+    "question": "What is Amazon EC2 and what are its key components?",
+    "answer": "Amazon EC2 (Elastic Compute Cloud) provides scalable virtual servers in the cloud. Key components include: AMIs (Amazon Machine Images), Instance Types (CPU/memory combinations), Key Pairs (SSH access), Security Groups (firewall), EBS Volumes (storage), and User Data (boot scripts).",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyEC2Instance\": {\n      \"Type\": \"AWS::EC2::Instance\",\n      \"Properties\": {\n        \"InstanceType\": \"t3.micro\",\n        \"ImageId\": \"ami-0c02fb55956c7d316\",\n        \"KeyName\": \"my-key-pair\",\n        \"SecurityGroupIds\": [{ \"Ref\": \"MySecurityGroup\" }],\n        \"UserData\": {\n          \"Fn::Base64\": \"#!/bin/bash\\nyum update -y\\n\"\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "EC2 is the foundation of AWS compute. Instance types are categorized by family: General purpose (t3, m5), Compute optimized (c5), Memory optimized (r5), Storage optimized (i3), and GPU (p3, g4). Choose based on workload requirements.",
+    "recallHint": "AMI + Instance Type + Key Pair + Security Group + EBS = EC2.",
+    "practice": [
+      "Explain the components of an EC2 instance.",
+      "How do you choose an instance type for a web server?",
+      "What is the purpose of User Data?"
+    ]
+  },
+  {
+    "id": "aws-ec2-002",
+    "category": "aws-ec2",
+    "concept": "EC2 Instance Types",
+    "priority": "must-know",
+    "question": "What are EC2 instance families and how do you choose the right one?",
+    "answer": "Instance families: General Purpose (T/M) - balanced CPU/memory; Compute Optimized (C) - CPU intensive; Memory Optimized (R/X) - memory intensive; Storage Optimized (I/D) - high I/O; Accelerated Computing (P/G) - GPU workloads.",
+    "code": "```bash\n# Common instance types\n# General Purpose\nt3.micro - 2 vCPU, 1 GB RAM (free tier)\nt3.medium - 2 vCPU, 4 GB RAM\nm5.large - 2 vCPU, 8 GB RAM\n\n# Compute Optimized\nc5.large - 2 vCPU, 4 GB RAM (high CPU/ratio)\nc5.4xlarge - 16 vCPU, 32 GB RAM\n\n# Memory Optimized\nr5.large - 2 vCPU, 16 GB RAM (high memory/ratio)\nx1e.32xlarge - 128 vCPU, 3,904 GB RAM\n\n# Storage Optimized\ni3.large - 2 vCPU, 15.25 GB RAM, 475 GB NVMe SSD\n\n# GPU Instances\ng4dn.xlarge - 4 vCPU, 16 GB RAM, NVIDIA T4\n```",
+    "explanation": "Choose based on workload: t3 for burstable workloads (web servers), m5 for balanced workloads (application servers), c5 for compute-heavy (ML training), r5 for memory-heavy (databases), i3 for high I/O (NoSQL databases).",
+    "recallHint": "T/M = balanced, C = compute, R = memory, I = storage, P/G = GPU.",
+    "practice": [
+      "Which instance type would you use for a CPU-intensive ML training job?",
+      "Explain the difference between t3 and m5 instances.",
+      "What is burstable performance?"
+    ]
+  },
+  {
+    "id": "aws-ec2-003",
+    "category": "aws-ec2",
+    "concept": "EC2 Pricing Models",
+    "priority": "must-know",
+    "question": "What are the different EC2 pricing models and when should you use each?",
+    "answer": "On-Demand (flexible, no commitment), Reserved (1-3 year commitment for discount), Spot (bid for unused capacity, up to 90% discount), Savings Plans (flexible commitment across instance families), and Dedicated Hosts (physical servers).",
+    "code": "```bash\n# Pricing comparison (estimated, us-east-1)\n# t3.micro On-Demand: ~$0.0104/hour (~$7.50/month)\n# t3.micro 1-year Reserved: ~$0.0073/hour (~$5.20/month)\n# t3.micro 3-year Reserved: ~$0.0052/hour (~$3.70/month)\n# t3.micro Spot: ~$0.0031/hour (~$2.20/month)\n\n# Spot best practices\n# - Use instance fleets\n# - Diversify instance types and AZs\n# - Use Spot with On-Demand fallback\n# - Store state on external storage (EBS, S3)\n```",
+    "explanation": "On-Demand for unpredictable workloads, Reserved for steady-state production, Spot for stateless/fault-tolerant workloads (CI/CD, batch processing), Savings Plans for flexibility. Spot interruptions can occur with 2-minute notice.",
+    "recallHint": "On-Demand = flexible, Reserved = steady, Spot = cheap/fault-tolerant.",
+    "practice": [
+      "When would you use Spot instances?",
+      "What are the risks of using Spot instances?",
+      "How do Reserved Instances differ from Savings Plans?"
+    ]
+  },
+  {
+    "id": "aws-ec2-004",
+    "category": "aws-ec2",
+    "concept": "EC2 Storage Options",
+    "priority": "must-know",
+    "question": "What are the storage options for EC2 and when do you use each?",
+    "answer": "EBS (Elastic Block Store) for persistent block storage, Instance Store for temporary high-performance storage, and EFS (Elastic File System) for shared file storage. Each has different use cases, performance, and durability characteristics.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyEC2WithEBS\": {\n      \"Type\": \"AWS::EC2::Instance\",\n      \"Properties\": {\n        \"InstanceType\": \"t3.micro\",\n        \"EbsOptimized\": true,\n        \"BlockDeviceMappings\": [\n          {\n            \"DeviceName\": \"/dev/sda1\",\n            \"Ebs\": {\n              \"VolumeSize\": 100,\n              \"VolumeType\": \"gp3\",\n              \"DeleteOnTermination\": true\n            }\n          }\n        ]\n      }\n    }\n  }\n}\n```",
+    "explanation": "EBS volumes are persistent and survive instance termination (unless configured otherwise). Instance Store is ephemeral and ideal for scratch data, caches, and temporary files. EFS allows multiple instances to access the same file system (NFS).",
+    "recallHint": "EBS = persistent, Instance Store = temporary/high-speed, EFS = shared.",
+    "practice": [
+      "What happens to EBS and Instance Store data when an instance stops?",
+      "When would you use Instance Store instead of EBS?",
+      "Compare gp2, gp3, and io2 EBS volume types."
+    ]
+  },
+  {
+    "id": "aws-ec2-005",
+    "category": "aws-ec2",
+    "concept": "EBS Volume Types",
+    "priority": "must-know",
+    "question": "What are the EBS volume types and their use cases?",
+    "answer": "gp3/gp2 (General Purpose SSD) for most workloads, io2/io1 (Provisioned IOPS SSD) for high-performance databases, st1 (Throughput Optimized HDD) for big data/log processing, and sc1 (Cold HDD) for infrequently accessed data.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyDBVolume\": {\n      \"Type\": \"AWS::EC2::Volume\",\n      \"Properties\": {\n        \"Size\": 100,\n        \"VolumeType\": \"io2\",\n        \"Iops\": 10000,\n        \"AvailabilityZone\": \"us-east-1a\"\n      }\n    },\n    \"MyWebVolume\": {\n      \"Type\": \"AWS::EC2::Volume\",\n      \"Properties\": {\n        \"Size\": 50,\n        \"VolumeType\": \"gp3\",\n        \"Throughput\": 125,\n        \"AvailabilityZone\": \"us-east-1a\"\n      }\n    }\n  }\n}\n```",
+    "explanation": "gp3 is the newer general-purpose type with baseline performance of 3000 IOPS and 125 MB/s throughput. io2 provides up to 64,000 IOPS for latency-sensitive applications. HDD volumes are cheaper but have lower performance.",
+    "recallHint": "gp3 = general purpose, io2 = high IOPS, st1 = throughput, sc1 = cold.",
+    "practice": [
+      "When would you choose io2 over gp3?",
+      "What is the difference between IOPS and throughput?",
+      "How do you migrate between volume types?"
+    ]
+  },
+  {
+    "id": "aws-ec2-006",
+    "category": "aws-ec2",
+    "concept": "EC2 User Data and Metadata",
+    "priority": "must-know",
+    "question": "What is the difference between User Data and Instance Metadata?",
+    "answer": "User Data is a script that runs when the instance boots (for initial configuration). Instance Metadata is information about the instance available at http://169.254.169.254/latest/meta-data/ (instance ID, region, IAM role credentials, etc.).",
+    "code": "```bash\n# User Data (boot script)\n#!/bin/bash\nyum update -y\nyum install -y httpd\nsystemctl start httpd\necho \"Hello World\" > /var/www/html/index.html\n\n# Access Instance Metadata\ncurl http://169.254.169.254/latest/meta-data/\ncurl http://169.254.169.254/latest/meta-data/instance-id\ncurl http://169.254.169.254/latest/meta-data/iam/security-credentials/\n\n# Get IAM role credentials\ncurl http://169.254.169.254/latest/meta-data/iam/security-credentials/my-role\n```",
+    "explanation": "User Data is used for bootstrapping instances (installing software, configuring services). It runs once at launch. Instance Metadata provides runtime instance information and is critical for IAM role credentials, which are automatically rotated.",
+    "recallHint": "User Data = boot script, Metadata = instance info (including IAM credentials).",
+    "practice": [
+      "How would you use User Data to set up a web server?",
+      "Why is instance metadata important for security?",
+      "What is the difference between User Data and Metadata?"
+    ]
+  },
+  {
+    "id": "aws-ec2-007",
+    "category": "aws-ec2",
+    "concept": "EC2 Auto Scaling Groups",
+    "priority": "must-know",
+    "question": "What is an Auto Scaling Group and how does it work?",
+    "answer": "Auto Scaling Groups (ASGs) automatically scale EC2 instances up or down based on demand. They maintain a desired number of instances, launch or terminate instances using Launch Templates, and distribute instances across Availability Zones.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyAutoScalingGroup\": {\n      \"Type\": \"AWS::AutoScaling::AutoScalingGroup\",\n      \"Properties\": {\n        \"MinSize\": 2,\n        \"MaxSize\": 10,\n        \"DesiredCapacity\": 2,\n        \"VPCZoneIdentifier\": [\"subnet-1a\", \"subnet-1b\"],\n        \"LaunchTemplate\": {\n          \"LaunchTemplateId\": { \"Ref\": \"MyLaunchTemplate\" }\n        },\n        \"TargetGroupARNs\": [{ \"Ref\": \"MyTargetGroup\" }],\n        \"HealthCheckType\": \"ELB\"\n      }\n    }\n  }\n}\n```",
+    "explanation": "ASGs use Launch Templates (or Launch Configurations) to define instance specifications. Scaling policies can be based on CloudWatch metrics (CPU, memory, custom metrics) or scheduled. Always use multiple AZs for high availability.",
+    "recallHint": "ASG = automatic scaling, desired/min/max, multi-AZ, health checks.",
+    "practice": [
+      "How does an Auto Scaling Group maintain the desired capacity?",
+      "What happens when an instance fails a health check?",
+      "What is the difference between a Launch Configuration and Launch Template?"
+    ]
+  },
+  {
+    "id": "aws-ec2-008",
+    "category": "aws-ec2",
+    "concept": "EC2 Lifecycle Hooks",
+    "priority": "important",
+    "question": "What are Auto Scaling Lifecycle Hooks and when would you use them?",
+    "answer": "Lifecycle Hooks allow you to perform custom actions before instances are launched or terminated. Use them for: installing software before service registration, draining connections before termination, or backing up data before termination.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"LaunchHook\": {\n      \"Type\": \"AWS::AutoScaling::LifecycleHook\",\n      \"Properties\": {\n        \"AutoScalingGroupName\": { \"Ref\": \"MyAutoScalingGroup\" },\n        \"LifecycleTransition\": \"autoscaling:EC2_INSTANCE_LAUNCHING\",\n        \"HeartbeatTimeout\": 300,\n        \"DefaultResult\": \"CONTINUE\"\n      }\n    },\n    \"TerminateHook\": {\n      \"Type\": \"AWS::AutoScaling::LifecycleHook\",\n      \"Properties\": {\n        \"AutoScalingGroupName\": { \"Ref\": \"MyAutoScalingGroup\" },\n        \"LifecycleTransition\": \"autoscaling:EC2_INSTANCE_TERMINATING\",\n        \"HeartbeatTimeout\": 300\n      }\n    }\n  }\n}\n```",
+    "explanation": "Lifecycle Hooks pause instance transitions and wait for completion signals. The heartbeat timeout can be extended to allow long-running tasks. Common uses: registering/deregistering from service discovery, installing software, or draining connections.",
+    "recallHint": "Custom actions at launch or termination, heartbeat timeout.",
+    "practice": [
+      "When would you use a Lifecycle Hook?",
+      "What is the default timeout for a Lifecycle Hook?",
+      "How would you use a Lifecycle Hook for zero-downtime deployments?"
+    ]
+  },
+  {
+    "id": "aws-ec2-009",
+    "category": "aws-ec2",
+    "concept": "EC2 Instance Types",
+    "priority": "must-know",
+    "question": "What is the difference between burstable (T) and fixed performance (M/C/R) instances?",
+    "answer": "Burstable instances (T2/T3/T4g) use CPU credits for baseline performance and can burst above baseline when credits are available. Fixed performance instances (M/C/R) provide guaranteed performance with no credits.",
+    "code": "```bash\n# T3 instance CPU credits\n# Baseline: 10% of vCPU utilization\n# Each vCPU accumulates credits at a rate of 24 per hour\n# Earn up to 144 credits per vCPU (6 hours of bursting)\n\n# Check CPU credit balance\naws ec2 describe-instances --instance-ids i-12345 --query 'Reservations[0].Instances[0].CpuOptions'\n\n# Use CloudWatch to monitor CPU credits\naws cloudwatch get-metric-statistics --namespace AWS/EC2 --metric-name CPUCreditBalance\n\n# When to use T instances\n# - Web servers with variable traffic\n# - Development/testing environments\n# - Low utilization applications\n\n# When to use fixed performance\n# - Production databases\n# - Consistent high traffic\n# - CPU-sensitive workloads\n```",
+    "explanation": "T instances are cost-effective for workloads with idle periods, but you must monitor CPU credit balance. When credits are exhausted, instances throttle to baseline performance. M/C/R instances provide predictable performance for production workloads.",
+    "recallHint": "T = burstable (credit-based), M/C/R = fixed performance (no credits).",
+    "practice": [
+      "When would you choose T instances over M instances?",
+      "What happens when a T instance runs out of CPU credits?",
+      "How do you monitor CPU credit balance?"
+    ]
+  },
+  {
+    "id": "aws-ec2-010",
+    "category": "aws-ec2",
+    "concept": "EC2 Troubleshooting",
+    "priority": "must-know",
+    "question": "Your EC2 instance is running but you can't SSH in. What do you check?",
+    "answer": "Check: 1) Security Group inbound rules (port 22 open to your IP), 2) Internet Gateway and route table (public subnet with IGW), 3) NACLs (stateless - need both inbound and outbound), 4) Network ACLs, 5) Instance status checks.",
+    "code": "```bash\n# Check Security Group\naws ec2 describe-security-groups --group-ids sg-12345 --query 'SecurityGroups[0].IpPermissions'\n\n# Check route table\naws ec2 describe-route-tables --route-table-ids rtb-12345\n\n# Check internet connectivity\naws ec2 get-console-output --instance-id i-12345\n\n# Check instance status\nec2-describe-instance-status --instance-id i-12345\n\n# Check Network ACLs\naws ec2 describe-network-acls --filters \"Name=association.subnet-id,Values=subnet-12345\"\n\n# Common fix\n# 1. Add your IP to SG inbound rules\n# 2. Ensure route table has IGW destination\n# 3. Check NACL outbound rules (ephemeral ports 1024-65535)\n```",
+    "explanation": "The most common cause is Security Group inbound rules not allowing your IP. Other issues: instances in private subnets without NAT gateway, instance OS firewall (iptables), or instances not having public IPs. Use EC2 Instance Connect as a fallback.",
+    "recallHint": "SG inbound, route table, NACLs, public IP.",
+    "practice": [
+      "What are the common reasons for SSH failure?",
+      "How would you troubleshoot a connectivity issue?",
+      "What is EC2 Instance Connect and when would you use it?"
+    ]
+  },
+  {
+    "id": "aws-ec2-011",
+    "category": "aws-ec2",
+    "concept": "EC2 AMI Management",
+    "priority": "important",
+    "question": "What are AMIs and how do you create custom AMIs for automated deployments?",
+    "answer": "AMI (Amazon Machine Image) contains the OS, applications, and configurations for EC2 instances. Custom AMIs reduce boot time and ensure consistency. Use Packer, EC2 Image Builder, or manual AMI creation for golden images.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyAMI\": {\n      \"Type\": \"AWS::EC2::Image\",\n      \"Properties\": {\n        \"Name\": \"my-custom-ami\",\n        \"Description\": \"Custom AMI with web server\",\n        \"InstanceId\": { \"Ref\": \"MyInstance\" },\n        \"BlockDeviceMappings\": [\n          {\n            \"DeviceName\": \"/dev/xvda\",\n            \"Ebs\": {\n              \"DeleteOnTermination\": true,\n              \"VolumeType\": \"gp3\",\n              \"VolumeSize\": 100\n            }\n          }\n        ]\n      }\n    }\n  }\n}\n```",
+    "explanation": "Custom AMIs are created from EC2 instances. Best practices: use automated tools (Packer/Image Builder), version AMIs, include OS patches and security updates, test AMIs before production, and automate AMI lifecycle management.",
+    "recallHint": "AMI = OS + software snapshot, custom AMIs for consistency.",
+    "practice": [
+      "Why would you create a custom AMI?",
+      "What tools can you use to build AMIs?",
+      "How do you manage AMI versions?"
+    ]
+  },
+  {
+    "id": "aws-ec2-012",
+    "category": "aws-ec2",
+    "concept": "EC2 Instance Lifecycle",
+    "priority": "important",
+    "question": "What are the EC2 instance states and what happens during each?",
+    "answer": "States: pending (starting), running, stopping, stopped, terminating, terminated. Billing stops during stopped state (EBS persists). Instance Store data is lost when stopped or terminated.",
+    "code": "```bash\n# Instance states and billing\n# running: Billed (full hour)\n# stopped: Not billed (EBS charges apply)\n# terminated: Not billed (all resources released)\n\n# Start/stop instance\naws ec2 start-instances --instance-ids i-12345\naws ec2 stop-instances --instance-ids i-12345\n\n# Stop protection (prevent accidental termination)\naws ec2 modify-instance-attribute --instance-id i-12345 --disable-api-termination\n\n# Termination protection\naws ec2 modify-instance-attribute --instance-id i-12345 --disable-api-termination true\n\n# Instance status checks\naws ec2 describe-instance-status --instance-ids i-12345\n# Status: ok (passes both status checks)\n# Status: impaired (failing one or both checks)\n```",
+    "explanation": "When you stop an instance, it loses its public IP (unless it has an Elastic IP). EBS root volumes persist. Use termination protection to prevent accidental termination. Status checks monitor system (hardware) and instance (OS) health.",
+    "recallHint": "pending → running → stopped/terminated. Billing stops at stopped.",
+    "practice": [
+      "What happens to data when an instance is stopped?",
+      "How do you prevent accidental instance termination?",
+      "What is the difference between stopping and terminating?"
+    ]
+  },
+  {
+    "id": "aws-ec2-013",
+    "category": "aws-ec2",
+    "concept": "EC2 Costs",
+    "priority": "important",
+    "question": "What are the key drivers of EC2 costs and how do you optimize them?",
+    "answer": "Key cost drivers: instance type, storage volume (EBS), data transfer out, EBS snapshots, and Elastic IPs. Optimize with: Reserved Instances/Savings Plans, Spot Instances, rightsizing, and deleting unused resources.",
+    "code": "```bash\n# Check EC2 costs in Cost Explorer\naws ce get-cost-and-usage --time-period Start=2024-01-01,End=2024-01-31 --granularity MONTHLY --metrics \"AmortizedCost\"\n\n# Find idle instances (CPU < 5%)\naws cloudwatch get-metric-statistics --namespace AWS/EC2 --metric-name CPUUtilization --statistics Average --period 3600 --start-time 2024-01-01T00:00:00Z --end-time 2024-01-02T00:00:00Z\n\n# Identify unused EBS volumes\naws ec2 describe-volumes --filters Name=status,Values=available\n\n# Cost optimization checklist\n# 1. Rightsize instances (use smaller types if underutilized)\n# 2. Use Savings Plans for steady workloads\n# 3. Use Spot for non-production\n# 4. Delete unattached EBS volumes\n# 5. Use S3 lifecycle policies for EBS snapshots\n```",
+    "explanation": "Data transfer OUT to the internet is the biggest hidden cost. EBS costs depend on volume type, size, IOPS, and snapshots. Use AWS Compute Optimizer for rightsizing recommendations and Cost Explorer for cost analysis.",
+    "recallHint": "Instance, EBS, data transfer, snapshots. Rightsize, reserve, spot.",
+    "practice": [
+      "What are the main EC2 cost components?",
+      "How do you identify underutilized instances?",
+      "What is the difference between Savings Plans and Reserved Instances?"
+    ]
+  },
+  {
+    "id": "aws-eks-001",
+    "category": "aws-eks",
+    "concept": "EKS Overview",
+    "priority": "must-know",
+    "question": "What is Amazon EKS and how does it compare to self-managed Kubernetes?",
+    "answer": "Amazon EKS is a managed Kubernetes service that runs the control plane for you (etcd, API server, scheduler, controller manager). It handles availability, scalability, and security of the control plane, while you manage worker nodes.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyCluster\": {\n      \"Type\": \"AWS::EKS::Cluster\",\n      \"Properties\": {\n        \"Name\": \"my-cluster\",\n        \"RoleArn\": { \"Fn::GetAtt\": [\"EKSClusterRole\", \"Arn\"] },\n        \"Version\": \"1.27\",\n        \"ResourcesVpcConfig\": {\n          \"SubnetIds\": [\"subnet-1a\", \"subnet-1b\"],\n          \"SecurityGroupIds\": [\"sg-12345\"]\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "EKS removes the operational overhead of managing the control plane. You pay for the control plane ($0.10/hour) plus worker nodes and other resources. EKS integrates with AWS services (IAM, VPC, ELB, ECR).",
+    "recallHint": "Managed control plane, integrates with AWS, pay for control plane + nodes.",
+    "practice": [
+      "What components does EKS manage for you?",
+      "What are the benefits of using EKS over self-managed Kubernetes?",
+      "What is the cost structure of EKS?"
+    ]
+  },
+  {
+    "id": "aws-eks-002",
+    "category": "aws-eks",
+    "concept": "EKS Node Groups",
+    "priority": "must-know",
+    "question": "What are EKS Node Groups and what types are available?",
+    "answer": "EKS Node Groups are collections of EC2 instances that serve as worker nodes in the Kubernetes cluster. Types: Managed Node Groups (fully managed by AWS), Self-Managed Node Groups (you manage), and Fargate (serverless).",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyNodeGroup\": {\n      \"Type\": \"AWS::EKS::Nodegroup\",\n      \"Properties\": {\n        \"ClusterName\": { \"Ref\": \"MyCluster\" },\n        \"NodegroupName\": \"worker-nodes\",\n        \"NodeRole\": { \"Fn::GetAtt\": [\"WorkerNodeRole\", \"Arn\"] },\n        \"Subnets\": [\"subnet-1a\", \"subnet-1b\"],\n        \"InstanceTypes\": [\"t3.medium\"],\n        \"ScalingConfig\": {\n          \"MinSize\": 2,\n          \"MaxSize\": 10,\n          \"DesiredSize\": 2\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "Managed Node Groups handle EC2 patching, updates, and scaling. Self-managed requires you to create an Auto Scaling Group and bootstrap the nodes. Fargate is serverless - no nodes to manage, but limited to specific workload types.",
+    "recallHint": "Managed = AWS handles nodes, Self-managed = you handle nodes, Fargate = serverless.",
+    "practice": [
+      "What is the difference between Managed and Self-managed node groups?",
+      "When would you use Fargate for EKS?",
+      "How do you update a Managed Node Group?"
+    ]
+  },
+  {
+    "id": "aws-eks-003",
+    "category": "aws-eks",
+    "concept": "EKS IAM Integration",
+    "priority": "must-know",
+    "question": "How does IAM integrate with EKS and what are the authentication methods?",
+    "answer": "EKS uses IAM for AWS API authentication (aws eks update-kubeconfig) and Kubernetes RBAC for cluster authorization. Authentication methods include: aws-iam-authenticator (legacy), aws-auth ConfigMap, and IRSA.",
+    "code": "```bash\n# Update kubeconfig with IAM role\naws eks update-kubeconfig --region us-east-1 --name my-cluster --role-arn arn:aws:iam::123456789012:role/EKSAdminRole\n\n# aws-auth ConfigMap (legacy)\nkubectl edit configmap aws-auth -n kube-system\n\n# Example aws-auth entry\napiVersion: v1\ndata:\n  mapRoles: |\n    - rolearn: arn:aws:iam::123456789012:role/EKSWorkerNodeRole\n      username: system:node:{{EC2PrivateDNSName}}\n      groups:\n      - system:bootstrappers\n      - system:nodes\n  mapUsers: |\n    - userarn: arn:aws:iam::123456789012:user/developer\n      username: developer\n      groups:\n      - system:masters\n```",
+    "explanation": "IRSA (IAM Roles for Service Accounts) is the modern approach - it maps Kubernetes ServiceAccounts to IAM roles, allowing pods to assume IAM roles. This is more secure than using EC2 instance roles.",
+    "recallHint": "IAM for AWS API, aws-auth for Kubernetes RBAC, IRSA for pod permissions.",
+    "practice": [
+      "How does IAM integrate with EKS?",
+      "What is IRSA and why is it better than instance roles?",
+      "How do you add a new IAM user to an EKS cluster?"
+    ]
+  },
+  {
+    "id": "aws-eks-004",
+    "category": "aws-eks",
+    "concept": "EKS Pricing",
+    "priority": "important",
+    "question": "What are the costs of running EKS and how do you optimize them?",
+    "answer": "EKS costs include: control plane ($0.10/hour), worker nodes (EC2), EBS volumes, NAT Gateways, and data transfer. Optimize by: using Spot instances for nodes, rightsizing nodes, using Fargate only for specific workloads.",
+    "code": "```bash\n# Cost breakdown (monthly)\n# Control plane: $0.10/hour = $72/month\n# Worker nodes: t3.medium x 3 = ~$90/month\n# EBS volumes: 20GB x 3 = ~$7.50/month\n# NAT Gateway: ~$35/month\n# Total: ~$204/month\n\n# Use Spot instances for node groups\n{\n  \"Resources\": {\n    \"MyNodeGroup\": {\n      \"Type\": \"AWS::EKS::Nodegroup\",\n      \"Properties\": {\n        \"CapacityType\": \"SPOT\",\n        \"InstanceTypes\": [\"t3.medium\", \"t3.large\"],\n        \"ScalingConfig\": {\n          \"MinSize\": 2,\n          \"MaxSize\": 10,\n          \"DesiredSize\": 2\n        }\n      }\n    }\n  }\n}\n\n# Use Karpenter for dynamic node provisioning\n# Karpenter automatically adds/removes nodes based on pod demands\n```",
+    "explanation": "The control plane and NAT Gateway are fixed costs. Worker nodes are the variable cost. Use Karpenter for dynamic provisioning, Spot instances for non-production, and consider EKS Anywhere for on-premises.",
+    "recallHint": "Control plane + nodes + storage + networking = EKS cost.",
+    "practice": [
+      "What are the main cost components of EKS?",
+      "How can you reduce EKS costs?",
+      "What is Karpenter and how does it reduce costs?"
+    ]
+  },
+  {
+    "id": "aws-eks-005",
+    "category": "aws-eks",
+    "concept": "EKS Fargate",
+    "priority": "important",
+    "question": "What is EKS Fargate and when would you use it?",
+    "answer": "EKS Fargate is a serverless compute engine for EKS that runs pods without managing nodes. Fargate profiles define which pods run on Fargate. Use it for workloads that don't need node access, are bursty, or have unpredictable traffic.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"FargateProfile\": {\n      \"Type\": \"AWS::EKS::FargateProfile\",\n      \"Properties\": {\n        \"ClusterName\": { \"Ref\": \"MyCluster\" },\n        \"FargateProfileName\": \"web-profile\",\n        \"PodExecutionRoleArn\": { \"Fn::GetAtt\": [\"FargateExecutionRole\", \"Arn\"] },\n        \"Subnets\": [\"subnet-1a\", \"subnet-1b\"],\n        \"Selectors\": [\n          {\n            \"Namespace\": \"web\",\n            \"Labels\": {\n              \"app\": \"web-app\"\n            }\n          }\n        ]\n      }\n    }\n  }\n}\n```",
+    "explanation": "Fargate is ideal for stateless microservices that don't need persistent volumes or privileged access. Use managed node groups for stateful workloads or workloads requiring node-level access. Fargate simplifies operations but has higher unit costs.",
+    "recallHint": "Serverless pods, no node management, higher cost, limited features.",
+    "practice": [
+      "When would you use Fargate instead of managed node groups?",
+      "What are the limitations of Fargate?",
+      "How do Fargate pods access AWS services?"
+    ]
+  },
+  {
+    "id": "aws-eks-006",
+    "category": "aws-eks",
+    "concept": "EKS Networking",
+    "priority": "must-know",
+    "question": "How does networking work in EKS and what is the CNI plugin?",
+    "answer": "EKS uses the AWS VPC CNI plugin that assigns each pod an IP address from the VPC subnet. This means pods are first-class citizens in the VPC network, can communicate directly with other VPC resources, and integrate with Security Groups.",
+    "code": "```bash\n# Check CNI version\nkubectl describe daemonset aws-node -n kube-system | grep Image\n\n# Customize CNI\n# EniConfig (custom networking)\napiVersion: crd.k8s.amazonaws.com/v1alpha1\nkind: ENIConfig\nmetadata:\n  name: us-east-1a\nspec:\n  securityGroups:\n    - sg-12345\n  subnetId: subnet-1a\n\n# Check pod IPs\nkubectl get pods -o wide\n\n# Check VPC IPs in use\naws ec2 describe-network-interfaces --filters Name=description,Values=\"AWS VPC CNI\"\n```",
+    "explanation": "AWS VPC CNI enables native VPC networking for pods. Each pod gets a VPC IP address, enabling direct communication with any VPC resource. Custom networking allows different security groups for pods.",
+    "recallHint": "CNI assigns VPC IPs to pods, pods are VPC-native.",
+    "practice": [
+      "How does EKS assign IPs to pods?",
+      "What is the difference between EKS networking and generic Kubernetes networking?",
+      "How do you configure pod security groups?"
+    ]
+  },
+  {
+    "id": "aws-eks-007",
+    "category": "aws-eks",
+    "concept": "EKS Add-ons",
+    "priority": "important",
+    "question": "What are EKS Add-ons and how do you manage them?",
+    "answer": "EKS Add-ons are managed services that run on EKS clusters. Common add-ons: VPC CNI (networking), CoreDNS (DNS), kube-proxy (networking), coredns, and AWS Load Balancer Controller. Add-ons are maintained and updated by AWS.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"VPCCNIAddon\": {\n      \"Type\": \"AWS::EKS::Addon\",\n      \"Properties\": {\n        \"ClusterName\": { \"Ref\": \"MyCluster\" },\n        \"AddonName\": \"vpc-cni\",\n        \"AddonVersion\": \"latest\",\n        \"ResolveConflicts\": \"OVERWRITE\"\n      }\n    },\n    \"CoreDNSAddon\": {\n      \"Type\": \"AWS::EKS::Addon\",\n      \"Properties\": {\n        \"ClusterName\": { \"Ref\": \"MyCluster\" },\n        \"AddonName\": \"coredns\",\n        \"AddonVersion\": \"latest\",\n        \"ResolveConflicts\": \"OVERWRITE\"\n      }\n    }\n  }\n}\n```",
+    "explanation": "Managed add-ons reduce operational overhead by ensuring components are up-to-date and compatible with the Kubernetes version. You can configure add-ons with custom parameters.",
+    "recallHint": "Managed components, maintained by AWS, reduces ops burden.",
+    "practice": [
+      "What are EKS Add-ons and why are they beneficial?",
+      "How do you add a new add-on to an EKS cluster?",
+      "What is the difference between add-ons and manually installed components?"
+    ]
+  },
+  {
+    "id": "aws-eks-008",
+    "category": "aws-eks",
+    "concept": "EKS Troubleshooting",
+    "priority": "must-know",
+    "question": "Your EKS cluster is running but you can't create a LoadBalancer service. What do you check?",
+    "answer": "Check: 1) AWS Load Balancer Controller is installed, 2) ServiceAccount has necessary IAM permissions, 3) Subnet tags are correct (kubernetes.io/role/elb), 4) Security Groups allow traffic, 5) VPC has internet gateway.",
+    "code": "```bash\n# Check AWS Load Balancer Controller\nkubectl get deployment -n kube-system aws-load-balancer-controller\n\n# Check service annotations\nkubectl describe service my-service\n\n# Check events for errors\nkubectl get events --all-namespaces\n\n# Check IAM permissions\naws iam get-role-policy --role-name my-role --policy-name my-policy\n\n# Check subnet tags\naws ec2 describe-subnets --filters Name=vpc-id,Values=vpc-12345\n\n# Common issues\n# 1. Missing IAM permissions\n# 2. Incorrect subnet tags\n# 3. Security Group not allowing required ports\n# 4. VPC missing internet gateway\n```",
+    "explanation": "LoadBalancer services require the AWS Load Balancer Controller. The controller needs permissions to create ALBs/NLBs. Subnets must have the correct tags. Without IGW, load balancers can't be created.",
+    "recallHint": "Load Balancer Controller installed, IAM permissions, subnet tags.",
+    "practice": [
+      "Why can't my EKS cluster create a LoadBalancer?",
+      "What IAM permissions are needed for the Load Balancer Controller?",
+      "How do you troubleshoot a LoadBalancer service?"
+    ]
+  },
+  {
+    "id": "aws-lambda-001",
+    "category": "aws-lambda",
+    "concept": "Lambda Overview",
+    "priority": "must-know",
+    "question": "What is AWS Lambda and what are its key features?",
+    "answer": "AWS Lambda is a serverless compute service that runs code in response to events and automatically manages the underlying compute resources. Key features: auto-scaling, pay-per-invocation, multiple language support, and integrations with 200+ AWS services.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyFunction\": {\n      \"Type\": \"AWS::Lambda::Function\",\n      \"Properties\": {\n        \"FunctionName\": \"my-function\",\n        \"Runtime\": \"python3.11\",\n        \"Handler\": \"index.handler\",\n        \"Code\": {\n          \"S3Bucket\": \"my-bucket\",\n          \"S3Key\": \"function.zip\"\n        },\n        \"Role\": { \"Fn::GetAtt\": [\"LambdaExecutionRole\", \"Arn\"] },\n        \"Timeout\": 30,\n        \"MemorySize\": 128\n      }\n    }\n  }\n}\n```",
+    "explanation": "Lambda is event-driven - it runs in response to events (S3 upload, API Gateway request, DynamoDB stream). Lambda functions are isolated, have a 15-minute timeout, and can use up to 10GB of memory.",
+    "recallHint": "Serverless, event-driven, auto-scaling, pay-per-invocation.",
+    "practice": [
+      "What are the key features of AWS Lambda?",
+      "What is the maximum timeout and memory for a Lambda?",
+      "How is Lambda pricing calculated?"
+    ]
+  },
+  {
+    "id": "aws-lambda-002",
+    "category": "aws-lambda",
+    "concept": "Lambda Pricing",
+    "priority": "must-know",
+    "question": "How is Lambda pricing calculated and how do you optimize costs?",
+    "answer": "Lambda pricing is based on request count and compute duration (GB-seconds). Costs = (request count × $0.20 per million) + (GB-seconds × $0.0000166667 per GB-second). Optimize by: reducing memory, using smaller runtimes, and avoiding cold starts.",
+    "code": "```bash\n# Cost calculation example\n# Function: 128MB memory, 100ms duration, 1 million requests\n# Requests: 1,000,000 × $0.20 = $0.20\n# Duration: 128MB = 0.125GB, 100ms = 0.1s\n# GB-seconds = 1,000,000 × 0.125 × 0.1 = 12,500\n# Duration cost: 12,500 × $0.0000166667 = $0.21\n# Total cost: ~$0.41 per million requests\n\n# Use SnapStart (Java) for faster cold starts\n# Use Provisioned Concurrency for predictable performance\n# Use Lambda Layers for shared code\n# Use Graviton (arm64) for better price/performance\n```",
+    "explanation": "Memory has a direct impact on duration - higher memory may reduce execution time. Use the Lambda Power Tuning tool to find the optimal memory configuration. CloudWatch metrics track duration and costs.",
+    "recallHint": "Requests + GB-seconds = cost. Higher memory = faster, more cost.",
+    "practice": [
+      "How is Lambda pricing calculated?",
+      "What is the Lambda Free Tier?",
+      "How do you optimize Lambda costs?"
+    ]
+  },
+  {
+    "id": "aws-lambda-003",
+    "category": "aws-lambda",
+    "concept": "Lambda Cold Starts",
+    "priority": "must-know",
+    "question": "What is a Lambda cold start and how do you mitigate it?",
+    "answer": "A cold start occurs when Lambda initializes a new instance of your function (creates the runtime, loads dependencies, runs initialization code). This causes added latency (~100ms-1s). Mitigate with: Provisioned Concurrency, SnapStart (Java), minimizing dependencies, or keeping functions warm.",
+    "code": "```javascript\n// Keep warm with a scheduled event\n// CloudWatch Events rule runs every 5 minutes\n\n// Reduce cold start impact\n// 1. Use lighter runtimes (Node.js > Java)\n// 2. Minimize dependencies\n// 3. Lazy-load resources\n// 4. Use environment variables instead of fetching\n\n// Use SnapStart for Java\n{\n  \"Resources\": {\n    \"MyFunction\": {\n      \"Type\": \"AWS::Lambda::Function\",\n      \"Properties\": {\n        \"Runtime\": \"java11\",\n        \"SnapStart\": {\n          \"ApplyOn\": \"PublishedVersions\"\n        }\n      }\n    }\n  }\n}\n\n// Provisioned Concurrency\n{\n  \"Resources\": {\n    \"MyAlias\": {\n      \"Type\": \"AWS::Lambda::Alias\",\n      \"Properties\": {\n        \"FunctionName\": { \"Ref\": \"MyFunction\" },\n        \"FunctionVersion\": \"$LATEST\",\n        \"Name\": \"prod\",\n        \"ProvisionedConcurrencyConfig\": {\n          \"ProvisionedConcurrentExecutions\": 5\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "Cold starts are unavoidable but can be managed. Provisioned Concurrency keeps instances warm at a cost. SnapStart reduces cold start latency by restoring snapshots. Modern languages (Node.js, Python) have faster cold starts than Java.",
+    "recallHint": "Cold start = initialization latency. Mitigate: Provisioned Concurrency, SnapStart.",
+    "practice": [
+      "What causes a Lambda cold start?",
+      "How do you reduce cold start latency?",
+      "What is the difference between SnapStart and Provisioned Concurrency?"
+    ]
+  },
+  {
+    "id": "aws-lambda-004",
+    "category": "aws-lambda",
+    "concept": "Lambda Concurrency",
+    "priority": "must-know",
+    "question": "How does Lambda concurrency work and what are the limits?",
+    "answer": "Lambda uses concurrent executions - each invocation runs on a separate instance. The default limit is 1,000 concurrent executions per region. When exceeded, new requests are throttled with a 429 status.",
+    "code": "```json\n// Reserved Concurrency\n{\n  \"Resources\": {\n    \"MyAlias\": {\n      \"Type\": \"AWS::Lambda::Alias\",\n      \"Properties\": {\n        \"ReservedConcurrentExecutions\": 10\n      }\n    }\n  }\n}\n\n// AWS CLI commands\naws lambda get-account-settings\naws lambda get-function-concurrency --function-name my-function\naws lambda put-function-concurrency --function-name my-function --reserved-concurrent-executions 10\n\n// Monitor concurrency in CloudWatch\n# AWS/Lambda: ConcurrentExecutions\n# AWS/Lambda: UnreservedConcurrentExecutions\n```",
+    "explanation": "Concurrency limits are soft limits (can be increased via support request). Reserved Concurrency guarantees capacity for critical functions. Unreserved Concurrency is shared across all functions.",
+    "recallHint": "1,000 concurrent executions per region. Reserved Concurrency = guaranteed capacity.",
+    "practice": [
+      "What is the default Lambda concurrency limit?",
+      "What is Reserved Concurrency and when would you use it?",
+      "How do you monitor concurrency usage?"
+    ]
+  },
+  {
+    "id": "aws-lambda-005",
+    "category": "aws-lambda",
+    "concept": "Lambda Destinations",
+    "priority": "important",
+    "question": "What are Lambda destinations and how do you use them?",
+    "answer": "Lambda destinations allow you to route function results (success or failure) to other AWS services like SQS, SNS, EventBridge, or another Lambda. They're useful for async invocations and decoupling error handling.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyFunction\": {\n      \"Type\": \"AWS::Lambda::Function\",\n      \"Properties\": {\n        \"FunctionName\": \"my-function\",\n        \"Runtime\": \"nodejs18.x\",\n        \"Handler\": \"index.handler\",\n        \"Code\": { \"ZipFile\": \"...\" },\n        \"Role\": { \"Fn::GetAtt\": [\"LambdaRole\", \"Arn\"] },\n        \"DestinationConfig\": {\n          \"OnSuccess\": {\n            \"Destination\": \"arn:aws:sns:us-east-1:123456789012:my-topic\"\n          },\n          \"OnFailure\": {\n            \"Destination\": \"arn:aws:sqs:us-east-1:123456789012:my-queue\"\n          }\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "Destinations are event-driven patterns that simplify error handling. OnFailure destinations are useful for DLQs (Dead Letter Queues). OnSuccess destinations can trigger follow-up processing.",
+    "recallHint": "Route success/failure to SQS/SNS/EventBridge.",
+    "practice": [
+      "What are Lambda destinations and when would you use them?",
+      "How do destinations differ from DLQs?",
+      "Can you use destinations for synchronous invocations?"
+    ]
+  },
+  {
+    "id": "aws-lambda-006",
+    "category": "aws-lambda",
+    "concept": "Lambda Layers",
+    "priority": "important",
+    "question": "What are Lambda Layers and how do they reduce deployment size?",
+    "answer": "Lambda Layers are ZIP archives that contain libraries, dependencies, or custom runtimes. They allow you to manage shared code across multiple functions, reduce deployment package size, and simplify version management.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyLayer\": {\n      \"Type\": \"AWS::Lambda::LayerVersion\",\n      \"Properties\": {\n        \"LayerName\": \"common-layer\",\n        \"Content\": {\n          \"S3Bucket\": \"my-bucket\",\n          \"S3Key\": \"layer.zip\"\n        },\n        \"CompatibleRuntimes\": [\"nodejs18.x\", \"python3.11\"],\n        \"CompatibleArchitectures\": [\"arm64\", \"x86_64\"]\n      }\n    },\n    \"MyFunction\": {\n      \"Type\": \"AWS::Lambda::Function\",\n      \"Properties\": {\n        \"Layers\": [\n          { \"Ref\": \"MyLayer\" }\n        ]\n      }\n    }\n  }\n}\n```",
+    "explanation": "Layers are versioned and shared across functions. The function code size limit is 250MB, but layers add up to 250MB (total 500MB). Common layers: AWS SDK, Node modules, Python packages, custom utilities.",
+    "recallHint": "Shared code/libraries, reduce deployment size, versioned.",
+    "practice": [
+      "What are Lambda Layers and why are they useful?",
+      "What is the size limit for Lambda Layers?",
+      "How do you share a Layer across accounts?"
+    ]
+  },
+  {
+    "id": "aws-lambda-007",
+    "category": "aws-lambda",
+    "concept": "Lambda Extensions",
+    "priority": "advanced",
+    "question": "What are Lambda Extensions and when would you use them?",
+    "answer": "Lambda Extensions are companion processes that run alongside Lambda functions. They can be used for: monitoring, observability, security, or custom startup tasks. Extensions run in a separate process and can persist between invocations.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyExtension\": {\n      \"Type\": \"AWS::Lambda::LayerVersion\",\n      \"Properties\": {\n        \"Content\": {\n          \"S3Bucket\": \"extensions-bucket\",\n          \"S3Key\": \"extension.zip\"\n        }\n      }\n    },\n    \"MyFunction\": {\n      \"Type\": \"AWS::Lambda::Function\",\n      \"Properties\": {\n        \"Layers\": [\n          { \"Ref\": \"MyExtension\" },\n          { \"Ref\": \"InternalExtension\" }\n        ]\n      }\n    }\n  }\n}\n```",
+    "explanation": "Extensions run during the INIT phase and can also run after invocation. They're useful for Agent-based monitoring, capturing telemetry, or initializing large resources. Available in the /opt/extensions directory.",
+    "recallHint": "Companion processes for monitoring, security, init tasks.",
+    "practice": [
+      "What are Lambda Extensions and how do they differ from Layers?",
+      "When would you use an Extension?",
+      "What is the lifecycle of a Lambda Extension?"
+    ]
+  },
+  {
+    "id": "aws-lambda-008",
+    "category": "aws-lambda",
+    "concept": "Lambda VPC Integration",
+    "priority": "must-know",
+    "question": "How does Lambda integrate with VPC and what are the networking considerations?",
+    "answer": "Lambda in VPC can access private resources (RDS, EC2) by attaching to a VPC subnet. It uses a Hyperplane ENI per function per VPC, which requires a VPC subnet with enough IPs and NAT/endpoints for internet access.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyFunction\": {\n      \"Type\": \"AWS::Lambda::Function\",\n      \"Properties\": {\n        \"VpcConfig\": {\n          \"SecurityGroupIds\": [\"sg-12345\"],\n          \"SubnetIds\": [\"subnet-1a\", \"subnet-1b\"]\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "Lambda loses internet access when attached to VPC. Use NAT Gateway for internet access or VPC Endpoints for AWS services. Lambda in VPC uses Elastic Network Interfaces (ENIs) in the specified subnets.",
+    "recallHint": "VPC = private access, loses internet, needs NAT/endpoints.",
+    "practice": [
+      "Why would you put Lambda in a VPC?",
+      "What happens to internet access when Lambda is in VPC?",
+      "How do you provide internet access to a Lambda in a VPC?"
+    ]
+  },
+  {
+    "id": "aws-lambda-009",
+    "category": "aws-lambda",
+    "concept": "Lambda Event Sources",
+    "priority": "must-know",
+    "question": "What are Lambda event sources and what types are available?",
+    "answer": "Event sources are AWS services that invoke Lambda functions. Types include: AWS services (S3, DynamoDB, SNS, SQS), API Gateway (HTTP/API), custom events (EventBridge), and other AWS services.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"S3Trigger\": {\n      \"Type\": \"AWS::S3::BucketNotification\",\n      \"Properties\": {\n        \"Bucket\": { \"Ref\": \"MyBucket\" },\n        \"NotificationConfiguration\": {\n          \"LambdaConfigurations\": [\n            {\n              \"Event\": \"s3:ObjectCreated:*\",\n              \"Function\": { \"Fn::GetAtt\": [\"MyFunction\", \"Arn\"] }\n            }\n          ]\n        }\n      }\n    },\n    \"SQSTrigger\": {\n      \"Type\": \"AWS::Lambda::EventSourceMapping\",\n      \"Properties\": {\n        \"EventSourceArn\": { \"Fn::GetAtt\": [\"MyQueue\", \"Arn\"] },\n        \"FunctionName\": { \"Ref\": \"MyFunction\" },\n        \"BatchSize\": 10,\n        \"MaximumBatchingWindowInSeconds\": 5\n      }\n    }\n  }\n}\n```",
+    "explanation": "Lambda can be triggered synchronously (API Gateway) or asynchronously (S3, SNS). For polling sources (SQS), you need event source mappings. SQS allows batch processing for efficiency.",
+    "recallHint": "S3/DynamoDB = async, API Gateway = sync, SQS = polling.",
+    "practice": [
+      "What are the different types of Lambda invocations?",
+      "How does Lambda process SQS messages?",
+      "What is the difference between synchronous and asynchronous invocation?"
+    ]
+  },
+  {
+    "id": "aws-lambda-010",
+    "category": "aws-lambda",
+    "concept": "Lambda Error Handling",
+    "priority": "must-know",
+    "question": "How do you handle errors in Lambda functions?",
+    "answer": "Handle errors with: try/catch blocks, explicit error throwing, DLQs (Dead Letter Queues) for async invocations, and retry policies. For SQS, use DLQs for unrecoverable failures.",
+    "code": "```javascript\n// Lambda function with error handling\nconst AWS = require('aws-sdk');\nconst sqs = new AWS.SQS();\n\nexports.handler = async (event) => {\n    try {\n        const result = await processEvent(event);\n        return {\n            statusCode: 200,\n            body: JSON.stringify(result)\n        };\n    } catch (error) {\n        // Log error\n        console.error('Error processing event:', error);\n        \n        // For SQS, use DLQ\n        const queueUrl = process.env.DLQ_URL;\n        await sqs.sendMessage({\n            QueueUrl: queueUrl,\n            MessageBody: JSON.stringify(event)\n        }).promise();\n        \n        // Throw error for retry\n        throw error;\n    }\n};\n\n// DLQ configuration\n{\n  \"Resources\": {\n    \"MyDeadLetterQueue\": {\n      \"Type\": \"AWS::SQS::Queue\"\n    },\n    \"MyEventSourceMapping\": {\n      \"Type\": \"AWS::Lambda::EventSourceMapping\",\n      \"Properties\": {\n        \"DestinationConfig\": {\n          \"OnFailure\": {\n            \"Destination\": { \"Fn::GetAtt\": [\"MyDeadLetterQueue\", \"Arn\"] }\n          }\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "For asynchronous invocations, Lambda retries twice by default. For SQS, messages are automatically retried based on visibility timeout. Use DLQs to capture failed messages for later analysis.",
+    "recallHint": "Try/catch, DLQs for async, SQS DLQs for message failures.",
+    "practice": [
+      "How does Lambda handle errors in synchronous vs asynchronous invocations?",
+      "What is a Dead Letter Queue and when would you use it?",
+      "How do you implement custom error handling in Lambda?"
+    ]
+  },
+  {
+    "id": "aws-lambda-011",
+    "category": "aws-lambda",
+    "concept": "Lambda Performance Optimization",
+    "priority": "important",
+    "question": "What are the best practices for optimizing Lambda performance?",
+    "answer": "Best practices: 1) Optimize memory (use Lambda Power Tuning), 2) Minimize deployment package size, 3) Use environment variables, 4) Reuse connections (database, HTTP), 5) Use SnapStart for Java.",
+    "code": "```javascript\n// Reusing connections\nconst mongoose = require('mongoose');\nlet cachedDb = null;\n\nasync function connectToDatabase() {\n    if (cachedDb) {\n        console.log('Using cached DB connection');\n        return cachedDb;\n    }\n    \n    // Establish connection\n    const db = await mongoose.connect(process.env.MONGODB_URI);\n    cachedDb = db;\n    return db;\n}\n\nexports.handler = async (event) => {\n    const db = await connectToDatabase();\n    // Use db\n};\n\n// Reusing HTTP connections\nconst axios = require('axios');\nconst https = require('https');\nconst httpAgent = new https.Agent({ keepAlive: true });\n\nconst client = axios.create({\n    httpsAgent: httpAgent,\n    timeout: 5000\n});\n```",
+    "explanation": "Reusing connections across invocations significantly reduces latency and cost. Cold starts are affected by code size and initialization time. Use provisioned concurrency for predictable performance.",
+    "recallHint": "Reuse connections, optimize memory, minimize package size.",
+    "practice": [
+      "How do you reuse database connections in Lambda?",
+      "What is the Lambda Power Tuning tool?",
+      "How do you reduce cold start times?"
+    ]
+  },
+  {
+    "id": "aws-lambda-012",
+    "category": "aws-lambda",
+    "concept": "Lambda EventBridge",
+    "priority": "important",
+    "question": "How do you schedule Lambda functions using EventBridge?",
+    "answer": "EventBridge Scheduler (formerly CloudWatch Events) can trigger Lambda on a schedule (cron or rate expressions). You define a rule that targets your Lambda function and specify the schedule.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"ScheduledRule\": {\n      \"Type\": \"AWS::Events::Rule\",\n      \"Properties\": {\n        \"Description\": \"Daily backup trigger\",\n        \"ScheduleExpression\": \"cron(0 2 * * ? *)\",\n        \"State\": \"ENABLED\",\n        \"Targets\": [\n          {\n            \"Arn\": { \"Fn::GetAtt\": [\"MyFunction\", \"Arn\"] },\n            \"Id\": \"TargetFunctionV1\"\n          }\n        ]\n      }\n    },\n    \"PermissionForEventsToInvokeLambda\": {\n      \"Type\": \"AWS::Lambda::Permission\",\n      \"Properties\": {\n        \"FunctionName\": { \"Ref\": \"MyFunction\" },\n        \"Action\": \"lambda:InvokeFunction\",\n        \"Principal\": \"events.amazonaws.com\",\n        \"SourceArn\": { \"Fn::GetAtt\": [\"ScheduledRule\", \"Arn\"] }\n      }\n    }\n  }\n}\n```",
+    "explanation": "Cron expressions are in UTC timezone. Common schedules: rate(5 minutes), cron(0 2 * * ? *) (2 AM daily). Use EventBridge for complex scheduling and orchestration.",
+    "recallHint": "EventBridge rules with cron/rate expressions, Lambda permission needed.",
+    "practice": [
+      "What are the different ways to trigger Lambda on a schedule?",
+      "How do you write a cron expression for EventBridge?",
+      "What is the difference between EventBridge and CloudWatch Events?"
+    ]
+  },
+  {
+    "id": "aws-lambda-013",
+    "category": "aws-lambda",
+    "concept": "Lambda Environment Variables",
+    "priority": "must-know",
+    "question": "How do you use environment variables in Lambda and what are their limits?",
+    "answer": "Environment variables are key-value pairs available to your function code. They're useful for configuration, secrets (when encrypted), and runtime settings. Max size is 4KB per function.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyFunction\": {\n      \"Type\": \"AWS::Lambda::Function\",\n      \"Properties\": {\n        \"Environment\": {\n          \"Variables\": {\n            \"TABLE_NAME\": \"MyTable\",\n            \"QUEUE_URL\": { \"Ref\": \"MyQueue\" },\n            \"LOG_LEVEL\": \"INFO\"\n          }\n        }\n      }\n    }\n  }\n}\n\n// Using environment variables in code\nconst tableName = process.env.TABLE_NAME;\nconst queueUrl = process.env.QUEUE_URL;\nconst logLevel = process.env.LOG_LEVEL || 'INFO';\n\nconsole.log(`Log level: ${logLevel}`);\n```",
+    "explanation": "Environment variables are encrypted at rest. You can configure them to use Secrets Manager or KMS for sensitive values. Environment variables are injected during cold starts.",
+    "recallHint": "Key-value config, 4KB limit, use for non-sensitive config.",
+    "practice": [
+      "When would you use environment variables in Lambda?",
+      "How do you encrypt sensitive environment variables?",
+      "What is the size limit for environment variables?"
+    ]
+  },
+  {
+    "id": "aws-lambda-014",
+    "category": "aws-lambda",
+    "concept": "Lambda with API Gateway",
+    "priority": "must-know",
+    "question": "How does Lambda integrate with API Gateway for serverless APIs?",
+    "answer": "API Gateway acts as a proxy, forwarding HTTP requests to Lambda. It handles authentication, rate limiting, caching, and request validation. Lambda returns a response in a specific format containing statusCode and body.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyApi\": {\n      \"Type\": \"AWS::ApiGateway::RestApi\"\n    },\n    \"MyResource\": {\n      \"Type\": \"AWS::ApiGateway::Resource\",\n      \"Properties\": {\n        \"ParentId\": { \"Fn::GetAtt\": [\"MyApi\", \"RootResourceId\"] },\n        \"PathPart\": \"users\"\n      }\n    },\n    \"MyMethod\": {\n      \"Type\": \"AWS::ApiGateway::Method\",\n      \"Properties\": {\n        \"HttpMethod\": \"GET\",\n        \"Integration\": {\n          \"Type\": \"AWS_PROXY\",\n          \"IntegrationHttpMethod\": \"POST\",\n          \"Uri\": { \"Fn::Join\": [\"\", [\"arn:aws:apigateway:\", { \"Ref\": \"AWS::Region\" }, \":lambda:path/2015-03-31/functions/\", { \"Fn::GetAtt\": [\"MyFunction\", \"Arn\" ] }, \"/invocations\"]]}\n        }\n      }\n    }\n  }\n}\n```",
+    "explanation": "API Gateway integration can be proxy (pass-through) or non-proxy (mapping). Lambda proxy integration is the most common pattern. API Gateway handles throttling, caching, and response formatting.",
+    "recallHint": "API Gateway → Lambda, proxy integration, serverless APIs.",
+    "practice": [
+      "What is the difference between proxy and non-proxy integration?",
+      "How do you handle authentication in API Gateway + Lambda?",
+      "What is the maximum timeout for API Gateway?"
+    ]
+  },
+  {
+    "id": "aws-lambda-015",
+    "category": "aws-lambda",
+    "concept": "Lambda and DynamoDB",
+    "priority": "important",
+    "question": "How does Lambda integrate with DynamoDB streams for event-driven processing?",
+    "answer": "DynamoDB Streams capture changes to items (inserts, updates, deletes). Lambda can process these streams in near real-time, enabling use cases like notifications, analytics, and synchronization.",
+    "code": "```json\n{\n  \"Resources\": {\n    \"MyTable\": {\n      \"Type\": \"AWS::DynamoDB::Table\",\n      \"Properties\": {\n        \"StreamSpecification\": {\n          \"StreamViewType\": \"NEW_AND_OLD_IMAGES\"\n        }\n      }\n    },\n    \"MyEventSourceMapping\": {\n      \"Type\": \"AWS::Lambda::EventSourceMapping\",\n      \"Properties\": {\n        \"EventSourceArn\": { \"Fn::GetAtt\": [\"MyTable\", \"StreamArn\"] },\n        \"FunctionName\": { \"Ref\": \"MyFunction\" },\n        \"StartingPosition\": \"LATEST\",\n        \"BatchSize\": 100,\n        \"MaximumBatchingWindowInSeconds\": 5\n      }\n    }\n  }\n}\n```",
+    "explanation": "DynamoDB streams are processed in order. Lambda can batch up to 10,000 records per batch. Use StreamViewType to control what data is sent (new, old, both).",
+    "recallHint": "DynamoDB streams → Lambda, event-driven processing.",
+    "practice": [
+      "What types of changes can DynamoDB streams capture?",
+      "How do you process DynamoDB streams with Lambda?",
+      "What is the maximum batch size for DynamoDB streams?"
+    ]
+  },
+  {
+    "id": "aws-lambda-016",
+    "category": "aws-lambda",
+    "concept": "Lambda Monitoring",
+    "priority": "important",
+    "question": "What metrics are available for Lambda monitoring and how do you use them?",
+    "answer": "Lambda publishes metrics to CloudWatch: Invocations, Duration, Errors, Throttles, and Concurrent Executions. These help monitor performance, detect issues, and optimize cost.",
+    "code": "```bash\n# CloudWatch metrics\naws cloudwatch get-metric-statistics --namespace AWS/Lambda --metric-name Invocations --statistics Sum --period 3600\naws cloudwatch get-metric-statistics --namespace AWS/Lambda --metric-name Duration --statistics Average --period 3600\naws cloudwatch get-metric-statistics --namespace AWS/Lambda --metric-name Errors --statistics Sum --period 3600\naws cloudwatch get-metric-statistics --namespace AWS/Lambda --metric-name Throttles --statistics Sum --period 3600\n\n# Enable enhanced monitoring\n# Use Lambda Insights for detailed metrics\n# Use X-Ray for tracing\n\n# CloudWatch Logs subscription filters for logs\naws logs put-subscription-filter --log-group-name /aws/lambda/my-function --filter-name MyFilter --filter-pattern \"ERROR\" --destination-arn arn:aws:logs:us-east-1:123456789012:destination:my-destination\n```",
+    "explanation": "Throttles indicate concurrency limits are exceeded. Duration includes initialization + execution time. Use CloudWatch alarms for anomalies. X-Ray provides tracing for distributed applications.",
+    "recallHint": "Invocations, Duration, Errors, Throttles, ConcurrentExecutions.",
+    "practice": [
+      "What metrics are most important for monitoring Lambda?",
+      "How do you set up alarms for Lambda errors?",
+      "What is the difference between Duration and execution time?"
+    ]
+  },
+  {
+    "id": "aws-lambda-017",
+    "category": "aws-lambda",
+    "concept": "Lambda vs EC2 vs Fargate",
+    "priority": "important",
+    "question": "When would you choose Lambda over EC2 or Fargate?",
+    "answer": "Lambda: short-running (<15 min), event-driven, variable traffic, lightweight. EC2: long-running, stateful, custom OS, high consistency. Fargate: containers, longer-running, consistent performance, microservices.",
+    "code": "```json\n{\n  \"Comparison\": {\n    \"Lambda\": {\n      \"Max Duration\": \"15 minutes\",\n      \"Compute\": \"Serverless\",\n      \"State\": \"Stateless\",\n      \"Scale\": \"Automatic\",\n      \"Cold Start\": \"Yes\"\n    },\n    \"EC2\": {\n      \"Max Duration\": \"Unlimited\",\n      \"Compute\": \"Virtual Server\",\n      \"State\": \"Stateful\",\n      \"Scale\": \"ASG + CloudWatch\",\n      \"Cold Start\": \"No\"\n    },\n    \"Fargate\": {\n      \"Max Duration\": \"Unlimited\",\n      \"Compute\": \"Serverless Containers\",\n      \"State\": \"Stateless/Stateful\",\n      \"Scale\": \"ECS Service Auto Scaling\",\n      \"Cold Start\": \"No\"\n    }\n  }\n}\n```",
+    "explanation": "Lambda is ideal for: REST APIs, event-driven processing, data transformation. EC2 is ideal for: long-running applications, custom OS, legacy workloads. Fargate is ideal for: microservices, consistent performance, containerized workloads.",
+    "recallHint": "Lambda = event-driven, short. EC2 = long-running, stateful. Fargate = containers.",
+    "practice": [
+      "What are the key differences between Lambda and EC2?",
+      "When would you choose Fargate over Lambda?",
+      "What are the trade-offs between serverless and server-based compute?"
+    ]
+  },
+  {
+    "id": "aws-lambda-018",
+    "category": "aws-lambda",
+    "concept": "Lambda Power Tuning",
+    "priority": "advanced",
+    "question": "How do you use Lambda Power Tuning to optimize cost and performance?",
+    "answer": "Lambda Power Tuning is an open-source tool that tests your function at different memory configurations (from 128MB to 10GB) to find the optimal balance between speed and cost.",
+    "code": "```javascript\n// AWS SAM template for power tuning\n{\n  \"Resources\": {\n    \"PowerTuning\": {\n      \"Type\": \"AWS::Serverless::Application\",\n      \"Properties\": {\n        \"Location\": {\n          \"ApplicationId\": \"arn:aws:serverlessrepo:us-east-1:451413351994:applications/lambda-power-tuning\",\n          \"SemanticVersion\": \"4.4.1\"\n        },\n        \"Parameters\": {\n          \"LambdaResource\": \"arn:aws:lambda:us-east-1:123456789012:function:my-function\",\n          \"PowerValues\": \"128,256,512,1024,1536\",\n          \"Num\": \"1000\",\n          \"Payload\": \"{\\\"key\\\": \\\"value\\\"}\"\n        }\n      }\n    }\n  }\n}\n\n// Results are shown in a visual chart\n// Memory (MB) | Avg Cost | Avg Duration\n// 128         | $0.0001   | 800ms\n// 256         | $0.0002   | 400ms\n// 512         | $0.0003   | 200ms\n// 1024        | $0.0004   | 100ms\n// 1536        | $0.0005   | 80ms\n\n// Choose the best memory based on your goals:\n// Cost-optimal: 128MB\n// Performance-optimal: 1024MB\n// Balanced: 256-512MB\n```",
+    "explanation": "The optimal memory depends on the workload. CPU-bound functions benefit from more memory. I/O-bound functions may not. Use Power Tuning before setting production memory.",
+    "recallHint": "Test memory configurations for cost/performance optimization.",
+    "practice": [
+      "How does Lambda Power Tuning work?",
+      "What is the relationship between memory and performance?",
+      "How do you interpret Power Tuning results?"
+    ]
+  }
+]
