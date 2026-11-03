@@ -1,100 +1,114 @@
 [
   {
     "id": "javascript",
-    "name": "JavaScript *",
+    "name": "JavaScript",
     "icon": "JS",
+    "iconColor": "bg-amber-400 text-black",
     "description": "Language fundamentals, runtime and browser concepts",
     "dataFile": "javascript.json"
   },
   {
     "id": "nodejs",
-    "name": "Nodejs *",
-    "icon": "nodejs",
-    "description": "NodeJs",
+    "name": "Node.js",
+    "icon": "Node",
+    "iconColor": "bg-emerald-600 text-white",
+    "description": "Event loop, asynchronous patterns, streams and core modules",
     "dataFile": "nodejs.json"
   },
   {
-    "id": "angular",
-    "name": "angular",
-    "icon": "ANG",
-    "description": "Components, hooks, state and rendering",
-    "dataFile": "angular.json"
+    "id": "react",
+    "name": "React",
+    "icon": "\u269b",
+    "iconColor": "bg-cyan-500 text-white",
+    "description": "Components, hooks, virtual DOM, reconciliation & state",
+    "dataFile": "react.json"
   },
   {
-    "id": "express",
-    "name": "express *",
-    "icon": "N",
-    "description": "Express Js",
-    "dataFile": "express.json"
+    "id": "typescript",
+    "name": "TypeScript",
+    "icon": "TS",
+    "iconColor": "bg-blue-600 text-white",
+    "description": "Type system, generics, type manipulation, utility types & TS 4-6 evolution",
+    "dataFile": "typescript.json"
   },
   {
     "id": "sql",
-    "name": "sql *",
-    "icon": "sql",
-    "description": "Language fundamentals and backend development",
+    "name": "SQL",
+    "icon": "SQL",
+    "iconColor": "bg-blue-600 text-white",
+    "description": "Relational queries, joins, indexes, normalization & aggregation",
     "dataFile": "sql.json"
-  },
-  {
-    "id": "pgsql",
-    "name": "pgsql *",
-    "icon": "pgsql",
-    "description": "Queries, joins, indexes and database concepts",
-    "dataFile": "pgsql.json"
-  },
-  {
-    "id": "vpciamsg",
-    "name": "AWS VPC IAM and SG *",
-    "icon": "VPC, IAM SG",
-    "description": "VPC IAM and SG",
-    "dataFile": "vpciamsg.json"
-  },
-  {
-    "id": "ec2lambda",
-    "name": "EC2 Lambda *",
-    "icon": "EC2 Lambda",
-    "description": "EC2 Lambda",
-    "dataFile": "ec2lambda.json"
-  },
-  {
-    "id": "apigatewaysns",
-    "name": "Gate and SNS *",
-    "icon": "Gate and SNS",
-    "description": "Gate and SNS",
-    "dataFile": "ec2lambda.json"
   },
   {
     "id": "awsiam",
     "name": "AWS IAM",
-    "icon": "IAM",
-    "description": "IAM",
+    "icon": "AWS",
+    "iconColor": "bg-amber-500 text-white",
+    "description": "Users, roles, policies, STS & least privilege",
     "dataFile": "awsiam.json"
   },
   {
+    "id": "express",
+    "name": "Express.js",
+    "icon": "EXP",
+    "iconColor": "bg-zinc-800 text-zinc-100",
+    "description": "Routing, middleware, error handling, REST API design",
+    "dataFile": "express.json"
+  },
+  {
+    "id": "angular",
+    "name": "Angular",
+    "icon": "NG",
+    "iconColor": "bg-rose-600 text-white",
+    "description": "Components, directives, RxJS, state and rendering",
+    "dataFile": "angular.json"
+  },
+  {
+    "id": "pgsql",
+    "name": "PostgreSQL",
+    "icon": "PG",
+    "iconColor": "bg-sky-700 text-white",
+    "description": "Advanced queries, indexing techniques, transactions & JSONB",
+    "dataFile": "pgsql.json"
+  },
+  {
     "id": "awss3",
-    "name": "AWS S3 *",
+    "name": "AWS S3",
     "icon": "S3",
-    "description": "Language fundamentals and backend development",
+    "iconColor": "bg-orange-600 text-white",
+    "description": "Buckets, storage classes, lifecycle, presigned URLs & policies",
     "dataFile": "awss3.json"
   },
   {
     "id": "awssqs",
-    "name": "AWS SQS *",
+    "name": "AWS SQS",
     "icon": "SQS",
-    "description": "Queries, joins, indexes and database concepts",
+    "iconColor": "bg-violet-600 text-white",
+    "description": "Standard vs FIFO queues, visibility timeout, dead-letter queues",
     "dataFile": "awssqs.json"
   },
   {
-    "id": "awsapigateway",
-    "name": "AWS API Gateway",
-    "icon": "Gate",
-    "description": "Language fundamentals and backend development",
-    "dataFile": "awss3.json"
+    "id": "ec2lambda",
+    "name": "EC2 & Lambda",
+    "icon": "\u03bb",
+    "iconColor": "bg-amber-600 text-white",
+    "description": "Compute instances, serverless functions, execution lifecycle",
+    "dataFile": "ec2lambda.json"
   },
   {
-    "id": "awssqs",
-    "name": "AWS Event Bridge",
-    "icon": "Bridge",
-    "description": "Queries, joins, indexes and database concepts",
-    "dataFile": "awssqs.json"
+    "id": "apigatewaysns",
+    "name": "API Gateway & SNS",
+    "icon": "API",
+    "iconColor": "bg-pink-600 text-white",
+    "description": "REST/HTTP APIs, pub/sub messaging, integrations & throttling",
+    "dataFile": "apigatewaysns.json"
+  },
+  {
+    "id": "vpciamsg",
+    "name": "VPC & Security",
+    "icon": "VPC",
+    "iconColor": "bg-purple-700 text-white",
+    "description": "Subnets, route tables, security groups, NACLs and security",
+    "dataFile": "vpciamsg.json"
   }
 ]
