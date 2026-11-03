@@ -5,6 +5,7 @@ import { TopicDetailPage } from './components/TopicDetailPage';
 import { useSubjectData } from './hooks/useSubjectData';
 import { useStudyProgress } from './hooks/useStudyProgress';
 import { loadFromStorage, saveToStorage } from './utils/helpers';
+import { getStoredThemeId, DEFAULT_THEMES, applyThemeToDom } from './utils/themeManager';
 import { RefreshCw, AlertCircle } from 'lucide-react';
 
 export default function App() {
@@ -13,6 +14,13 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return loadFromStorage('flashlearn_dark_mode', false);
   });
+
+  // Initialize theme on mount
+  useEffect(() => {
+    const savedThemeId = getStoredThemeId();
+    const preset = DEFAULT_THEMES.find((t) => t.id === savedThemeId) || DEFAULT_THEMES[0];
+    applyThemeToDom(preset);
+  }, []);
 
   // Load subject master & active subject
   const {

@@ -7,6 +7,7 @@ import {
   Moon, 
   Sun 
 } from 'lucide-react';
+import { ThemeSelector } from './ThemeSelector';
 
 export function TopNav({ 
   activeTab = 'learn', 
@@ -25,10 +26,10 @@ export function TopNav({
           className="flex items-center gap-2.5 cursor-pointer group select-none"
         >
           <div className="relative flex items-center justify-center text-slate-800 dark:text-zinc-100">
-            <Layers className="w-6 h-6 stroke-[2.2] text-indigo-600 dark:text-indigo-400 group-hover:scale-105 transition-transform" />
+            <Layers className="w-6 h-6 stroke-[2.2] text-primary group-hover:scale-105 transition-transform" />
           </div>
           <span className="font-extrabold text-lg text-slate-900 dark:text-white tracking-tight">
-            Study<span className="text-indigo-600 dark:text-indigo-400">Deck</span>
+            Study<span className="text-primary">Deck</span>
           </span>
         </div>
 
@@ -40,11 +41,11 @@ export function TopNav({
             onClick={() => onSelectTab && onSelectTab('learn')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
               activeTab === 'learn'
-                ? 'bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 shadow-xs'
+                ? 'bg-primary-subtle dark:bg-primary-dark-subtle text-primary-text dark:text-primary-dark-text border border-primary-border dark:border-primary-dark-border shadow-xs'
                 : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800/50'
             }`}
           >
-            <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <BookOpen className="w-4 h-4 text-primary" />
             <span>Learn</span>
           </button>
 
@@ -53,7 +54,7 @@ export function TopNav({
             onClick={() => onSelectTab && onSelectTab('review')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-medium transition-all cursor-pointer ${
               activeTab === 'review'
-                ? 'bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 shadow-xs font-semibold'
+                ? 'bg-primary-subtle dark:bg-primary-dark-subtle text-primary-text dark:text-primary-dark-text border border-primary-border dark:border-primary-dark-border shadow-xs font-semibold'
                 : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800/50'
             }`}
           >
@@ -66,7 +67,7 @@ export function TopNav({
             onClick={() => onSelectTab && onSelectTab('progress')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-medium transition-all cursor-pointer ${
               activeTab === 'progress'
-                ? 'bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 shadow-xs font-semibold'
+                ? 'bg-primary-subtle dark:bg-primary-dark-subtle text-primary-text dark:text-primary-dark-text border border-primary-border dark:border-primary-dark-border shadow-xs font-semibold'
                 : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800/50'
             }`}
           >
@@ -76,8 +77,12 @@ export function TopNav({
 
         </nav>
 
-        {/* Right Actions: Dark Mode Toggle & User Avatar */}
-        <div className="flex items-center gap-3">
+        {/* Right Actions: Theme Selector + Dark Mode Toggle & User Avatar */}
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          {/* Theme Palette Selector Dropdown */}
+          <ThemeSelector />
+
+          {/* Dark Mode Toggle */}
           <button
             onClick={onToggleDarkMode}
             title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
