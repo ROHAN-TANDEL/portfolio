@@ -1,0 +1,1406 @@
+[
+  {
+    "id": "exp-ex-01",
+    "title": "Production Express Application Factory with Graceful Shutdown",
+    "category": "Application Lifecycle",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a production application factory exporting an Express app and an HTTP server instance equipped with SIGTERM/SIGINT teardown handlers, connection draining, and watchdog timeouts.",
+    "conceptsCovered": [
+      "Application Factory Pattern",
+      "Graceful Shutdown",
+      "SIGTERM & SIGINT",
+      "Connection Draining",
+      "Watchdog Timer"
+    ],
+    "code": "const express = require('express');\nconst http = require('http');\n\nfunction createApp() {\n  const app = express();\n  app.use(express.json());\n\n  app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));\n  app.get('/api/data', (req, res) => res.json({ message: 'Production API active' }));\n\n  return app;\n}\n\nfunction startServer(port = 3000) {\n  const app = createApp();\n  const server = http.createServer(app);\n\n  let isShuttingDown = false;\n\n  // Intercept requests during shutdown\n  app.use((req, res, next) => {\n    if (isShuttingDown) {\n      res.set('Connection', 'close');\n      return res.status(503).json({ error: 'Server is shutting down' });\n    }\n    next();\n  });\n\n  const shutdown = async (signal) => {\n    console.log(`Received ${signal}. Draining in-flight connections...`);\n    isShuttingDown = true;\n\n    server.close(() => {\n      console.log('HTTP server closed. Exiting process cleanly.');\n      process.exit(0);\n    });\n\n    // Safety watchdog: force-kill if draining hangs\n    setTimeout(() => {\n      console.error('Graceful shutdown timeout exceeded. Force exiting.');\n      process.exit(1);\n    }, 10000).unref();\n  };\n\n  process.on('SIGTERM', () => shutdown('SIGTERM'));\n  process.on('SIGINT', () => shutdown('SIGINT'));\n\n  server.listen(port, () => console.log(`Server listening on port ${port}`));\n  return server;\n}\n\nif (require.main === module) {\n  startServer(process.env.PORT || 3000);\n}\n\nmodule.exports = { createApp, startServer };",
+    "breakdown": [
+      {
+        "lineRange": "4-12",
+        "note": "createApp encapsulates app instantiation, enabling isolated unit testing without opening network sockets."
+      },
+      {
+        "lineRange": "18-24",
+        "note": "Rejects new incoming requests with 503 during teardown and instructs clients to close connections."
+      },
+      {
+        "lineRange": "26-38",
+        "note": "server.close drains active requests while a 10-second watchdog timer guarantees process exit."
+      }
+    ],
+    "expectedOutput": "Server listening on port 3000\nReceived SIGTERM. Draining in-flight connections...\nHTTP server closed. Exiting process cleanly."
+  },
+  {
+    "id": "exp-ex-02",
+    "title": "Distributed Request Correlation ID & Trace Propagation Middleware",
+    "category": "Observability & Tracing",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements middleware that extracts incoming X-Correlation-ID or X-Request-ID headers (or generates a crypto UUID), assigns it to req/res, and injects it into logs.",
+    "conceptsCovered": [
+      "Correlation ID",
+      "crypto.randomUUID",
+      "Traceparent Header",
+      "Structured Logging",
+      "Response Headers"
+    ],
+    "code": "const express = require('express');\nconst crypto = require('crypto');\nconst app = express();\n\nfunction correlationMiddleware(req, res, next) {\n  // Extract from client or upstream gateway, or generate fresh UUID\n  const correlationId = req.get('x-correlation-id') || \n                        req.get('x-request-id') || \n                        crypto.randomUUID();\n\n  // Attach to request context\n  req.correlationId = correlationId;\n\n  // Echo back in response header for client debugging\n  res.setHeader('X-Correlation-ID', correlationId);\n\n  // Scoped logger helper\n  req.log = (level, message, meta = {}) => {\n    console.log(JSON.stringify({\n      timestamp: new Date().toISOString(),\n      correlationId,\n      level,\n      method: req.method,\n      url: req.originalUrl,\n      message,\n      ...meta\n    }));\n  };\n\n  next();\n}\n\napp.use(correlationMiddleware);\n\napp.get('/api/orders/:id', (req, res) => {\n  req.log('info', 'Fetching order record', { orderId: req.params.id });\n  res.json({ orderId: req.params.id, status: 'Shipped' });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "5-11",
+        "note": "Extracts existing upstream correlation IDs or generates a cryptographically secure UUID v4."
+      },
+      {
+        "lineRange": "14-17",
+        "note": "Sets X-Correlation-ID on the response so frontend clients can correlate customer support tickets."
+      },
+      {
+        "lineRange": "19-31",
+        "note": "Injects correlationId into structured JSON log outputs for Datadog or ELK log aggregation."
+      }
+    ],
+    "expectedOutput": "{\"timestamp\":\"2026-11-04T00:00:00.000Z\",\"correlationId\":\"3f7b8c...\",\"level\":\"info\",\"message\":\"Fetching order record\",\"orderId\":\"99\"}"
+  },
+  {
+    "id": "exp-ex-03",
+    "title": "Zero-Downtime Socket Draining & Keep-Alive Synchronization with AWS ALB",
+    "category": "DevOps & Infrastructure",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Aligns Node.js HTTP server keep-alive timeouts with reverse proxies (AWS ALB, Nginx) to eliminate sporadic 502 Bad Gateway errors caused by socket race conditions.",
+    "conceptsCovered": [
+      "keepAliveTimeout",
+      "headersTimeout",
+      "AWS ALB 502 Race Condition",
+      "server.closeIdleConnections",
+      "TCP Sockets"
+    ],
+    "code": "const express = require('express');\nconst http = require('http');\n\nconst app = express();\napp.get('/ping', (req, res) => res.send('pong'));\n\nconst server = http.createServer(app);\n\n// AWS ALB default idle timeout is 60 seconds.\n// Node's keepAliveTimeout MUST exceed the ALB idle timeout.\n// headersTimeout MUST exceed keepAliveTimeout.\nserver.keepAliveTimeout = 65000;  // 65 seconds\nserver.headersTimeout = 66000;    // 66 seconds\nserver.requestTimeout = 30000;    // 30 seconds max per request\n\nfunction gracefulTeardown() {\n  console.log('SIGTERM received: closing server...');\n\n  server.close(() => {\n    console.log('Active requests finished. Process exiting.');\n    process.exit(0);\n  });\n\n  // Terminate idle keep-alive sockets immediately (Node 19+)\n  if (typeof server.closeIdleConnections === 'function') {\n    server.closeIdleConnections();\n  }\n}\n\nprocess.on('SIGTERM', gracefulTeardown);\n\nmodule.exports = { server, app };",
+    "breakdown": [
+      {
+        "lineRange": "11-14",
+        "note": "Sets keepAliveTimeout to 65s (exceeding ALB 60s) to prevent Node closing sockets right as ALB routes a request."
+      },
+      {
+        "lineRange": "16-24",
+        "note": "server.close stops accepting new connections and drains active in-flight requests."
+      },
+      {
+        "lineRange": "26-28",
+        "note": "server.closeIdleConnections instantly destroys persistent keep-alive sockets that have no active request."
+      }
+    ],
+    "expectedOutput": "SIGTERM received: closing server...\nActive requests finished. Process exiting."
+  },
+  {
+    "id": "exp-ex-04",
+    "title": "Liveness and Readiness Probes (/livez, /readyz) with DB Health Check",
+    "category": "DevOps & Infrastructure",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements Kubernetes-compliant /healthz/live and /healthz/ready endpoints with separate concerns to prevent cascading pod restart storms during database latency.",
+    "conceptsCovered": [
+      "Kubernetes Probes",
+      "Liveness (/livez)",
+      "Readiness (/readyz)",
+      "Cascading Restarts",
+      "Database Health Verification"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\nlet isReady = false;\nlet isShuttingDown = false;\n\n// Mock database pool\nconst fakeDb = {\n  ping: async () => {\n    // Simulates quick SELECT 1 query\n    return true;\n  }\n};\n\n// 1. LIVENESS PROBE: Is process running and event loop responsive?\n// NEVER check database in livez! If DB is slow, Kubernetes will restart all pods at once!\napp.get('/healthz/live', (req, res) => {\n  res.status(200).json({ status: 'alive', uptime: process.uptime() });\n});\n\n// 2. READINESS PROBE: Can this pod accept external user traffic?\napp.get('/healthz/ready', async (req, res) => {\n  if (isShuttingDown || !isReady) {\n    return res.status(503).json({ status: 'unready', reason: 'warming up or shutting down' });\n  }\n\n  try {\n    await fakeDb.ping();\n    res.status(200).json({ status: 'ready', database: 'connected' });\n  } catch (err) {\n    // 503 removes pod from Ingress without restarting container\n    res.status(503).json({ status: 'unready', error: err.message });\n  }\n});\n\n// Simulate app warmup\nsetTimeout(() => { isReady = true; }, 100);\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "14-17",
+        "note": "Liveness probe only checks process responsiveness; failing liveness restarts the container."
+      },
+      {
+        "lineRange": "20-33",
+        "note": "Readiness probe checks DB dependencies; failing readiness removes pod from load balancer pool safely."
+      }
+    ],
+    "expectedOutput": "GET /healthz/live -> 200 { status: 'alive' }\nGET /healthz/ready -> 200 { status: 'ready', database: 'connected' }"
+  },
+  {
+    "id": "exp-ex-05",
+    "title": "Modular Sub-Application Mounting with Independent Settings & Middleware",
+    "category": "Architecture & Modularity",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Demonstrates mounting independent Express sub-applications via app.use('/admin', adminApp), showcasing isolated settings, route hierarchies, and parent-child events.",
+    "conceptsCovered": [
+      "Sub-Applications",
+      "app.use() Mounting",
+      "app.mountpath",
+      "mount Event",
+      "Isolated Settings"
+    ],
+    "code": "const express = require('express');\nconst mainApp = express();\nconst adminApp = express();\n\n// Configure independent sub-app settings\nadminApp.set('title', 'Administration Portal');\nadminApp.disable('x-powered-by');\n\n// Sub-app specific middleware\nadminApp.use((req, res, next) => {\n  console.log(`[Admin Sub-App] Authenticating admin path: ${req.baseUrl}`);\n  next();\n});\n\nadminApp.get('/dashboard', (req, res) => {\n  res.json({\n    appTitle: adminApp.get('title'),\n    mountPath: adminApp.mountpath, // '/admin'\n    url: req.originalUrl\n  });\n});\n\n// Listen to mount lifecycle event\nadminApp.on('mount', (parent) => {\n  console.log(`Admin app successfully mounted onto parent at: ${adminApp.mountpath}`);\n});\n\n// Mount onto main application\nmainApp.use('/admin', adminApp);\n\nmainApp.get('/', (req, res) => res.send('Main App Home'));\n\nmodule.exports = mainApp;",
+    "breakdown": [
+      {
+        "lineRange": "5-8",
+        "note": "adminApp has its own configuration settings completely isolated from mainApp."
+      },
+      {
+        "lineRange": "22-25",
+        "note": "The 'mount' event fires when the sub-application is registered onto the parent app."
+      },
+      {
+        "lineRange": "27-28",
+        "note": "Requests to /admin/dashboard are delegated seamlessly to adminApp handlers."
+      }
+    ],
+    "expectedOutput": "Admin app successfully mounted onto parent at: /admin\nGET /admin/dashboard -> { appTitle: 'Administration Portal', mountPath: '/admin' }"
+  },
+  {
+    "id": "exp-ex-06",
+    "title": "RESTful Resource Route Controller with app.route() & Method Chaining",
+    "category": "Routing & Route Engine",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Uses Express's app.route() chaining to group GET, POST, PUT, and DELETE handlers on a single URI path, eliminating redundant route declarations and typo bugs.",
+    "conceptsCovered": [
+      "app.route()",
+      "Method Chaining",
+      "RESTful Routing",
+      "DRY Principles",
+      "Route Grouping"
+    ],
+    "code": "const express = require('express');\nconst app = express();\napp.use(express.json());\n\nconst usersDb = new Map();\n\n// Group multiple HTTP methods under a single path identifier\napp.route('/api/users/:id')\n  .all((req, res, next) => {\n    // Common pre-handler: runs before GET, PUT, or DELETE\n    const { id } = req.params;\n    req.targetId = id;\n    next();\n  })\n  .get((req, res) => {\n    const user = usersDb.get(req.targetId);\n    if (!user) return res.status(404).json({ error: 'User not found' });\n    res.json(user);\n  })\n  .put((req, res) => {\n    const updated = { id: req.targetId, ...req.body };\n    usersDb.set(req.targetId, updated);\n    res.json(updated);\n  })\n  .delete((req, res) => {\n    usersDb.delete(req.targetId);\n    res.status(204).end();\n  });\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "8-15",
+        "note": "app.route('/path').all() defines shared middleware executed across all chained HTTP verbs."
+      },
+      {
+        "lineRange": "16-29",
+        "note": "Chained .get(), .put(), and .delete() establish clean, readable REST operations for that resource."
+      }
+    ],
+    "expectedOutput": "PUT /api/users/42 -> 200 { id: '42', name: 'Alice' }\nGET /api/users/42 -> 200 { id: '42', name: 'Alice' }\nDELETE /api/users/42 -> 204 No Content"
+  },
+  {
+    "id": "exp-ex-07",
+    "title": "Nested Sub-Routers with mergeParams: true for Hierarchical Resources",
+    "category": "Routing & Route Engine",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Demonstrates configuring child Express routers with mergeParams: true to inherit parameters from parent route prefixes in deeply nested REST hierarchies.",
+    "conceptsCovered": [
+      "express.Router",
+      "mergeParams: true",
+      "Hierarchical Resources",
+      "Parent Route Parameters",
+      "Nested Sub-Routers"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\n// Parent Router: /organizations/:orgId\nconst orgRouter = express.Router();\n\n// Child Router: /projects/:projectId\n// CRUCIAL: mergeParams: true allows access to req.params.orgId inside projectRouter!\nconst projectRouter = express.Router({ mergeParams: true });\n\nprojectRouter.get('/', (req, res) => {\n  // Accesses BOTH parent parameter (orgId) and child routes\n  const { orgId } = req.params;\n  res.json({ orgId, message: `Listing projects for organization ${orgId}` });\n});\n\nprojectRouter.get('/:projectId', (req, res) => {\n  const { orgId, projectId } = req.params;\n  res.json({ orgId, projectId, status: 'Active' });\n});\n\n// Mount child router under parent path\norgRouter.use('/:orgId/projects', projectRouter);\n\n// Mount parent router on app\napp.use('/api/organizations', orgRouter);\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "8-9",
+        "note": "Without mergeParams: true, projectRouter would only see projectId; orgId would be undefined."
+      },
+      {
+        "lineRange": "11-20",
+        "note": "Handlers read both parent :orgId and child :projectId parameters transparently."
+      },
+      {
+        "lineRange": "22-25",
+        "note": "Mounts /organizations/:orgId/projects cleanly preserving clean architectural separation."
+      }
+    ],
+    "expectedOutput": "GET /api/organizations/acme/projects/p-100 -> 200 { orgId: 'acme', projectId: 'p-100', status: 'Active' }"
+  },
+  {
+    "id": "exp-ex-08",
+    "title": "Custom Parameter Preloading & Validation with router.param()",
+    "category": "Routing & Route Engine",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Uses router.param() to intercept route parameter occurrences once per request cycle, validate ID formats, fetch database models, and attach them to req.",
+    "conceptsCovered": [
+      "router.param()",
+      "Parameter Preloading",
+      "UUID Validation",
+      "Database Hydration",
+      "DRY Handlers"
+    ],
+    "code": "const express = require('express');\nconst router = express.Router();\n\n// Mock database lookup\nconst findUserById = async (id) => {\n  if (id === 'user_123') return { id: 'user_123', name: 'John Doe', role: 'admin' };\n  return null;\n};\n\n// Parameter middleware for :userId\nrouter.param('userId', async (req, res, next, userId) => {\n  // 1. Validate parameter format\n  if (!/^user_[a-zA-Z0-9]+$/.test(userId)) {\n    return res.status(400).json({ error: 'Invalid user ID format' });\n  }\n\n  try {\n    // 2. Pre-fetch model once\n    const user = await findUserById(userId);\n    if (!user) {\n      return res.status(404).json({ error: 'User not found' });\n    }\n\n    // 3. Attach hydrated entity to req\n    req.loadedUser = user;\n    next();\n  } catch (err) {\n    next(err);\n  }\n});\n\n// Handlers are 100% free of boilerplate ID checks or DB lookups!\nrouter.get('/users/:userId', (req, res) => {\n  res.json({ user: req.loadedUser });\n});\n\nrouter.delete('/users/:userId', (req, res) => {\n  res.json({ message: `Deleted user ${req.loadedUser.name}` });\n});\n\nmodule.exports = router;",
+    "breakdown": [
+      {
+        "lineRange": "10-28",
+        "note": "router.param executes once per request containing :userId, validating format and preloading user."
+      },
+      {
+        "lineRange": "31-37",
+        "note": "Subsequent route handlers read req.loadedUser directly without repeating 404 checks or queries."
+      }
+    ],
+    "expectedOutput": "GET /users/bad-id -> 400 { error: 'Invalid user ID format' }\nGET /users/user_123 -> 200 { user: { id: 'user_123', name: 'John Doe' } }"
+  },
+  {
+    "id": "exp-ex-09",
+    "title": "Conditional Route Dispatching with next('route') and Role-Based Bypasses",
+    "category": "Routing & Route Engine",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Uses next('route') to skip remaining handlers within the current Route layer stack and pass control to subsequent matching route definitions.",
+    "conceptsCovered": [
+      "next('route')",
+      "Route Short-Circuiting",
+      "Conditional Branching",
+      "Specialized Handlers",
+      "Route Stacks"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\n// First route definition for /reports/:id\napp.get('/reports/:id', (req, res, next) => {\n  const isVipUser = req.headers['x-vip-token'] === 'vip-secret';\n\n  if (isVipUser) {\n    console.log('VIP user detected: skipping standard report handler!');\n    // next('route') jumps out of this route definition completely!\n    return next('route');\n  }\n\n  // Standard user processing\n  res.json({ reportId: req.params.id, tier: 'Standard', cached: true });\n});\n\n// Second route definition for the same /reports/:id path\napp.get('/reports/:id', (req, res) => {\n  // Only reached if next('route') was called above!\n  res.json({\n    reportId: req.params.id,\n    tier: 'VIP',\n    realTimeCalculated: true,\n    unmetered: true\n  });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "5-14",
+        "note": "When isVipUser is true, return next('route') bails out of the first route handler stack."
+      },
+      {
+        "lineRange": "18-26",
+        "note": "Express advances down the layer stack to the next route matching /reports/:id, executing VIP logic."
+      }
+    ],
+    "expectedOutput": "GET /reports/100 -> { tier: 'Standard', cached: true }\nGET /reports/100 (with VIP header) -> { tier: 'VIP', realTimeCalculated: true }"
+  },
+  {
+    "id": "exp-ex-10",
+    "title": "Express 5 Compliant Catch-All 404 Route with path-to-regexp v8",
+    "category": "Routing & Route Engine",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Demonstrates configuring a catch-all 404 handler complying with Express 5 path-to-regexp v8 syntax, avoiding deprecated wildcard crashes.",
+    "conceptsCovered": [
+      "Express 5 Routing",
+      "path-to-regexp v8",
+      "Catch-All 404",
+      "Named Wildcard /{ *splat }",
+      "HTTP 404 Envelope"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\napp.get('/api/users', (req, res) => res.json([{ id: 1, name: 'Alice' }]));\napp.get('/api/health', (req, res) => res.send('OK'));\n\n// EXPRESS 4 LEGACY (WILL CRASH IN EXPRESS 5!):\n// app.all('*', (req, res) => res.status(404).send('Not Found'));\n\n// EXPRESS 5 MODERN COMPLIANT SYNTAX:\n// path-to-regexp v8 requires named wildcard parameters or middleware without path\napp.all('/{*splat}', (req, res) => {\n  res.status(404).json({\n    success: false,\n    error: {\n      code: 'ROUTE_NOT_FOUND',\n      message: `Cannot ${req.method} ${req.originalUrl}`,\n      matchedSplat: req.params.splat\n    }\n  });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "7-8",
+        "note": "Legacy app.all('*') crashes in Express 5 with TypeError: Unexpected *."
+      },
+      {
+        "lineRange": "12-21",
+        "note": "app.all('/{*splat}') is fully path-to-regexp v8 compliant, capturing unmatched paths into req.params.splat."
+      }
+    ],
+    "expectedOutput": "GET /api/unknown -> 404 { error: { code: 'ROUTE_NOT_FOUND', message: 'Cannot GET /api/unknown' } }"
+  },
+  {
+    "id": "exp-ex-11",
+    "title": "High-Performance Request Timing & Structured Access Logger via res.on('finish')",
+    "category": "Middleware Pipelines",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a production HTTP access logger calculating exact response latency using process.hrtime.bigint() and res.on('finish') without blocking the event loop.",
+    "conceptsCovered": [
+      "res.on('finish')",
+      "process.hrtime.bigint()",
+      "Response Latency",
+      "Structured JSON Logging",
+      "Non-Blocking I/O"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\nfunction accessLogger(req, res, next) {\n  // Capture high-resolution nanosecond timestamp\n  const startTime = process.hrtime.bigint();\n\n  // Listen for socket completion\n  res.on('finish', () => {\n    const elapsedNs = process.hrtime.bigint() - startTime;\n    const durationMs = Number(elapsedNs) / 1e6;\n\n    const logEntry = {\n      timestamp: new Date().toISOString(),\n      method: req.method,\n      path: req.originalUrl,\n      status: res.statusCode,\n      durationMs: Number(durationMs.toFixed(2)),\n      contentLength: res.get('content-length') || 0,\n      ip: req.ip\n    };\n\n    console.log(JSON.stringify(logEntry));\n  });\n\n  next();\n}\n\napp.use(accessLogger);\n\napp.get('/api/slow', async (req, res) => {\n  await new Promise(r => setTimeout(r, 50));\n  res.json({ delayed: true });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "5-6",
+        "note": "Captures start time using process.hrtime.bigint() with sub-millisecond precision."
+      },
+      {
+        "lineRange": "9-21",
+        "note": "res.on('finish') executes after HTTP headers and body bytes have completely flushed to the socket."
+      }
+    ],
+    "expectedOutput": "{\"timestamp\":\"...\",\"method\":\"GET\",\"path\":\"/api/slow\",\"status\":200,\"durationMs\":51.24,\"contentLength\":\"16\"}"
+  },
+  {
+    "id": "exp-ex-12",
+    "title": "AsyncLocalStorage Execution Context for Ambient Per-Request Storage",
+    "category": "Context & State",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Uses Node's AsyncLocalStorage to store per-request trace metadata (user, correlationId, tenant) that is accessible anywhere across services without passing req.",
+    "conceptsCovered": [
+      "AsyncLocalStorage",
+      "Execution Context",
+      "Ambient State",
+      "Zero Parameter Drilling",
+      "Async Hooks"
+    ],
+    "code": "const express = require('express');\nconst { AsyncLocalStorage } = require('async_hooks');\n\nconst requestContext = new AsyncLocalStorage();\nconst app = express();\n\n// Middleware initializing ambient execution context\napp.use((req, res, next) => {\n  const store = {\n    traceId: req.get('x-trace-id') || crypto.randomUUID(),\n    userId: req.get('x-user-id') || 'anonymous',\n    startTime: Date.now()\n  };\n\n  // Run the remaining async call tree inside this isolated store\n  requestContext.run(store, () => {\n    next();\n  });\n});\n\n// Deep service layer function (notice: NO req parameter!)\nclass PaymentService {\n  async processPayment(amount) {\n    const store = requestContext.getStore();\n    console.log(`[PaymentService] TraceId: ${store.traceId} processing $${amount} for user ${store.userId}`);\n    return { success: true, txnId: 'txn_999', traceId: store.traceId };\n  }\n}\n\nconst paymentService = new PaymentService();\n\napp.post('/api/pay', async (req, res) => {\n  const result = await paymentService.processPayment(100);\n  res.json(result);\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "4-5",
+        "note": "Creates an AsyncLocalStorage instance for managing per-request async execution context."
+      },
+      {
+        "lineRange": "7-18",
+        "note": "requestContext.run wraps the rest of the HTTP lifecycle, isolating store data per request."
+      },
+      {
+        "lineRange": "21-27",
+        "note": "Deep business services read store context directly without receiving Express req or res."
+      }
+    ],
+    "expectedOutput": "[PaymentService] TraceId: 3a1f... processing $100 for user anonymous"
+  },
+  {
+    "id": "exp-ex-13",
+    "title": "Configurable Higher-Order Middleware Factory with Dynamic Options",
+    "category": "Middleware Pipelines",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a reusable middleware factory function accepting configuration options (e.g. required headers, allowed roles, caching flags) and returning specialized Express middleware.",
+    "conceptsCovered": [
+      "Middleware Factory",
+      "Higher-Order Functions",
+      "Closure Scope",
+      "Dynamic Configuration",
+      "Declarative Routing"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\n// Middleware Factory: Returns tailored middleware based on options\nfunction enforceHeaders(options = {}) {\n  const { required = [], prefix = 'X-' } = options;\n\n  return (req, res, next) => {\n    const missing = [];\n\n    for (const header of required) {\n      const fullHeaderName = header.startsWith(prefix) ? header : `${prefix}${header}`;\n      if (!req.get(fullHeaderName)) {\n        missing.push(fullHeaderName);\n      }\n    }\n\n    if (missing.length > 0) {\n      return res.status(400).json({\n        error: 'Missing required headers',\n        missingHeaders: missing\n      });\n    }\n\n    next();\n  };\n}\n\n// Route with custom required headers\napp.post('/api/enterprise-sync', \n  enforceHeaders({ required: ['Tenant-ID', 'Sync-Token'] }), \n  (req, res) => {\n    res.json({ message: 'Headers verified, sync initialized' });\n  }\n);\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "5-26",
+        "note": "Higher-order function encapsulates configuration options within closure scope."
+      },
+      {
+        "lineRange": "29-34",
+        "note": "Applied declaratively to route pipelines with custom required headers."
+      }
+    ],
+    "expectedOutput": "POST /api/enterprise-sync (missing headers) -> 400 { missingHeaders: ['X-Tenant-ID', 'X-Sync-Token'] }"
+  },
+  {
+    "id": "exp-ex-14",
+    "title": "Raw Body Buffer Retention for Webhook Cryptographic HMAC Verification",
+    "category": "Security & Webhooks",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Configures express.json() with a verify callback to preserve the unparsed raw Buffer alongside parsed JSON, enabling Stripe/GitHub HMAC SHA-256 signature verification.",
+    "conceptsCovered": [
+      "express.json({ verify })",
+      "Raw Body Buffer",
+      "Webhook Signatures",
+      "HMAC-SHA256",
+      "Stripe Webhook Defense"
+    ],
+    "code": "const express = require('express');\nconst crypto = require('crypto');\nconst app = express();\n\n// Retain raw Buffer on req.rawBody during JSON body parsing\napp.use(express.json({\n  verify: (req, res, buf) => {\n    // Preserve the exact byte sequence received over the TCP stream\n    req.rawBody = buf;\n  }\n}));\n\nconst WEBHOOK_SECRET = 'whsec_test_secret_key_123';\n\nfunction verifyWebhookSignature(req, res, next) {\n  const signature = req.get('stripe-signature') || req.get('x-hub-signature-256');\n\n  if (!signature || !req.rawBody) {\n    return res.status(400).json({ error: 'Missing signature or raw body' });\n  }\n\n  // Compute HMAC using raw bytes (JSON.stringify would reorder keys and fail!)\n  const expectedHash = crypto\n    .createHmac('sha256', WEBHOOK_SECRET)\n    .update(req.rawBody)\n    .digest('hex');\n\n  const timingSafeMatch = crypto.timingSafeEqual(\n    Buffer.from(signature),\n    Buffer.from(expectedHash)\n  );\n\n  if (!timingSafeMatch) {\n    return res.status(401).json({ error: 'Invalid webhook signature' });\n  }\n\n  next();\n}\n\napp.post('/api/webhooks/stripe', verifyWebhookSignature, (req, res) => {\n  // req.body is parsed JSON, req.rawBody was verified cryptographically\n  console.log('Verified Webhook Event:', req.body.type);\n  res.json({ received: true });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "6-11",
+        "note": "The verify function intercepts the raw Buffer before JSON parsing mutates whitespace or key orders."
+      },
+      {
+        "lineRange": "15-37",
+        "note": "Computes HMAC-SHA256 over req.rawBody and compares using crypto.timingSafeEqual."
+      }
+    ],
+    "expectedOutput": "POST /api/webhooks/stripe (valid sig) -> 200 { received: true }\nPOST /api/webhooks/stripe (tampered) -> 401 { error: 'Invalid webhook signature' }"
+  },
+  {
+    "id": "exp-ex-15",
+    "title": "Safe Response Envelope Interceptor Patching res.json",
+    "category": "Request & Response",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Intercepts Express res.json to wrap all outgoing responses in a standardized API envelope ({ success: true, data, meta: { timestamp, correlationId } }) automatically.",
+    "conceptsCovered": [
+      "Response Wrapping",
+      "Monkey-Patching res.json",
+      "JSend Envelope",
+      "API Standardization",
+      "Metadata Injection"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\napp.use((req, res, next) => {\n  // Save reference to original res.json\n  const originalJson = res.json.bind(res);\n\n  // Override res.json to enforce uniform envelope\n  res.json = (body) => {\n    // Check if body is already wrapped or is an error\n    if (body && (body.success !== undefined || body.error !== undefined)) {\n      return originalJson(body);\n    }\n\n    const wrappedEnvelope = {\n      success: res.statusCode < 400,\n      data: body,\n      meta: {\n        timestamp: new Date().toISOString(),\n        correlationId: req.correlationId || 'none'\n      }\n    };\n\n    return originalJson(wrappedEnvelope);\n  };\n\n  next();\n});\n\n// Controllers remain clean and return raw domain data!\napp.get('/api/users', (req, res) => {\n  res.json([{ id: 1, name: 'Alice' }]);\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "5-6",
+        "note": "Binds original res.json to maintain proper prototype and context reference."
+      },
+      {
+        "lineRange": "8-25",
+        "note": "Wraps raw payloads in { success, data, meta } structure without modifying controller code."
+      }
+    ],
+    "expectedOutput": "GET /api/users -> 200 { success: true, data: [{ id: 1, name: 'Alice' }], meta: { timestamp: '...' } }"
+  },
+  {
+    "id": "exp-ex-16",
+    "title": "Content Negotiation Dispatcher Supporting JSON, CSV, and HTML Representations",
+    "category": "Request & Response",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Uses req.accepts() to inspect HTTP Accept headers and dispatch responses in JSON, CSV, or HTML format, returning 406 Not Acceptable if client requests unsupported types.",
+    "conceptsCovered": [
+      "req.accepts()",
+      "Content Negotiation",
+      "HTTP 406 Not Acceptable",
+      "MIME Quality Values",
+      "Multi-Format Endpoints"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\nconst reportData = [\n  { id: 1, metric: 'ARR', value: 1200000 },\n  { id: 2, metric: 'Churn', value: 0.02 }\n];\n\napp.get('/api/reports/financials', (req, res) => {\n  // Inspect client Accept header preference\n  const format = req.accepts(['json', 'html', 'csv']);\n\n  if (!format) {\n    return res.status(406).json({\n      error: 'Not Acceptable',\n      supportedFormats: ['application/json', 'text/html', 'text/csv']\n    });\n  }\n\n  if (format === 'json') {\n    return res.json(reportData);\n  }\n\n  if (format === 'html') {\n    const rows = reportData.map(r => `<tr><td>${r.metric}</td><td>${r.value}</td></tr>`).join('');\n    return res.send(`<table border=\"1\"><tr><th>Metric</th><th>Value</th></tr>${rows}</table>`);\n  }\n\n  if (format === 'csv') {\n    res.setHeader('Content-Type', 'text/csv');\n    const csv = 'id,metric,value\\n' + reportData.map(r => `${r.id},${r.metric},${r.value}`).join('\\n');\n    return res.send(csv);\n  }\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "10-18",
+        "note": "req.accepts evaluates MIME priorities and returns false if no supported format is acceptable."
+      },
+      {
+        "lineRange": "20-33",
+        "note": "Renders JSON, HTML table, or CSV string depending on client Accept header."
+      }
+    ],
+    "expectedOutput": "Accept: application/json -> 200 JSON\nAccept: text/csv -> 200 CSV\nAccept: application/xml -> 406 Not Acceptable"
+  },
+  {
+    "id": "exp-ex-17",
+    "title": "Secure Static File Server with res.sendFile() Directory Traversal Bounds",
+    "category": "Request & Response",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Uses res.sendFile with strict root options and dotfile denials to prevent path traversal attacks (../../etc/passwd) when serving dynamic filenames.",
+    "conceptsCovered": [
+      "res.sendFile()",
+      "Path Traversal Defense",
+      "root Option",
+      "dotfiles: 'deny'",
+      "Safe File Streaming"
+    ],
+    "code": "const express = require('express');\nconst path = require('path');\nconst app = express();\n\nconst SAFE_DOWNLOADS_DIR = path.join(__dirname, 'public', 'downloads');\n\napp.get('/downloads/:filename', (req, res, next) => {\n  const { filename } = req.params;\n\n  const options = {\n    root: SAFE_DOWNLOADS_DIR,\n    dotfiles: 'deny', // Block hidden files (.env, .git)\n    headers: {\n      'x-timestamp': Date.now(),\n      'x-sent': true\n    }\n  };\n\n  // Safe file send restricted strictly within SAFE_DOWNLOADS_DIR\n  res.sendFile(filename, options, (err) => {\n    if (err) {\n      if (err.code === 'ENOENT') {\n        return res.status(404).json({ error: 'Requested file not found' });\n      }\n      // Path traversal attempts trigger 403 Forbidden automatically\n      if (err.status === 403) {\n        return res.status(403).json({ error: 'Access denied' });\n      }\n      next(err);\n    }\n  });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "10-17",
+        "note": "The root option locks res.sendFile() inside SAFE_DOWNLOADS_DIR, neutralizing path traversal."
+      },
+      {
+        "lineRange": "20-30",
+        "note": "Error callback distinguishes between file not found (404) and forbidden access (403)."
+      }
+    ],
+    "expectedOutput": "GET /downloads/manual.pdf -> 200 PDF stream\nGET /downloads/../../etc/passwd -> 403 { error: 'Access denied' }"
+  },
+  {
+    "id": "exp-ex-18",
+    "title": "Streaming Large CSV Exports with Database Cursors and Backpressure Handling",
+    "category": "Streams & Performance",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Streams 100,000 database rows directly to the Express response using Node streams and stream.pipeline, avoiding V8 heap memory exhaustion.",
+    "conceptsCovered": [
+      "stream.pipeline",
+      "Transform Streams",
+      "Backpressure",
+      "Memory-Safe Exports",
+      "Heap Conservation"
+    ],
+    "code": "const express = require('express');\nconst { Readable, Transform } = require('stream');\nconst { pipeline } = require('stream/promises');\n\nconst app = express();\n\n// Generator simulating large database query cursor\nasync function* queryDatabaseCursor() {\n  for (let i = 1; i <= 50000; i++) {\n    yield { id: i, customer: `Customer ${i}`, balance: (Math.random() * 1000).toFixed(2) };\n  }\n}\n\napp.get('/api/export/customers.csv', async (req, res, next) => {\n  res.setHeader('Content-Type', 'text/csv');\n  res.setHeader('Content-Disposition', 'attachment; filename=\"customers.csv\"');\n\n  // 1. Readable stream from async generator\n  const cursorStream = Readable.from(queryDatabaseCursor());\n\n  // 2. Transform stream formatting rows into CSV chunks\n  let headerWritten = false;\n  const csvTransformer = new Transform({\n    objectMode: true,\n    transform(row, encoding, callback) {\n      let output = '';\n      if (!headerWritten) {\n        output += 'id,customer,balance\\n';\n        headerWritten = true;\n      }\n      output += `${row.id},\"${row.customer}\",${row.balance}\\n`;\n      callback(null, output);\n    }\n  });\n\n  try {\n    // 3. pipeline handles backpressure and cleans up on client disconnect\n    await pipeline(cursorStream, csvTransformer, res);\n  } catch (err) {\n    if (err.code !== 'ERR_STREAM_PREMATURE_CLOSE') {\n      next(err);\n    }\n  }\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "8-13",
+        "note": "Async generator yields rows one at a time, pulling data lazily without buffering 50,000 objects in RAM."
+      },
+      {
+        "lineRange": "21-34",
+        "note": "Transform stream serializes objects into text/csv chunks incrementally."
+      },
+      {
+        "lineRange": "36-42",
+        "note": "pipeline handles TCP socket backpressure, pausing the generator when the network buffer fills."
+      }
+    ],
+    "expectedOutput": "GET /api/export/customers.csv -> Streams CSV with flat ~20MB memory usage regardless of row count."
+  },
+  {
+    "id": "exp-ex-19",
+    "title": "Reverse Proxy IP Resolution with Hardened trust proxy CIDR Bounds",
+    "category": "Request & Response",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Configures app.set('trust proxy', ...) with explicit private IP CIDR ranges, preventing malicious clients from spoofing X-Forwarded-For headers.",
+    "conceptsCovered": [
+      "trust proxy",
+      "req.ip vs req.ips",
+      "IP Spoofing Defense",
+      "CIDR Subnet Bounds",
+      "Reverse Proxy Chains"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\n// HARDENED: Trust only local loopback and internal AWS/Docker VPC subnets\n// NEVER set trust proxy to true blindly!\napp.set('trust proxy', ['loopback', '10.0.0.0/8', '172.16.0.0/12']);\n\napp.get('/api/client-info', (req, res) => {\n  res.json({\n    // req.ip: leftmost untrusted IP in X-Forwarded-For chain\n    resolvedClientIp: req.ip,\n\n    // req.ips: array of all proxy hops\n    proxyChain: req.ips,\n\n    // Direct socket connection (IP of nearest reverse proxy)\n    directSocketIp: req.socket.remoteAddress,\n\n    isSecure: req.secure // True if X-Forwarded-Proto was https\n  });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "5-6",
+        "note": "Restricts proxy trust to known private subnets; prevents attackers from forging X-Forwarded-For."
+      },
+      {
+        "lineRange": "9-20",
+        "note": "req.ip extracts verified client IP, ignoring internal private proxy addresses."
+      }
+    ],
+    "expectedOutput": "GET /api/client-info -> { resolvedClientIp: '203.0.113.195', proxyChain: ['203.0.113.195', '10.0.1.25'] }"
+  },
+  {
+    "id": "exp-ex-20",
+    "title": "Client Disconnect Abort Pipeline with req.on('close') and AbortController",
+    "category": "Streams & Cancellation",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Detects when an HTTP client aborts or closes a connection mid-request, using an AbortController to cancel active downstream database queries and external fetch calls.",
+    "conceptsCovered": [
+      "req.on('close')",
+      "AbortController",
+      "Cancellation Tokens",
+      "Resource Saving",
+      "res.writableEnded"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\napp.get('/api/heavy-calculation', async (req, res, next) => {\n  const abortController = new AbortController();\n\n  // Listen for premature client connection drops\n  req.on('close', () => {\n    if (!res.writableEnded) {\n      console.warn(`[Client Aborted] Request ${req.id} canceled by client. Halting background work.`);\n      abortController.abort(); // Signal cancelable downstream operations!\n    }\n  });\n\n  try {\n    // Pass abort signal to fetch or database driver\n    const downstreamResponse = await fetch('https://analytics.internal/aggregate', {\n      signal: abortController.signal\n    });\n\n    const data = await downstreamResponse.json();\n    res.json({ success: true, data });\n  } catch (err) {\n    if (err.name === 'AbortError') {\n      console.log('Downstream call aborted cleanly without crashing server.');\n      return; // Do not attempt to respond to closed client\n    }\n    next(err);\n  }\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "5-13",
+        "note": "req.on('close') triggers abortController.abort() if the client disconnects before res.writableEnded."
+      },
+      {
+        "lineRange": "16-27",
+        "note": "Passes abort signal downstream; catches AbortError gracefully without sending response."
+      }
+    ],
+    "expectedOutput": "Client disconnect -> logs '[Client Aborted] ... Halting background work.' and frees network/CPU resources."
+  },
+  {
+    "id": "exp-ex-21",
+    "title": "Enterprise Centralized Error Middleware with Custom AppError Hierarchy",
+    "category": "Error Handling Architecture",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs a robust custom AppError hierarchy with HTTP status codes and operational flags, caught by a 4-argument Express error handler.",
+    "conceptsCovered": [
+      "Custom Error Hierarchy",
+      "AppError",
+      "4-Argument Error Middleware",
+      "Operational Errors",
+      "Error Serialization"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\n// Base Application Error\nclass AppError extends Error {\n  constructor(message, statusCode, isOperational = true) {\n    super(message);\n    this.statusCode = statusCode;\n    this.isOperational = isOperational;\n    Error.captureStackTrace(this, this.constructor);\n  }\n}\n\nclass NotFoundError extends AppError {\n  constructor(resource = 'Resource') {\n    super(`${resource} not found`, 404);\n  }\n}\n\nclass UnauthorizedError extends AppError {\n  constructor(message = 'Unauthorized') {\n    super(message, 401);\n  }\n}\n\n// Route throwing clean semantic error\napp.get('/api/users/:id', (req, res, next) => {\n  if (req.params.id !== 'admin') {\n    throw new NotFoundError('User');\n  }\n  res.json({ id: 'admin', role: 'root' });\n});\n\n// Central 4-argument error handler (MUST have exactly 4 args!)\napp.use((err, req, res, next) => {\n  const statusCode = err.statusCode || 500;\n\n  res.status(statusCode).json({\n    success: false,\n    error: {\n      message: err.message || 'Internal Server Error',\n      statusCode,\n      isOperational: err.isOperational || false\n    }\n  });\n});\n\nmodule.exports = { app, AppError, NotFoundError, UnauthorizedError };",
+    "breakdown": [
+      {
+        "lineRange": "5-12",
+        "note": "AppError subclasses Error, attaching statusCode and isOperational properties."
+      },
+      {
+        "lineRange": "14-24",
+        "note": "Semantic error subclasses (NotFoundError, UnauthorizedError) eliminate magic status numbers."
+      },
+      {
+        "lineRange": "34-45",
+        "note": "4-argument middleware formats uniform error responses across the entire application."
+      }
+    ],
+    "expectedOutput": "GET /api/users/99 -> 404 { success: false, error: { message: 'User not found', statusCode: 404, isOperational: true } }"
+  },
+  {
+    "id": "exp-ex-22",
+    "title": "Database Driver Error Translation (Postgres 23505 Unique Violation to 409 Conflict)",
+    "category": "Error Handling Architecture",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Translates low-level database error codes (PostgreSQL 23505 duplicate key, 23503 foreign key violation) into user-friendly HTTP 409 Conflict and 400 Bad Request responses.",
+    "conceptsCovered": [
+      "Database Error Mapping",
+      "PostgreSQL 23505",
+      "HTTP 409 Conflict",
+      "Constraint Parsing",
+      "Data Hiding"
+    ],
+    "code": "const express = require('express');\nconst app = express();\napp.use(express.json());\n\nfunction mapDatabaseError(err) {\n  // PostgreSQL 23505: Unique constraint violation\n  if (err.code === '23505') {\n    const fieldMatch = err.detail?.match(/Key \\((.*?)\\)=/);\n    const field = fieldMatch ? fieldMatch[1] : 'Field';\n    const error = new Error(`Duplicate entry: ${field} is already in use`);\n    error.statusCode = 409;\n    return error;\n  }\n\n  // PostgreSQL 23503: Foreign key constraint violation\n  if (err.code === '23503') {\n    const error = new Error('Referenced related entity does not exist');\n    error.statusCode = 400;\n    return error;\n  }\n\n  return err;\n}\n\n// Error middleware translating database faults\napp.use((err, req, res, next) => {\n  const mapped = mapDatabaseError(err);\n  const status = mapped.statusCode || 500;\n\n  res.status(status).json({\n    success: false,\n    error: mapped.message\n  });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "5-21",
+        "note": "Inspects SQL error code and extracts column name from detail string without exposing raw SQL."
+      },
+      {
+        "lineRange": "24-33",
+        "note": "Error handler responds with HTTP 409 Conflict rather than generic 500 Internal Server Error."
+      }
+    ],
+    "expectedOutput": "Postgres 23505 -> 409 { success: false, error: 'Duplicate entry: email is already in use' }"
+  },
+  {
+    "id": "exp-ex-23",
+    "title": "Safe Stack Trace Sanitization & Masked Telemetry Logging in Production",
+    "category": "Error Handling Architecture",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Configures error middleware to sanitize stack traces based on NODE_ENV, providing full debug traces in development while shielding internal code structure in production.",
+    "conceptsCovered": [
+      "Information Disclosure",
+      "NODE_ENV Switching",
+      "Stack Trace Sanitization",
+      "Correlation Tracking",
+      "OWASP Compliance"
+    ],
+    "code": "const express = require('express');\nconst crypto = require('crypto');\nconst app = express();\n\napp.get('/crash', (req, res) => {\n  throw new Error('Database connection failed unexpectedly');\n});\n\n// Production error sanitization middleware\napp.use((err, req, res, next) => {\n  const isProd = process.env.NODE_ENV === 'production';\n  const correlationId = req.get('x-correlation-id') || crypto.randomUUID();\n\n  // Internal log ALWAYS captures full stack trace for engineering review\n  console.error(`[Error ${correlationId}]:`, err.stack || err);\n\n  const status = err.statusCode || 500;\n\n  if (isProd) {\n    // Production response: Never expose stack trace or directory paths\n    res.status(status).json({\n      success: false,\n      errorId: correlationId,\n      message: status >= 500 ? 'An unexpected internal error occurred' : err.message\n    });\n  } else {\n    // Development response: Rich debug metadata\n    res.status(status).json({\n      success: false,\n      errorId: correlationId,\n      message: err.message,\n      stack: err.stack,\n      error: err\n    });\n  }\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "10-18",
+        "note": "Generates an errorId to cross-reference server logs without revealing internals to clients."
+      },
+      {
+        "lineRange": "20-35",
+        "note": "Switches response payload: sanitized message in production, full stack trace in development."
+      }
+    ],
+    "expectedOutput": "Production: 500 { success: false, errorId: 'f8b1...', message: 'An unexpected internal error occurred' }"
+  },
+  {
+    "id": "exp-ex-24",
+    "title": "Express 4 vs 5 Asynchronous Error Wrapper & Native Promise Bridge",
+    "category": "Error Handling Architecture",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements the canonical asyncHandler wrapper for Express 4, demonstrating how Express 5 makes it obsolete with native Promise rejection interception.",
+    "conceptsCovered": [
+      "asyncHandler Wrapper",
+      "Express 4 Async Catching",
+      "Express 5 Native Promises",
+      "Promise.resolve().catch(next)",
+      "Unhandled Rejections"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\n// EXPRESS 4 WORKAROUND: Higher-order wrapper catching async rejections\nconst asyncHandler = (fn) => (req, res, next) => {\n  Promise.resolve(fn(req, res, next)).catch(next);\n};\n\n// Express 4: Requires asyncHandler wrapper to prevent unhandled rejection crashes\napp.get('/api/users/:id', asyncHandler(async (req, res) => {\n  const user = await Promise.reject(new Error('Simulated async DB failure'));\n  res.json(user);\n}));\n\n// EXPRESS 5 NATIVE (NO WRAPPER NEEDED!):\n// app.get('/api/users/:id', async (req, res) => {\n//   const user = await Promise.reject(new Error('Simulated async DB failure'));\n//   res.json(user);\n// });\n\napp.use((err, req, res, next) => {\n  res.status(500).json({ caughtAsyncError: err.message });\n});\n\nmodule.exports = { app, asyncHandler };",
+    "breakdown": [
+      {
+        "lineRange": "5-7",
+        "note": "asyncHandler wraps async functions in Promise.resolve and forwards errors to next()."
+      },
+      {
+        "lineRange": "10-13",
+        "note": "In Express 4, unhandled promise rejections without this wrapper crash the process in Node 16+."
+      }
+    ],
+    "expectedOutput": "GET /api/users/1 -> 500 { caughtAsyncError: 'Simulated async DB failure' }"
+  },
+  {
+    "id": "exp-ex-25",
+    "title": "Stream Error Recovery Guarding Against ERR_HTTP_HEADERS_SENT",
+    "category": "Error Handling Architecture",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Demonstrates safe error recovery in streaming endpoints, verifying res.headersSent before attempting to write HTTP status codes to avoid fatal process crashes.",
+    "conceptsCovered": [
+      "res.headersSent",
+      "ERR_HTTP_HEADERS_SENT",
+      "Mid-Stream Failures",
+      "Default Error Delegation",
+      "Socket Destruction"
+    ],
+    "code": "const express = require('express');\nconst fs = require('fs');\nconst app = express();\n\napp.get('/stream-data', (req, res, next) => {\n  res.setHeader('Content-Type', 'text/plain');\n\n  // Send first chunk (headers commit to wire immediately!)\n  res.write('Header line: stream started\\n');\n\n  // Simulate failure halfway through transmission\n  setTimeout(() => {\n    next(new Error('Database socket terminated mid-stream!'));\n  }, 50);\n});\n\n// Central Error Handler\napp.use((err, req, res, next) => {\n  // CRITICAL CHECK: Were HTTP headers already committed?\n  if (res.headersSent) {\n    console.warn('[Warning] Headers sent: Delegating to default Express handler to destroy socket cleanly.');\n    return next(err); // Terminates TCP stream without crashing Node process!\n  }\n\n  // Safe to set headers and send clean JSON response\n  res.status(500).json({ error: err.message });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "8-14",
+        "note": "res.write flushes initial bytes, meaning HTTP 200 OK headers have already been sent."
+      },
+      {
+        "lineRange": "19-24",
+        "note": "Checking res.headersSent prevents attempting res.status(500), which throws ERR_HTTP_HEADERS_SENT."
+      }
+    ],
+    "expectedOutput": "Stream disconnects cleanly; console logs '[Warning] Headers sent: Delegating...' with zero crashes."
+  },
+  {
+    "id": "exp-ex-26",
+    "title": "Stateless JWT Bearer Authentication Middleware with Token Claim Verification",
+    "category": "Authentication & Authorization",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a production JWT authentication middleware verifying Authorization: Bearer tokens with explicit algorithm bounds and attaching claims to req.user.",
+    "conceptsCovered": [
+      "JWT Verification",
+      "Authorization: Bearer",
+      "Algorithm Whitelisting (HS256)",
+      "req.user Context",
+      "401 Unauthorized"
+    ],
+    "code": "const express = require('express');\nconst jwt = require('jsonwebtoken');\nconst app = express();\n\nconst JWT_SECRET = 'production-jwt-super-secret-key';\n\nfunction authenticateJwt(req, res, next) {\n  const authHeader = req.get('Authorization');\n\n  if (!authHeader || !authHeader.startsWith('Bearer ')) {\n    return res.status(401).json({ error: 'Missing or malformed Authorization header' });\n  }\n\n  const token = authHeader.substring(7);\n\n  try {\n    // Explicitly enforce algorithms to prevent 'none' algorithm bypass\n    const decoded = jwt.verify(token, JWT_SECRET, {\n      algorithms: ['HS256']\n    });\n\n    req.user = decoded; // Attach claims to request\n    next();\n  } catch (err) {\n    if (err.name === 'TokenExpiredError') {\n      return res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });\n    }\n    return res.status(401).json({ error: 'Invalid authentication token' });\n  }\n}\n\n// Protected route\napp.get('/api/protected/profile', authenticateJwt, (req, res) => {\n  res.json({ message: 'Access granted', user: req.user });\n});\n\nmodule.exports = { app, authenticateJwt, JWT_SECRET };",
+    "breakdown": [
+      {
+        "lineRange": "8-14",
+        "note": "Extracts Bearer token string from standard HTTP Authorization header."
+      },
+      {
+        "lineRange": "17-21",
+        "note": "jwt.verify enforces algorithms: ['HS256'] to prevent algorithm confusion attacks."
+      },
+      {
+        "lineRange": "24-28",
+        "note": "Distinguishes between expired tokens (TOKEN_EXPIRED) and tampered tokens."
+      }
+    ],
+    "expectedOutput": "Missing header -> 401 { error: 'Missing or malformed...' }\nValid token -> 200 { message: 'Access granted', user: { id: 1, role: 'admin' } }"
+  },
+  {
+    "id": "exp-ex-27",
+    "title": "Dual-Token Refresh Rotation with HttpOnly Cookies and Replay Detection",
+    "category": "Authentication & Authorization",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements the complete Refresh Token Rotation (RTR) lifecycle: issuing short-lived access tokens, storing refresh tokens in HttpOnly cookies, and detecting token reuse.",
+    "conceptsCovered": [
+      "Refresh Token Rotation",
+      "HttpOnly Cookies",
+      "Reuse Detection",
+      "Token Family Revocation",
+      "XSS-Proof Architecture"
+    ],
+    "code": "const express = require('express');\nconst cookieParser = require('cookie-parser');\nconst jwt = require('jsonwebtoken');\n\nconst app = express();\napp.use(express.json());\napp.use(cookieParser());\n\nconst ACCESS_SECRET = 'access-sec';\nconst REFRESH_SECRET = 'refresh-sec';\n\n// Mock database storing active refresh tokens and their familyId\nconst tokenStore = new Map();\n\napp.post('/api/auth/refresh', async (req, res) => {\n  const oldRefreshToken = req.cookies.refreshToken;\n  if (!oldRefreshToken) return res.status(401).json({ error: 'No refresh token' });\n\n  let decoded;\n  try {\n    decoded = jwt.verify(oldRefreshToken, REFRESH_SECRET);\n  } catch (err) {\n    return res.status(401).json({ error: 'Invalid refresh token' });\n  }\n\n  const tokenRecord = tokenStore.get(oldRefreshToken);\n\n  // REPLAY / REUSE DETECTION: Has this token already been consumed?\n  if (tokenRecord && tokenRecord.isUsed) {\n    console.error(`[SECURITY BREACH] Token reuse detected for user ${decoded.userId}! Invalidate family!`);\n    // Invalidate ALL tokens in this family\n    for (const [key, val] of tokenStore.entries()) {\n      if (val.familyId === tokenRecord.familyId) tokenStore.delete(key);\n    }\n    res.clearCookie('refreshToken');\n    return res.status(403).json({ error: 'Token reuse detected. Re-authentication required.' });\n  }\n\n  // Consume the old token\n  tokenStore.set(oldRefreshToken, { ...tokenRecord, isUsed: true });\n\n  // Issue fresh pair\n  const newAccessToken = jwt.sign({ userId: decoded.userId }, ACCESS_SECRET, { expiresIn: '15m' });\n  const newRefreshToken = jwt.sign({ userId: decoded.userId }, REFRESH_SECRET, { expiresIn: '7d' });\n  tokenStore.set(newRefreshToken, { userId: decoded.userId, familyId: tokenRecord.familyId, isUsed: false });\n\n  // Set new refresh token in secure HttpOnly cookie\n  res.cookie('refreshToken', newRefreshToken, {\n    httpOnly: true,\n    secure: process.env.NODE_ENV === 'production',\n    sameSite: 'strict',\n    path: '/api/auth'\n  });\n\n  res.json({ accessToken: newAccessToken });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "27-37",
+        "note": "If an already-consumed token is received, token reuse detection revokes all sessions in that family."
+      },
+      {
+        "lineRange": "39-47",
+        "note": "Rotates refresh token: marks old token consumed and issues new refresh token."
+      },
+      {
+        "lineRange": "50-55",
+        "note": "Stores refresh token in HttpOnly, SameSite=Strict cookie, inaccessible to XSS."
+      }
+    ],
+    "expectedOutput": "Valid refresh -> 200 { accessToken: '...' } + Set-Cookie: refreshToken=...\nReplayed token -> 403 { error: 'Token reuse detected...' }"
+  },
+  {
+    "id": "exp-ex-28",
+    "title": "Role-Based Access Control (RBAC) Middleware Factory",
+    "category": "Authentication & Authorization",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a flexible requireRole(...roles) authorization guard returning 403 Forbidden when an authenticated user lacks sufficient privileges.",
+    "conceptsCovered": [
+      "RBAC",
+      "requireRole Factory",
+      "403 Forbidden vs 401 Unauthorized",
+      "Permission Arrays",
+      "Declarative Authorization"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\n// Mock authentication middleware\nfunction fakeAuth(req, res, next) {\n  req.user = { id: 101, username: 'editor_bob', roles: ['editor'] };\n  next();\n}\n\n// RBAC Middleware Factory\nfunction requireRole(...allowedRoles) {\n  return (req, res, next) => {\n    if (!req.user) {\n      return res.status(401).json({ error: 'Authentication required' });\n    }\n\n    const userRoles = req.user.roles || [];\n    const hasAccess = allowedRoles.some(role => userRoles.includes(role));\n\n    if (!hasAccess) {\n      return res.status(403).json({\n        error: 'Forbidden',\n        message: `Access requires one of: [${allowedRoles.join(', ')}]`\n      });\n    }\n\n    next();\n  };\n}\n\napp.use(fakeAuth);\n\n// Editor or Admin can edit posts\napp.put('/api/posts/:id', requireRole('editor', 'admin'), (req, res) => {\n  res.json({ success: true, message: 'Post updated' });\n});\n\n// Admin only\napp.delete('/api/posts/:id', requireRole('admin'), (req, res) => {\n  res.json({ success: true, message: 'Post deleted' });\n});\n\nmodule.exports = { app, requireRole };",
+    "breakdown": [
+      {
+        "lineRange": "11-28",
+        "note": "Higher-order requireRole verifies req.user.roles against allowed list; returns 403 Forbidden on failure."
+      },
+      {
+        "lineRange": "33-41",
+        "note": "Declaratively mounts role requirements per route with zero redundant permission code in controllers."
+      }
+    ],
+    "expectedOutput": "PUT /api/posts/1 -> 200 { success: true }\nDELETE /api/posts/1 (by editor) -> 403 { error: 'Forbidden', message: 'Access requires one of: [admin]' }"
+  },
+  {
+    "id": "exp-ex-29",
+    "title": "Attribute-Based Access Control (ABAC) Resource Ownership Guard",
+    "category": "Authentication & Authorization",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements an ABAC ownership middleware verifying that the requesting user owns the specific document ID being modified, defeating Insecure Direct Object References (IDOR).",
+    "conceptsCovered": [
+      "ABAC",
+      "Resource Ownership",
+      "IDOR Defense",
+      "Preloading req.resource",
+      "OWASP Broken Object Authorization"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\nconst documentDb = new Map([\n  ['doc_1', { id: 'doc_1', title: 'Doc 1', ownerId: 'user_alice' }],\n  ['doc_2', { id: 'doc_2', title: 'Doc 2', ownerId: 'user_bob' }]\n]);\n\nfunction requireOwnership(req, res, next) {\n  const docId = req.params.id;\n  const doc = documentDb.get(docId);\n\n  if (!doc) {\n    return res.status(404).json({ error: 'Document not found' });\n  }\n\n  const isOwner = doc.ownerId === req.user?.id;\n  const isAdmin = req.user?.roles?.includes('admin');\n\n  if (!isOwner && !isAdmin) {\n    return res.status(403).json({ error: 'You do not have permission to modify this document' });\n  }\n\n  // Pre-attach resource to req to prevent redundant database lookup in controller!\n  req.resource = doc;\n  next();\n}\n\napp.use((req, res, next) => {\n  // Mock authenticated user as user_alice\n  req.user = { id: 'user_alice', roles: ['user'] };\n  next();\n});\n\napp.put('/api/documents/:id', requireOwnership, (req, res) => {\n  // Safe: req.resource is guaranteed to be owned by req.user\n  res.json({ message: 'Document updated', document: req.resource });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "10-27",
+        "note": "Verifies document.ownerId === req.user.id (or superadmin bypass) before reaching controller."
+      },
+      {
+        "lineRange": "25-26",
+        "note": "Attaches verified doc to req.resource, eliminating duplicate database lookups in controllers."
+      }
+    ],
+    "expectedOutput": "Alice updating doc_1 -> 200 { message: 'Document updated' }\nAlice updating doc_2 -> 403 { error: 'You do not have permission...' }"
+  },
+  {
+    "id": "exp-ex-30",
+    "title": "Distributed Stateful Session Store with express-session & Redis",
+    "category": "Authentication & Authorization",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Configures express-session backed by connect-redis and RedisClient, enabling clustered horizontal scaling and preventing MemoryStore leaks.",
+    "conceptsCovered": [
+      "express-session",
+      "connect-redis",
+      "Redis Session Store",
+      "Horizontal Scaling",
+      "Session Security Attributes"
+    ],
+    "code": "const express = require('express');\nconst session = require('express-session');\nconst { createClient } = require('redis');\nconst RedisStore = require('connect-redis').default;\n\nconst app = express();\napp.use(express.json());\n\n// Initialize Redis client\nconst redisClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });\nredisClient.connect().catch(console.error);\n\napp.use(session({\n  store: new RedisStore({ client: redisClient, prefix: 'sess:' }),\n  secret: process.env.SESSION_SECRET || 'super-session-secret',\n  resave: false, // Prevents race condition overwrites if unmodified\n  saveUninitialized: false, // Complies with privacy laws; only save modified sessions\n  name: 'app_sid', // Obscure default connect.sid cookie name\n  cookie: {\n    secure: process.env.NODE_ENV === 'production',\n    httpOnly: true, // XSS defense\n    sameSite: 'lax',\n    maxAge: 1000 * 60 * 60 * 24 // 24 hours\n  }\n}));\n\napp.post('/api/login', (req, res) => {\n  req.session.userId = 'user_99';\n  req.session.role = 'manager';\n  res.json({ message: 'Session created and saved in Redis' });\n});\n\napp.get('/api/me', (req, res) => {\n  if (!req.session.userId) return res.status(401).json({ error: 'Unauthenticated' });\n  res.json({ userId: req.session.userId, role: req.session.role });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "13-26",
+        "note": "Configures connect-redis store with secure cookie flags (httpOnly, secure, sameSite)."
+      },
+      {
+        "lineRange": "28-32",
+        "note": "Mutating req.session persists state directly into Redis with automatic TTL expiration."
+      }
+    ],
+    "expectedOutput": "POST /api/login -> 200 + Set-Cookie: app_sid=s%3A...\nGET /api/me -> 200 { userId: 'user_99', role: 'manager' }"
+  },
+  {
+    "id": "exp-ex-31",
+    "title": "Constant-Time API Key Authentication with crypto.timingSafeEqual",
+    "category": "Authentication & Authorization",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Authenticates Machine-to-Machine API keys using SHA-256 hashing and crypto.timingSafeEqual, defeating timing side-channel attacks.",
+    "conceptsCovered": [
+      "API Key Authentication",
+      "crypto.timingSafeEqual",
+      "Timing Attacks",
+      "Constant-Time Comparison",
+      "SHA-256 Hash Matching"
+    ],
+    "code": "const express = require('express');\nconst crypto = require('crypto');\nconst app = express();\n\n// Stored SHA-256 hash of valid API key (never store plaintext keys!)\nconst VALID_KEY_HASH = crypto.createHash('sha256').update('sk_live_enterprise_secret_99').digest();\n\nfunction authenticateApiKey(req, res, next) {\n  const apiKey = req.get('X-API-Key');\n\n  if (!apiKey) {\n    return res.status(401).json({ error: 'Missing X-API-Key header' });\n  }\n\n  // Hash incoming key\n  const incomingHash = crypto.createHash('sha256').update(apiKey).digest();\n\n  // Length check prevents timingSafeEqual exception\n  if (incomingHash.length !== VALID_KEY_HASH.length) {\n    return res.status(401).json({ error: 'Invalid API key' });\n  }\n\n  // Constant-time byte comparison defeats timing side-channel attacks\n  const isValid = crypto.timingSafeEqual(incomingHash, VALID_KEY_HASH);\n\n  if (!isValid) {\n    return res.status(401).json({ error: 'Invalid API key' });\n  }\n\n  req.authType = 'm2m_api_key';\n  next();\n}\n\napp.post('/api/v1/telemetry', authenticateApiKey, (req, res) => {\n  res.json({ received: true, authenticatedBy: req.authType });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "6-6",
+        "note": "Pre-calculates SHA-256 hash of known valid API key; raw keys are never stored in plaintext."
+      },
+      {
+        "lineRange": "15-26",
+        "note": "crypto.timingSafeEqual compares byte buffers in constant time regardless of where differences occur."
+      }
+    ],
+    "expectedOutput": "Valid API key -> 200 { received: true, authenticatedBy: 'm2m_api_key' }\nWrong API key -> 401 { error: 'Invalid API key' }"
+  },
+  {
+    "id": "exp-ex-32",
+    "title": "Production Helmet Security Suite with Dynamic CSP Nonce Generation",
+    "category": "Security & Hardening",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Configures Helmet security headers with per-request dynamic CSP nonces, allowing trusted inline scripts while completely blocking XSS injection.",
+    "conceptsCovered": [
+      "Helmet",
+      "Content Security Policy (CSP)",
+      "Dynamic Nonces",
+      "XSS Defense",
+      "Strict-Transport-Security (HSTS)"
+    ],
+    "code": "const express = require('express');\nconst helmet = require('helmet');\nconst crypto = require('crypto');\n\nconst app = express();\n\n// 1. Generate unique base64 nonce per request\napp.use((req, res, next) => {\n  res.locals.cspNonce = crypto.randomBytes(16).toString('base64');\n  next();\n});\n\n// 2. Configure Helmet using the dynamic per-request nonce\napp.use((req, res, next) => {\n  helmet({\n    contentSecurityPolicy: {\n      directives: {\n        defaultSrc: [\"'self'\"],\n        scriptSrc: [\"'self'\", `'nonce-${res.locals.cspNonce}'`],\n        styleSrc: [\"'self'\", \"'unsafe-inline'\"],\n        imgSrc: [\"'self'\", \"data:\", \"https://cdn.myapp.com\"],\n        objectSrc: [\"'none'\"]\n      }\n    },\n    hsts: {\n      maxAge: 31536000,\n      includeSubDomains: true,\n      preload: true\n    },\n    frameguard: { action: 'deny' }\n  })(req, res, next);\n});\n\n// View endpoint injecting the matching nonce into the script tag\napp.get('/dashboard', (req, res) => {\n  res.send(`\n    <!DOCTYPE html>\n    <html>\n      <head><title>Secure Portal</title></head>\n      <body>\n        <h1>Authenticated Dashboard</h1>\n        <!-- Browser executes this script because nonce matches CSP header -->\n        <script nonce=\"${res.locals.cspNonce}\">\n          console.log('Authorized inline script executed safely.');\n        </script>\n      </body>\n    </html>\n  `);\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "8-12",
+        "note": "Generates a fresh 16-byte random base64 nonce stored in res.locals for each HTTP request."
+      },
+      {
+        "lineRange": "15-32",
+        "note": "Configures Helmet CSP to allow only scripts tagged with the dynamic nonce, blocking injected XSS."
+      },
+      {
+        "lineRange": "41-45",
+        "note": "Renders the HTML script tag with the matching nonce attribute."
+      }
+    ],
+    "expectedOutput": "GET /dashboard -> Response header: Content-Security-Policy: script-src 'self' 'nonce-...' with matching <script nonce='...'>"
+  },
+  {
+    "id": "exp-ex-33",
+    "title": "Secure CORS Policy with Origin Whitelisting and Preflight Caching",
+    "category": "Security & Hardening",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Configures the cors middleware with a strict origin whitelist function, credentials authorization, and 24-hour preflight caching (maxAge).",
+    "conceptsCovered": [
+      "cors",
+      "Origin Whitelist",
+      "credentials: true",
+      "Preflight OPTIONS Caching",
+      "Disallowing Wildcard Origins"
+    ],
+    "code": "const express = require('express');\nconst cors = require('cors');\nconst app = express();\n\nconst ALLOWED_ORIGINS = new Set([\n  'https://app.enterprise.com',\n  'https://admin.enterprise.com'\n]);\n\nconst corsOptions = {\n  origin: (origin, callback) => {\n    // Allow non-browser requests (e.g. mobile apps, curl) or whitelisted origins\n    if (!origin || ALLOWED_ORIGINS.has(origin)) {\n      callback(null, true);\n    } else {\n      callback(new Error('Disallowed by CORS security policy'));\n    }\n  },\n  credentials: true, // Allow cookies and authorization headers\n  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],\n  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],\n  maxAge: 86400 // Cache preflight OPTIONS response in browser for 24 hours\n};\n\napp.use(cors(corsOptions));\n\napp.get('/api/me', (req, res) => {\n  res.json({ user: 'authenticated_user' });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "5-9",
+        "note": "Defines an exact Set of allowed frontend origins; prevents wildcard origin security holes."
+      },
+      {
+        "lineRange": "11-23",
+        "note": "Enables credentials: true while strictly verifying origin; caches preflight responses for 24h."
+      }
+    ],
+    "expectedOutput": "OPTIONS /api/me (Origin: https://app.enterprise.com) -> 204 Access-Control-Allow-Origin: https://app.enterprise.com, maxAge: 86400"
+  },
+  {
+    "id": "exp-ex-34",
+    "title": "Distributed Rate Limiter with Redis Sliding Window Counter",
+    "category": "Security & Rate Limiting",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Configures express-rate-limit backed by rate-limit-redis to enforce distributed request throttling (5 requests / 15 minutes) across clustered containers.",
+    "conceptsCovered": [
+      "express-rate-limit",
+      "rate-limit-redis",
+      "429 Too Many Requests",
+      "Distributed Rate Limiting",
+      "Standard Headers (RateLimit-*)"
+    ],
+    "code": "const express = require('express');\nconst rateLimit = require('express-rate-limit');\nconst RedisStore = require('rate-limit-redis').default;\nconst { createClient } = require('redis');\n\nconst app = express();\napp.use(express.json());\n\nconst redisClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });\nredisClient.connect().catch(console.error);\n\n// Strict limiter for authentication endpoints\nconst authRateLimiter = rateLimit({\n  windowMs: 15 * 60 * 1000, // 15 minutes\n  max: 5, // Limit each IP to 5 login attempts per window\n  standardHeaders: true, // Draft RFC standard RateLimit-* headers\n  legacyHeaders: false, // Disables X-RateLimit-* headers\n  store: new RedisStore({\n    sendCommand: (...args) => redisClient.sendCommand(args),\n    prefix: 'rl:auth:'\n  }),\n  message: {\n    status: 429,\n    error: 'Too many authentication attempts. Please try again in 15 minutes.'\n  }\n});\n\napp.post('/api/auth/login', authRateLimiter, (req, res) => {\n  res.json({ message: 'Login logic executed' });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "13-26",
+        "note": "Configures RedisStore to synchronize attempt counters across multiple Kubernetes pod instances."
+      },
+      {
+        "lineRange": "28-30",
+        "note": "Returns HTTP 429 with RateLimit-Limit, RateLimit-Remaining, and RateLimit-Reset headers."
+      }
+    ],
+    "expectedOutput": "Attempts 1-5 -> 200 OK\nAttempt 6 -> 429 { status: 429, error: 'Too many authentication attempts...' }"
+  },
+  {
+    "id": "exp-ex-35",
+    "title": "Double-Submit Cookie CSRF Defense for Single-Page Applications",
+    "category": "Security & Hardening",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements the Double-Submit Cookie CSRF defense: sets an XSRF-TOKEN cookie readable by frontend JS, asserting incoming POST requests include matching X-XSRF-TOKEN headers.",
+    "conceptsCovered": [
+      "CSRF Mitigation",
+      "Double-Submit Cookie",
+      "X-XSRF-TOKEN Header",
+      "Safe HTTP Methods",
+      "SPA Security"
+    ],
+    "code": "const express = require('express');\nconst cookieParser = require('cookie-parser');\nconst crypto = require('crypto');\n\nconst app = express();\napp.use(express.json());\napp.use(cookieParser('cookie-signing-secret'));\n\n// Endpoint issuing anti-CSRF token\napp.get('/api/csrf-init', (req, res) => {\n  const csrfToken = crypto.randomBytes(32).toString('hex');\n\n  // Set cookie readable by frontend JavaScript (httpOnly: false)\n  res.cookie('XSRF-TOKEN', csrfToken, {\n    sameSite: 'lax',\n    secure: process.env.NODE_ENV === 'production',\n    httpOnly: false // Allows Axios or Angular to read and echo in request headers\n  });\n\n  res.json({ initialized: true });\n});\n\n// CSRF Verification Middleware\nfunction verifyCsrfToken(req, res, next) {\n  // Safe read-only HTTP methods are exempt\n  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {\n    return next();\n  }\n\n  const tokenFromHeader = req.get('x-xsrf-token') || req.get('x-csrf-token');\n  const tokenFromCookie = req.cookies['XSRF-TOKEN'];\n\n  if (!tokenFromHeader || !tokenFromCookie || tokenFromHeader !== tokenFromCookie) {\n    return res.status(403).json({ error: 'Invalid or missing CSRF token' });\n  }\n\n  next();\n}\n\napp.post('/api/account/transfer', verifyCsrfToken, (req, res) => {\n  res.json({ success: true, message: 'Transfer completed safely' });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "10-21",
+        "note": "Generates a 32-byte token and sets XSRF-TOKEN cookie with SameSite: 'lax'."
+      },
+      {
+        "lineRange": "24-38",
+        "note": "Compares X-XSRF-TOKEN header against the cookie; cross-origin sites cannot read this cookie."
+      }
+    ],
+    "expectedOutput": "POST /transfer (valid token) -> 200 { success: true }\nPOST /transfer (missing token) -> 403 { error: 'Invalid or missing CSRF token' }"
+  },
+  {
+    "id": "exp-ex-36",
+    "title": "NoSQL & SQL Injection Defense Pipeline (Mongo Sanitize + Parameterized Queries)",
+    "category": "Security & Hardening",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Defends against NoSQL operator injection using express-mongo-sanitize while employing parameterized queries ($1, $2) to guarantee complete SQL injection immunity.",
+    "conceptsCovered": [
+      "NoSQL Injection Defense",
+      "express-mongo-sanitize",
+      "SQL Parameterized Queries",
+      "Operator Stripping ($gt, $ne)",
+      "OWASP Injection Prevention"
+    ],
+    "code": "const express = require('express');\nconst mongoSanitize = require('express-mongo-sanitize');\nconst app = express();\n\napp.use(express.json());\n\n// Defense 1: Recursively strip prohibited '$' and '.' characters from body, query, and params\napp.use(mongoSanitize({\n  replaceWith: '_'\n}));\n\n// Mock Database Pool\nconst fakePool = {\n  query: async (sql, params) => {\n    // Parameterized driver executes SQL with separated parameter bindings\n    return { rows: [{ id: 1, email: params[0] }] };\n  }\n};\n\napp.post('/api/users/find', async (req, res, next) => {\n  try {\n    const { email } = req.body;\n\n    // Defense 2: Parameterized SQL Query (NEVER concatenate strings!)\n    const query = 'SELECT id, email, full_name FROM users WHERE email = $1';\n    const { rows } = await fakePool.query(query, [email]);\n\n    res.json({ user: rows[0] });\n  } catch (err) {\n    next(err);\n  }\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "7-11",
+        "note": "mongoSanitize strips query operators like { $ne: null } from incoming payloads."
+      },
+      {
+        "lineRange": "23-28",
+        "note": "Uses $1 parameter placeholders; database driver treats inputs strictly as data literals."
+      }
+    ],
+    "expectedOutput": "Payload { email: { $ne: null } } -> Sanitized to { email: { _ne: null } } avoiding NoSQL bypass."
+  },
+  {
+    "id": "exp-ex-37",
+    "title": "HTTP Parameter Pollution (HPP) Defense for Query Arrays",
+    "category": "Security & Hardening",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Uses the hpp middleware to defend against HTTP Parameter Pollution, ensuring duplicate query string keys (?role=user&role=admin) are sanitized into single strings.",
+    "conceptsCovered": [
+      "hpp Middleware",
+      "HTTP Parameter Pollution",
+      "Duplicate Query Keys",
+      "Whitelist Whitelisting",
+      "Array Injection Defense"
+    ],
+    "code": "const express = require('express');\nconst hpp = require('hpp');\n\nconst app = express();\napp.use(express.json());\napp.use(express.urlencoded({ extended: true }));\n\n// Protect against parameter pollution on query strings and form bodies\napp.use(hpp({\n  // Allow array values ONLY for these whitelisted keys:\n  whitelist: ['tags', 'categories']\n}));\n\n// Request: GET /api/search?role=user&role=admin&tags=tech&tags=news\napp.get('/api/search', (req, res) => {\n  // Without hpp: req.query.role would be ['user', 'admin']!\n  // With hpp: req.query.role is sanitized to the last string: 'admin'\n  // Whitelisted 'tags' remains an array: ['tech', 'news']\n  res.json({\n    roleType: typeof req.query.role, // 'string'\n    role: req.query.role,\n    tags: req.query.tags // ['tech', 'news']\n  });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "9-13",
+        "note": "hpp sanitizes duplicate parameters, keeping only the last scalar value unless whitelisted."
+      },
+      {
+        "lineRange": "16-25",
+        "note": "Prevents TypeError crashes when downstream logic does req.query.role.toLowerCase()."
+      }
+    ],
+    "expectedOutput": "GET /api/search?role=user&role=admin -> { roleType: 'string', role: 'admin' }"
+  },
+  {
+    "id": "exp-ex-38",
+    "title": "Type-Safe Zod Request Validator Guard for { body, query, params }",
+    "category": "Input Validation",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a composable Zod validation middleware validating body, query, and URL params in a single step, stripping unknown fields and returning structured 400 errors.",
+    "conceptsCovered": [
+      "Zod Schema Validation",
+      "Fail-Fast 400 Bad Request",
+      "Composite Schemas",
+      "Field Stripping",
+      "Type Coercion"
+    ],
+    "code": "const express = require('express');\nconst { z, ZodError } = require('zod');\n\nconst app = express();\napp.use(express.json());\n\n// Reusable composite request validation middleware\nconst validate = (schema) => async (req, res, next) => {\n  try {\n    const parsed = await schema.parseAsync({\n      body: req.body,\n      query: req.query,\n      params: req.params\n    });\n\n    // Reassign sanitized and stripped values\n    if (parsed.body) req.body = parsed.body;\n    if (parsed.query) req.query = parsed.query;\n    if (parsed.params) req.params = parsed.params;\n\n    next();\n  } catch (err) {\n    if (err instanceof ZodError) {\n      return res.status(400).json({\n        success: false,\n        error: 'Validation Failed',\n        details: err.issues.map(i => ({ field: i.path.join('.'), message: i.message }))\n      });\n    }\n    next(err);\n  }\n};\n\nconst UpdateUserSchema = z.object({\n  params: z.object({\n    id: z.string().uuid('Invalid user UUID')\n  }),\n  body: z.object({\n    email: z.string().email(),\n    age: z.number().int().min(18)\n  }).strip() // Discards unknown fields like isAdmin\n});\n\napp.put('/api/users/:id', validate(UpdateUserSchema), (req, res) => {\n  res.json({ id: req.params.id, updatedUser: req.body });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "8-28",
+        "note": "Validates body, query, and params together; catches ZodError and formats clean 400 JSON."
+      },
+      {
+        "lineRange": "30-38",
+        "note": "Composite Zod schema validates UUID format and strips unlisted fields (anti-mass assignment)."
+      }
+    ],
+    "expectedOutput": "Invalid UUID -> 400 { details: [{ field: 'params.id', message: 'Invalid user UUID' }] }"
+  },
+  {
+    "id": "exp-ex-39",
+    "title": "Query String Coercion and Bounds Validation for Pagination",
+    "category": "Input Validation",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Uses Zod z.coerce to safely transform string query parameters (?page=2&limit=50&active=true) into validated numbers and booleans with strict boundaries.",
+    "conceptsCovered": [
+      "z.coerce.number()",
+      "Query String Coercion",
+      "Boolean Transformations",
+      "Pagination Boundaries",
+      "Default Query Values"
+    ],
+    "code": "const express = require('express');\nconst { z } = require('zod');\nconst app = express();\n\nconst PaginationQuerySchema = z.object({\n  // Coerces string '2' -> number 2 with positive boundary and default\n  page: z.coerce.number().int().positive().default(1),\n  limit: z.coerce.number().int().min(1).max(100).default(20),\n\n  // Transforms 'true'/'false' strings to real boolean\n  activeOnly: z.enum(['true', 'false'])\n    .transform(val => val === 'true')\n    .optional(),\n\n  // Coerces ISO string into native Date object\n  since: z.coerce.date().optional()\n});\n\napp.get('/api/inventory', async (req, res, next) => {\n  try {\n    const query = PaginationQuerySchema.parse(req.query);\n\n    // Guaranteed real JavaScript types!\n    console.log(typeof query.page, typeof query.activeOnly); // 'number', 'boolean'\n\n    res.json({\n      page: query.page,\n      limit: query.limit,\n      activeOnly: query.activeOnly,\n      records: []\n    });\n  } catch (err) {\n    res.status(400).json({ error: 'Invalid query parameters', details: err.message });\n  }\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "5-17",
+        "note": "z.coerce parses incoming query strings into real numbers, booleans, and Dates with defaults."
+      },
+      {
+        "lineRange": "20-33",
+        "note": "Guarantees query.page is a true integer, avoiding string concatenation bugs like '1' + 1 === '11'."
+      }
+    ],
+    "expectedOutput": "GET /api/inventory?page=3&limit=50&activeOnly=true -> 200 { page: 3, limit: 50, activeOnly: true }"
+  },
+  {
+    "id": "exp-ex-40",
+    "title": "Rich Text HTML Sanitization with sanitize-html Tag Whitelisting",
+    "category": "Input Validation & Sanitization",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Sanitizes user-submitted rich text and blog comments using sanitize-html with a strict tag whitelist, stripping <script> and dangerous attributes to prevent Stored XSS.",
+    "conceptsCovered": [
+      "sanitize-html",
+      "Stored XSS Defense",
+      "Tag Whitelisting",
+      "Attribute Stripping",
+      "rel: 'noopener noreferrer'"
+    ],
+    "code": "const express = require('express');\nconst sanitizeHtml = require('sanitize-html');\n\nconst app = express();\napp.use(express.json());\n\nconst sanitizeConfig = {\n  allowedTags: ['b', 'i', 'em', 'strong', 'a', 'p', 'ul', 'li', 'code'],\n  allowedAttributes: {\n    'a': ['href', 'target']\n  },\n  transformTags: {\n    // Automatically add security attributes to links\n    'a': sanitizeHtml.simpleTransform('a', { rel: 'noopener noreferrer', target: '_blank' })\n  }\n};\n\napp.post('/api/articles/:id/comments', (req, res) => {\n  const { author, contentHtml } = req.body;\n\n  // 1. Author must be strictly plain text (no HTML tags allowed)\n  const cleanAuthor = sanitizeHtml(author, { allowedTags: [] });\n\n  // 2. Content sanitized according to strict rich-text whitelist\n  const cleanContent = sanitizeHtml(contentHtml, sanitizeConfig);\n\n  // Safe to persist cleanContent into database\n  res.json({\n    author: cleanAuthor,\n    content: cleanContent\n  });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "7-16",
+        "note": "Defines allowed HTML tags and automatically forces rel='noopener noreferrer' on external links."
+      },
+      {
+        "lineRange": "18-32",
+        "note": "Strips script tags and inline onclick handlers from content while stripping all tags from author."
+      }
+    ],
+    "expectedOutput": "Payload <script>evil()</script><b>Hello</b> -> Sanitized to <b>Hello</b>."
+  },
+  {
+    "id": "exp-ex-41",
+    "title": "Asynchronous Database Uniqueness Validation with Zod superRefine",
+    "category": "Input Validation",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Executes asynchronous database checks (e.g. verifying email address uniqueness) inside Zod schemas using superRefine and parseAsync.",
+    "conceptsCovered": [
+      "Async Validation",
+      "zod.superRefine",
+      "Database Uniqueness Check",
+      "schema.parseAsync",
+      "Custom Validation Issues"
+    ],
+    "code": "const express = require('express');\nconst { z } = require('zod');\n\nconst app = express();\napp.use(express.json());\n\n// Mock database\nconst existingUsers = new Set(['alice@example.com', 'bob@example.com']);\n\nconst RegisterSchema = z.object({\n  username: z.string().min(3),\n  email: z.string().email()\n}).superRefine(async (data, ctx) => {\n  // Asynchronous DB check: runs only after syntax validation passes!\n  const isTaken = existingUsers.has(data.email);\n\n  if (isTaken) {\n    ctx.addIssue({\n      code: z.ZodIssueCode.custom,\n      message: 'Email address is already in use',\n      path: ['email'] // Pinpoints error directly to email input field\n    });\n  }\n});\n\napp.post('/api/register', async (req, res, next) => {\n  try {\n    // parseAsync must be awaited for async refinement rules!\n    const validated = await RegisterSchema.parseAsync(req.body);\n    existingUsers.add(validated.email);\n\n    res.status(201).json({ success: true, email: validated.email });\n  } catch (err) {\n    if (err instanceof z.ZodError) {\n      return res.status(400).json({ error: 'Validation Failed', issues: err.issues });\n    }\n    next(err);\n  }\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "10-24",
+        "note": "superRefine performs async uniqueness query and attaches issue directly to path: ['email']."
+      },
+      {
+        "lineRange": "26-39",
+        "note": "Awaiting RegisterSchema.parseAsync resolves all async database assertions before controller logic."
+      }
+    ],
+    "expectedOutput": "POST /register with alice@example.com -> 400 { issues: [{ path: ['email'], message: 'Email address is already in use' }] }"
+  },
+  {
+    "id": "exp-ex-42",
+    "title": "Multi-Part File Upload Guard with Multer and Magic Number MIME Sniffing",
+    "category": "Security & File Uploads",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a hardened file upload endpoint with Multer in memoryStorage, validating binary file Magic Numbers (signatures) to prevent spoofed executable uploads.",
+    "conceptsCovered": [
+      "multer.memoryStorage()",
+      "Magic Number MIME Sniffing",
+      "File Extension Spoofing",
+      "file-type Validation",
+      "Payload Limits"
+    ],
+    "code": "const express = require('express');\nconst multer = require('multer');\nconst { fileTypeFromBuffer } = require('file-type');\n\nconst app = express();\n\nconst upload = multer({\n  storage: multer.memoryStorage(),\n  limits: {\n    fileSize: 2 * 1024 * 1024 // 2 MB maximum\n  }\n});\n\nconst ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);\n\napp.post('/api/upload/avatar', upload.single('avatar'), async (req, res, next) => {\n  try {\n    if (!req.file) {\n      return res.status(400).json({ error: 'No file provided in avatar field' });\n    }\n\n    // Inspect binary Magic Numbers from the buffer (NEVER trust client-provided file.mimetype!)\n    const detectedType = await fileTypeFromBuffer(req.file.buffer);\n\n    if (!detectedType || !ALLOWED_MIME_TYPES.has(detectedType.mime)) {\n      return res.status(400).json({\n        error: 'Invalid file type. Only authentic JPEG, PNG, and WebP images are allowed.'\n      });\n    }\n\n    // Safe: file content is verified as authentic image\n    const fileId = `img_${Date.now()}.${detectedType.ext}`;\n    res.json({\n      success: true,\n      fileId,\n      mime: detectedType.mime,\n      sizeBytes: req.file.size\n    });\n  } catch (err) {\n    next(err);\n  }\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "7-12",
+        "note": "Multer memoryStorage buffers the file into req.file.buffer, bounded by 2MB limit."
+      },
+      {
+        "lineRange": "20-27",
+        "note": "fileTypeFromBuffer inspects actual binary bytes; renaming exploit.sh to photo.png is instantly caught."
+      }
+    ],
+    "expectedOutput": "Valid PNG buffer -> 200 { success: true, mime: 'image/png' }\nSpoofed shell script -> 400 { error: 'Invalid file type...' }"
+  },
+  {
+    "id": "exp-ex-43",
+    "title": "Controller-Service-Repository Architecture with PostgreSQL Pool",
+    "category": "Architecture & Database",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Demonstrates the complete Controller-Service-Repository separation of concerns, decoupling HTTP routing from business logic and database queries.",
+    "conceptsCovered": [
+      "Controller-Service-Repository",
+      "Separation of Concerns",
+      "Repository Pattern",
+      "pg.Pool Singleton",
+      "Unit Testability"
+    ],
+    "code": "const express = require('express');\n\n// 1. REPOSITORY LAYER (Pure Data Access)\nclass UserRepository {\n  constructor(pool) {\n    this.pool = pool;\n  }\n  async findById(id) {\n    const { rows } = await this.pool.query('SELECT id, name, email FROM users WHERE id = $1', [id]);\n    return rows[0] || null;\n  }\n}\n\n// 2. SERVICE LAYER (Pure Domain Logic - zero HTTP awareness)\nclass UserService {\n  constructor(userRepo) {\n    this.userRepo = userRepo;\n  }\n  async getUser(id) {\n    const user = await this.userRepo.findById(id);\n    if (!user) {\n      const err = new Error('User not found');\n      err.statusCode = 404;\n      throw err;\n    }\n    return user;\n  }\n}\n\n// 3. CONTROLLER LAYER (Express HTTP Transport)\nclass UserController {\n  constructor(userService) {\n    this.userService = userService;\n  }\n  getUserById = async (req, res, next) => {\n    try {\n      const user = await this.userService.getUser(req.params.id);\n      res.json(user);\n    } catch (err) {\n      next(err);\n    }\n  };\n}\n\n// Composition Root\nfunction buildUserApp(pool) {\n  const app = express();\n  const repo = new UserRepository(pool);\n  const service = new UserService(repo);\n  const controller = new UserController(service);\n\n  app.get('/api/users/:id', controller.getUserById);\n  return app;\n}\n\nmodule.exports = { buildUserApp, UserRepository, UserService, UserController };",
+    "breakdown": [
+      {
+        "lineRange": "4-12",
+        "note": "Repository encapsulates SQL query execution and maps database rows to plain objects."
+      },
+      {
+        "lineRange": "15-28",
+        "note": "Service encapsulates domain logic and can be tested 100% in isolation without mocking req/res."
+      },
+      {
+        "lineRange": "31-43",
+        "note": "Controller delegates to service and handles HTTP response dispatch and error piping."
+      }
+    ],
+    "expectedOutput": "GET /api/users/1 -> 200 { id: 1, name: 'Alice', email: 'alice@test.com' }"
+  },
+  {
+    "id": "exp-ex-44",
+    "title": "Multi-Operation Database Transaction Runner with Automatic Rollback",
+    "category": "Database Integration",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Constructs a robust withTransaction helper that executes multiple repository queries within a single ACID transaction, releasing connections in finally.",
+    "conceptsCovered": [
+      "ACID Transactions",
+      "BEGIN / COMMIT / ROLLBACK",
+      "Connection Pool Checkout",
+      "finally Release Block",
+      "Atomicity"
+    ],
+    "code": "const express = require('express');\nconst app = express();\napp.use(express.json());\n\n// Reusable Transaction Runner Helper\nasync function withTransaction(pool, operation) {\n  const client = await pool.connect();\n  try {\n    await client.query('BEGIN');\n    const result = await operation(client);\n    await client.query('COMMIT');\n    return result;\n  } catch (err) {\n    await client.query('ROLLBACK');\n    throw err;\n  } finally {\n    // CRUCIAL: Release client back to pool unconditionally!\n    client.release();\n  }\n}\n\n// Bank transfer endpoint demonstrating atomic operations\napp.post('/api/transfers', async (req, res, next) => {\n  const { fromAccountId, toAccountId, amount } = req.body;\n\n  try {\n    const transferRecord = await withTransaction(req.app.locals.dbPool, async (client) => {\n      // Step 1: Debit sender\n      await client.query(\n        'UPDATE accounts SET balance = balance - $1 WHERE id = $2 AND balance >= $1',\n        [amount, fromAccountId]\n      );\n\n      // Step 2: Credit recipient\n      await client.query(\n        'UPDATE accounts SET balance = balance + $1 WHERE id = $2',\n        [amount, toAccountId]\n      );\n\n      // Step 3: Record ledger entry\n      const { rows } = await client.query(\n        'INSERT INTO ledger (from_id, to_id, amount) VALUES ($1, $2, $3) RETURNING id',\n        [fromAccountId, toAccountId, amount]\n      );\n\n      return rows[0];\n    });\n\n    res.status(201).json({ success: true, transfer: transferRecord });\n  } catch (err) {\n    next(err);\n  }\n});\n\nmodule.exports = { app, withTransaction };",
+    "breakdown": [
+      {
+        "lineRange": "6-20",
+        "note": "withTransaction wraps operation in BEGIN, COMMIT, ROLLBACK and guarantees client.release() in finally."
+      },
+      {
+        "lineRange": "26-47",
+        "note": "All 3 SQL mutations execute on the same client; failure in step 2 or 3 rolls back step 1 automatically."
+      }
+    ],
+    "expectedOutput": "Successful transfer -> 201 { success: true, transfer: { id: 101 } }\nBalance error -> All changes rolled back."
+  },
+  {
+    "id": "exp-ex-45",
+    "title": "Read/Write Split Router (Primary Master vs Read Replica Pool)",
+    "category": "Database Integration",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements read/write database query splitting in Express, routing GET requests to read-replica pools and mutations to the primary master pool.",
+    "conceptsCovered": [
+      "Read/Write Splitting",
+      "Primary Master Pool",
+      "Read Replica Pool",
+      "CQRS",
+      "Horizontal Read Scaling"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\nclass DatabaseRouter {\n  constructor(masterPool, replicaPool) {\n    this.master = masterPool;\n    this.replica = replicaPool;\n  }\n\n  // Returns replica for reads, master for writes or transactions\n  getPool(isWrite = false) {\n    return isWrite ? this.master : this.replica;\n  }\n}\n\n// Middleware attaching read/write pool access\nfunction attachDb(dbRouter) {\n  return (req, res, next) => {\n    const isMutation = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method);\n    req.db = dbRouter.getPool(isMutation);\n    next();\n  };\n}\n\n// Mock pools\nconst masterPool = { name: 'Primary-Master', query: async (sql) => ({ pool: 'master' }) };\nconst replicaPool = { name: 'Read-Replica', query: async (sql) => ({ pool: 'replica' }) };\nconst dbRouter = new DatabaseRouter(masterPool, replicaPool);\n\napp.use(attachDb(dbRouter));\n\n// GET uses read replica\napp.get('/api/products', async (req, res) => {\n  const result = await req.db.query('SELECT * FROM products');\n  res.json({ servedFrom: req.db.name });\n});\n\n// POST uses primary master\napp.post('/api/products', async (req, res) => {\n  const result = await req.db.query('INSERT INTO products ...');\n  res.status(201).json({ savedTo: req.db.name });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "4-13",
+        "note": "DatabaseRouter encapsulates master and replica pools, selecting pool based on write intent."
+      },
+      {
+        "lineRange": "16-22",
+        "note": "attachDb middleware inspects HTTP verb, binding the read-replica for GET and master for mutations."
+      }
+    ],
+    "expectedOutput": "GET /api/products -> { servedFrom: 'Read-Replica' }\nPOST /api/products -> { savedTo: 'Primary-Master' }"
+  },
+  {
+    "id": "exp-ex-46",
+    "title": "Cache-Aside Pattern with Redis Invalidation and TTL Management",
+    "category": "Caching & Performance",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements the Cache-Aside pattern in Express services: checks Redis on read, falls back to SQL database with TTL on miss, and purges cache on update.",
+    "conceptsCovered": [
+      "Cache-Aside Pattern",
+      "Redis GET / SET EX",
+      "Cache Invalidation",
+      "TTL Expiration",
+      "Stampede Mitigation"
+    ],
+    "code": "const express = require('express');\nconst app = express();\napp.use(express.json());\n\n// Mock Redis and Database\nconst redisCache = new Map();\nconst sqlDatabase = new Map([\n  ['sku_100', { id: 'sku_100', name: 'Wireless Headphones', price: 99.99 }]\n]);\n\nclass ProductService {\n  async getProduct(sku) {\n    const cacheKey = `product:${sku}`;\n\n    // 1. Check Redis Cache (Cache HIT)\n    const cached = redisCache.get(cacheKey);\n    if (cached) {\n      console.log('Cache HIT for:', sku);\n      return JSON.parse(cached);\n    }\n\n    // 2. Query Database (Cache MISS)\n    console.log('Cache MISS for:', sku);\n    const product = sqlDatabase.get(sku);\n    if (!product) return null;\n\n    // 3. Write to Redis with 5-minute TTL\n    redisCache.set(cacheKey, JSON.stringify(product));\n    return product;\n  }\n\n  async updateProduct(sku, updateData) {\n    // 1. Update Database\n    const existing = sqlDatabase.get(sku);\n    if (!existing) return null;\n    const updated = { ...existing, ...updateData };\n    sqlDatabase.set(sku, updated);\n\n    // 2. Invalidate Redis Cache immediately\n    redisCache.delete(`product:${sku}`);\n    console.log('Cache INVALIDATED for:', sku);\n    return updated;\n  }\n}\n\nconst productService = new ProductService();\n\napp.get('/api/products/:sku', async (req, res) => {\n  const product = await productService.getProduct(req.params.sku);\n  if (!product) return res.status(404).json({ error: 'Product not found' });\n  res.json(product);\n});\n\napp.put('/api/products/:sku', async (req, res) => {\n  const updated = await productService.updateProduct(req.params.sku, req.body);\n  res.json(updated);\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "12-28",
+        "note": "Reads from Redis; on miss queries SQL database and populates Redis cache with TTL."
+      },
+      {
+        "lineRange": "30-40",
+        "note": "Mutations update SQL database and purge Redis key immediately to eliminate stale reads."
+      }
+    ],
+    "expectedOutput": "First GET -> Cache MISS\nSecond GET -> Cache HIT\nPUT -> Cache INVALIDATED"
+  },
+  {
+    "id": "exp-ex-47",
+    "title": "Multi-Tenant Schema Isolation with PostgreSQL SET search_path",
+    "category": "Multi-Tenancy",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Enforces schema-per-tenant isolation by dynamically executing SET search_path TO tenant_schema and safely calling RESET search_path before connection release.",
+    "conceptsCovered": [
+      "Multi-Tenancy",
+      "PostgreSQL search_path",
+      "Dynamic Schema Switching",
+      "Connection Poisoning Defense",
+      "RESET search_path"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\nasync function withTenantSchema(pool, tenantSchema, callback) {\n  const client = await pool.connect();\n  try {\n    // Dynamically scope current connection to the tenant's private schema\n    await client.query(`SET search_path TO \"${tenantSchema}\", public`);\n    return await callback(client);\n  } finally {\n    // CRITICAL: Reset search_path before returning connection to pool!\n    // Prevents connection poisoning where other tenants reuse the tainted connection!\n    await client.query('RESET search_path');\n    client.release();\n  }\n}\n\n// Tenant middleware\napp.use((req, res, next) => {\n  const tenantId = req.get('X-Tenant-ID');\n  if (!tenantId) return res.status(400).json({ error: 'X-Tenant-ID header required' });\n  req.tenantSchema = `tenant_${tenantId.replace(/[^a-zA-Z0-9_]/g, '')}`;\n  next();\n});\n\napp.get('/api/orders', async (req, res, next) => {\n  try {\n    const orders = await withTenantSchema(req.app.locals.pool, req.tenantSchema, async (client) => {\n      // Automatically resolves tables inside req.tenantSchema!\n      const { rows } = await client.query('SELECT * FROM orders LIMIT 50');\n      return rows;\n    });\n\n    res.json({ tenant: req.tenantSchema, orders });\n  } catch (err) {\n    next(err);\n  }\n});\n\nmodule.exports = { app, withTenantSchema };",
+    "breakdown": [
+      {
+        "lineRange": "4-16",
+        "note": "Executes SET search_path on checkout and RESET search_path in finally to prevent connection poisoning."
+      },
+      {
+        "lineRange": "18-24",
+        "note": "Extracts tenant ID and sanitizes schema identifier to prevent SQL injection in schema names."
+      }
+    ],
+    "expectedOutput": "GET /api/orders (X-Tenant-ID: acme) -> Queries tenant_acme.orders with physical table isolation."
+  },
+  {
+    "id": "exp-ex-48",
+    "title": "Real-Time Server-Sent Events (SSE) AI / LLM Streaming Endpoint",
+    "category": "Real-Time & Streaming",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a production Server-Sent Events (SSE) endpoint streaming real-time tokens to clients with proper headers (text/event-stream) and disconnect cleanup.",
+    "conceptsCovered": [
+      "Server-Sent Events (SSE)",
+      "text/event-stream",
+      "res.write('data: ...')",
+      "req.on('close') Teardown",
+      "LLM Token Streaming"
+    ],
+    "code": "const express = require('express');\nconst app = express();\n\napp.get('/api/stream/completion', (req, res) => {\n  const { prompt } = req.query;\n\n  // 1. Mandatory SSE headers\n  res.writeHead(200, {\n    'Content-Type': 'text/event-stream',\n    'Cache-Control': 'no-cache',\n    'Connection': 'keep-alive',\n    'X-Accel-Buffering': 'no' // Disables Nginx buffering\n  });\n\n  // Send initial handshake\n  res.write('data: {\"status\": \"started\"}\\n\\n');\n\n  // Simulated LLM token stream\n  const tokens = ['The', ' future', ' of', ' Express', ' is', ' modern', ' streaming.'];\n  let tokenIdx = 0;\n\n  const intervalId = setInterval(() => {\n    if (tokenIdx < tokens.length) {\n      const payload = JSON.stringify({ token: tokens[tokenIdx++] });\n      res.write(`data: ${payload}\\n\\n`);\n    } else {\n      res.write('data: [DONE]\\n\\n');\n      clearInterval(intervalId);\n      res.end();\n    }\n  }, 100);\n\n  // 2. CRUCIAL: Clean up timer when client closes browser or cancels\n  req.on('close', () => {\n    clearInterval(intervalId);\n    console.log('SSE connection closed by client');\n  });\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "7-13",
+        "note": "Configures text/event-stream headers and sets X-Accel-Buffering: no to prevent Nginx buffering."
+      },
+      {
+        "lineRange": "21-30",
+        "note": "Streams data in data: <payload>\\n\\n format and emits data: [DONE]\\n\\n at completion."
+      },
+      {
+        "lineRange": "32-36",
+        "note": "req.on('close') clears the interval to prevent timer leaks when clients disconnect."
+      }
+    ],
+    "expectedOutput": "GET /api/stream/completion -> Real-time chunked text/event-stream tokens pushed every 100ms."
+  },
+  {
+    "id": "exp-ex-49",
+    "title": "Express API Gateway Reverse Proxy with Header Injection",
+    "category": "Microservices & Gateway",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Configures Express as an API Gateway using http-proxy-middleware, stripping sensitive client headers and injecting authenticated user claims downstream.",
+    "conceptsCovered": [
+      "API Gateway",
+      "http-proxy-middleware",
+      "Reverse Proxying",
+      "Header Normalization",
+      "Service Meshes"
+    ],
+    "code": "const express = require('express');\nconst { createProxyMiddleware } = require('http-proxy-middleware');\n\nconst app = express();\n\n// Gateway Auth Middleware\napp.use((req, res, next) => {\n  // In real gateway: verify JWT\n  req.user = { id: 'usr_42', tenant: 'tenant_omega', roles: ['billing_admin'] };\n  next();\n});\n\n// Proxy to downstream Billing Microservice\nconst billingProxy = createProxyMiddleware({\n  target: 'http://billing-service.internal:5001',\n  changeOrigin: true,\n  pathRewrite: { '^/api/billing': '/v1' },\n  onProxyReq: (proxyReq, req) => {\n    // Inject verified user metadata into private internal network\n    if (req.user) {\n      proxyReq.setHeader('x-gateway-user-id', req.user.id);\n      proxyReq.setHeader('x-gateway-tenant', req.user.tenant);\n      proxyReq.setHeader('x-gateway-roles', req.user.roles.join(','));\n    }\n    // Remove client cookie to prevent leaking external credentials\n    proxyReq.removeHeader('cookie');\n  },\n  onError: (err, req, res) => {\n    res.status(502).json({ error: 'Billing microservice unavailable' });\n  }\n});\n\napp.use('/api/billing', billingProxy);\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "14-29",
+        "note": "createProxyMiddleware forwards streaming requests without buffering request bodies in memory."
+      },
+      {
+        "lineRange": "18-24",
+        "note": "Injects verified user identity headers (x-gateway-user-id) for downstream microservice consumption."
+      }
+    ],
+    "expectedOutput": "Incoming /api/billing/invoices -> Proxied to http://billing-service.internal:5001/v1/invoices with x-gateway-* headers."
+  },
+  {
+    "id": "exp-ex-50",
+    "title": "Resilient Circuit Breaker Integration with Opossum",
+    "category": "Reliability & Resilience",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Integrates Opossum Circuit Breaker into Express route handlers to prevent cascading failures when third-party microservices fail.",
+    "conceptsCovered": [
+      "Circuit Breaker Pattern",
+      "Opossum",
+      "Fail-Fast",
+      "Fallback Responses",
+      "Closed / Open / Half-Open"
+    ],
+    "code": "const express = require('express');\nconst CircuitBreaker = require('opossum');\n\nconst app = express();\n\n// Downstream external API call\nasync function fetchWeather(city) {\n  const res = await fetch(`https://weather-api.internal/cities/${city}`, {\n    signal: AbortSignal.timeout(1500) // 1.5s timeout\n  });\n  if (!res.ok) throw new Error('Weather API service failure');\n  return res.json();\n}\n\n// Circuit Breaker configuration\nconst breakerOptions = {\n  timeout: 2000, // 2s execution timeout\n  errorThresholdPercentage: 50, // Trip open if >50% calls fail\n  resetTimeout: 10000 // Test recovery after 10s (Half-Open)\n};\n\nconst weatherBreaker = new CircuitBreaker(fetchWeather, breakerOptions);\n\n// Define fallback when circuit is OPEN\nweatherBreaker.fallback((city) => ({\n  city,\n  temperature: 20,\n  isCachedFallback: true,\n  notice: 'Live weather service temporarily degraded'\n}));\n\napp.get('/api/weather/:city', async (req, res, next) => {\n  try {\n    const data = await weatherBreaker.fire(req.params.city);\n    res.json({\n      data,\n      circuitState: weatherBreaker.status.stats\n    });\n  } catch (err) {\n    next(err);\n  }\n});\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "16-20",
+        "note": "Configures errorThresholdPercentage (50%) and resetTimeout (10s) for state transitions."
+      },
+      {
+        "lineRange": "24-29",
+        "note": "Fallback handler executes instantly when the circuit is OPEN without touching the failing API."
+      }
+    ],
+    "expectedOutput": "Downstream failure -> Circuit trips OPEN -> Returns instant fallback without waiting for timeouts."
+  },
+  {
+    "id": "exp-ex-51",
+    "title": "Event Loop Lag Monitoring & Automated 503 Load Shedding",
+    "category": "Reliability & Resilience",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Monitors single-threaded event loop delay via perf_hooks and sheds load by rejecting requests with 503 Service Unavailable when delay exceeds 100ms.",
+    "conceptsCovered": [
+      "Load Shedding",
+      "monitorEventLoopDelay",
+      "Event Loop Lag",
+      "503 Service Unavailable",
+      "Retry-After Header"
+    ],
+    "code": "const express = require('express');\nconst { monitorEventLoopDelay } = require('perf_hooks');\n\nconst app = express();\n\n// Monitor event loop delay with 20ms resolution\nconst lagMonitor = monitorEventLoopDelay({ resolution: 20 });\nlagMonitor.enable();\n\nconst MAX_EVENT_LOOP_LAG_MS = 100;\n\n// Load shedding middleware\napp.use((req, res, next) => {\n  // Always permit health checks to pass through\n  if (req.path.startsWith('/healthz')) return next();\n\n  // Convert nanoseconds to milliseconds (p99 percentile delay)\n  const p99LagMs = Number(lagMonitor.percentile(99)) / 1e6;\n\n  if (p99LagMs > MAX_EVENT_LOOP_LAG_MS) {\n    console.warn(`[LOAD SHEDDING] Event loop lag ${p99LagMs.toFixed(2)}ms > ${MAX_EVENT_LOOP_LAG_MS}ms. Dropping request.`);\n\n    res.setHeader('Retry-After', '3'); // Ask client to retry in 3 seconds\n    return res.status(503).json({\n      error: 'Service Overloaded',\n      message: 'Server is currently shedding traffic to recover event loop health.'\n    });\n  }\n\n  next();\n});\n\napp.get('/api/work', (req, res) => res.json({ status: 'ok' }));\n\nmodule.exports = app;",
+    "breakdown": [
+      {
+        "lineRange": "7-8",
+        "note": "monitorEventLoopDelay samples event loop tick delays in the background with zero CPU overhead."
+      },
+      {
+        "lineRange": "18-29",
+        "note": "Rejects incoming traffic with HTTP 503 and Retry-After: 3 when p99 delay exceeds 100ms."
+      }
+    ],
+    "expectedOutput": "Normal load -> 200 { status: 'ok' }\nEvent loop lag > 100ms -> 503 { error: 'Service Overloaded' } with Retry-After: 3"
+  },
+  {
+    "id": "exp-ex-52",
+    "title": "Multi-Core Clustering with Node.js cluster Module and Worker Recovery",
+    "category": "Performance & Scaling",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Scales Express across multi-core processors using Node's cluster module, automatically spawning replacement workers when child processes crash.",
+    "conceptsCovered": [
+      "Node.js cluster Module",
+      "Multi-Core Scaling",
+      "Worker Crash Recovery",
+      "cluster.fork()",
+      "Primary-Worker Architecture"
+    ],
+    "code": "const cluster = require('cluster');\nconst os = require('os');\nconst express = require('express');\n\nif (cluster.isPrimary) {\n  const numCPUs = os.cpus().length;\n  console.log(`[Primary ${process.pid}] Forking ${numCPUs} worker processes...`);\n\n  // Fork a worker per CPU core\n  for (let i = 0; i < numCPUs; i++) {\n    cluster.fork();\n  }\n\n  // Auto-restart workers if they crash\n  cluster.on('exit', (worker, code, signal) => {\n    console.warn(`[Primary] Worker ${worker.process.pid} died (exit code ${code}). Spawning replacement...`);\n    cluster.fork();\n  });\n} else {\n  // Workers share the TCP connection port 3000\n  const app = express();\n\n  app.get('/api/info', (req, res) => {\n    res.json({\n      handledByWorkerPid: process.pid,\n      uptimeSeconds: process.uptime()\n    });\n  });\n\n  app.listen(3000, () => {\n    console.log(`[Worker ${process.pid}] Listening on port 3000`);\n  });\n}",
+    "breakdown": [
+      {
+        "lineRange": "5-19",
+        "note": "Primary process detects CPU count, forks workers, and listens to 'exit' to restart dead workers."
+      },
+      {
+        "lineRange": "21-34",
+        "note": "Workers share port 3000 via OS socket sharing, scaling throughput linearly with CPU cores."
+      }
+    ],
+    "expectedOutput": "[Primary 1001] Forking 8 worker processes...\n[Worker 1002] Listening on port 3000\n[Worker 1003] Listening on port 3000"
+  }
+]

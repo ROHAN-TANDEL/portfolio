@@ -1,0 +1,1458 @@
+[
+  {
+    "id": "js-ex-01",
+    "title": "Promises/A+ Compliant Promise Implementation from Scratch",
+    "category": "Asynchronous JavaScript",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Constructs a robust, production-grade custom Promise class implementing the Promises/A+ specification with microtask-based deferred resolution, state transitions, chaining unwrapping, and error bubbling.",
+    "conceptsCovered": [
+      "Promises/A+",
+      "queueMicrotask",
+      "State Machine",
+      "Chaining Unwrapping",
+      "Error Bubbling"
+    ],
+    "code": "const PENDING = \"PENDING\";\nconst FULFILLED = \"FULFILLED\";\nconst REJECTED = \"REJECTED\";\n\nclass MyPromise {\n  constructor(executor) {\n    this.state = PENDING;\n    this.value = undefined;\n    this.handlers = [];\n\n    const resolve = (val) => {\n      if (this.state !== PENDING) return;\n      if (val instanceof MyPromise) {\n        return val.then(resolve, reject);\n      }\n      this.state = FULFILLED;\n      this.value = val;\n      this._executeHandlers();\n    };\n\n    const reject = (err) => {\n      if (this.state !== PENDING) return;\n      this.state = REJECTED;\n      this.value = err;\n      this._executeHandlers();\n    };\n\n    try {\n      executor(resolve, reject);\n    } catch (err) {\n      reject(err);\n    }\n  }\n\n  then(onFulfilled, onRejected) {\n    return new MyPromise((resolve, reject) => {\n      this.handlers.push({\n        onFulfilled: typeof onFulfilled === \"function\" ? onFulfilled : val => val,\n        onRejected: typeof onRejected === \"function\" ? onRejected : err => { throw err; },\n        resolve,\n        reject\n      });\n      if (this.state !== PENDING) {\n        this._executeHandlers();\n      }\n    });\n  }\n\n  catch(onRejected) {\n    return this.then(null, onRejected);\n  }\n\n  _executeHandlers() {\n    if (this.state === PENDING) return;\n    queueMicrotask(() => {\n      while (this.handlers.length > 0) {\n        const { onFulfilled, onRejected, resolve, reject } = this.handlers.shift();\n        try {\n          if (this.state === FULFILLED) {\n            resolve(onFulfilled(this.value));\n          } else {\n            resolve(onRejected(this.value));\n          }\n        } catch (err) {\n          reject(err);\n        }\n      }\n    });\n  }\n}\n\n// Test custom promise\nnew MyPromise((res) => res(10))\n  .then(n => n * 2)\n  .then(n => console.log(\"Custom Promise result:\", n));",
+    "breakdown": [
+      {
+        "lineRange": "1-3",
+        "note": "Defines the 3 immutable state constants: PENDING, FULFILLED, and REJECTED."
+      },
+      {
+        "lineRange": "10-20",
+        "note": "The resolve function: locks state to FULFILLED and triggers handlers unless value is a promise."
+      },
+      {
+        "lineRange": "34-48",
+        "note": "The .then() method returns a new MyPromise, registering callbacks into the handlers queue."
+      },
+      {
+        "lineRange": "53-70",
+        "note": "Executes handlers inside queueMicrotask to ensure asynchronous execution per the Promises/A+ spec."
+      }
+    ],
+    "expectedOutput": "Custom Promise result: 20"
+  },
+  {
+    "id": "js-ex-02",
+    "title": "Polyfill for Promise.all, Promise.allSettled, and Promise.any",
+    "category": "Asynchronous JavaScript",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements clean, production-grade polyfills for the three primary Promise combinators with proper index preservation and AggregateError handling.",
+    "conceptsCovered": [
+      "Promise Combinators",
+      "Promise.all",
+      "Promise.allSettled",
+      "Promise.any",
+      "AggregateError"
+    ],
+    "code": "// 1. Promise.all Polyfill (Fail-fast)\nfunction customPromiseAll(iterable) {\n  return new Promise((resolve, reject) => {\n    const promises = Array.from(iterable);\n    if (promises.length === 0) return resolve([]);\n    const results = new Array(promises.length);\n    let resolvedCount = 0;\n\n    promises.forEach((p, i) => {\n      Promise.resolve(p).then(\n        val => {\n          results[i] = val; // Preserve array index order\n          resolvedCount++;\n          if (resolvedCount === promises.length) resolve(results);\n        },\n        err => reject(err) // Abort immediately on first rejection\n      );\n    });\n  });\n}\n\n// 2. Promise.allSettled Polyfill (Never short-circuits)\nfunction customPromiseAllSettled(iterable) {\n  return new Promise(resolve => {\n    const promises = Array.from(iterable);\n    if (promises.length === 0) return resolve([]);\n    const results = new Array(promises.length);\n    let completed = 0;\n\n    promises.forEach((p, i) => {\n      Promise.resolve(p)\n        .then(value => { results[i] = { status: \"fulfilled\", value }; })\n        .catch(reason => { results[i] = { status: \"rejected\", reason }; })\n        .finally(() => {\n          completed++;\n          if (completed === promises.length) resolve(results);\n        });\n    });\n  });\n}\n\n// Verification\nconst p1 = Promise.resolve(\"A\");\nconst p2 = Promise.reject(new Error(\"B failed\"));\n\ncustomPromiseAllSettled([p1, p2]).then(res => console.log(\"Settled:\", res.map(r => r.status)));",
+    "breakdown": [
+      {
+        "lineRange": "2-19",
+        "note": "customPromiseAll: preserves indices with results[i] = val and short-circuits on reject."
+      },
+      {
+        "lineRange": "22-40",
+        "note": "customPromiseAllSettled: waits for all items using finally, returning status/value/reason objects."
+      }
+    ],
+    "expectedOutput": "Settled: [ 'fulfilled', 'rejected' ]"
+  },
+  {
+    "id": "js-ex-03",
+    "title": "Concurrency-Limited Task Pool (Async Rate Limiter / p-limit)",
+    "category": "Asynchronous JavaScript",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a high-throughput concurrency limiter (like p-limit) that queues and executes hundreds of async tasks while strictly capping concurrent active tasks to N.",
+    "conceptsCovered": [
+      "Concurrency Control",
+      "Task Queues",
+      "Backpressure",
+      "Resource Throttling"
+    ],
+    "code": "function createConcurrencyLimiter(concurrencyLimit) {\n  const queue = [];\n  let activeCount = 0;\n\n  const next = () => {\n    if (queue.length === 0 || activeCount >= concurrencyLimit) return;\n    activeCount++;\n    const { taskFn, resolve, reject } = queue.shift();\n\n    Promise.resolve()\n      .then(taskFn)\n      .then(resolve, reject)\n      .finally(() => {\n        activeCount--;\n        next(); // Drain next queued task\n      });\n  };\n\n  return function enqueue(taskFn) {\n    return new Promise((resolve, reject) => {\n      queue.push({ taskFn, resolve, reject });\n      next();\n    });\n  };\n}\n\n// Test with limit of 2 concurrent tasks:\nconst limit = createConcurrencyLimiter(2);\nconst delayTask = (id, ms) => limit(async () => {\n  console.log(`Start task ${id}`);\n  await new Promise(r => setTimeout(r, ms));\n  console.log(`Finish task ${id}`);\n  return id;\n});\n\nPromise.all([\n  delayTask(1, 50),\n  delayTask(2, 30),\n  delayTask(3, 20),\n  delayTask(4, 10)\n]).then(results => console.log(\"All finished:\", results));",
+    "breakdown": [
+      {
+        "lineRange": "1-18",
+        "note": "The scheduler: tracks activeCount against concurrencyLimit, dequeuing tasks on completion."
+      },
+      {
+        "lineRange": "20-27",
+        "note": "The enqueue function returns a Promise and adds the task to the queue."
+      },
+      {
+        "lineRange": "30-45",
+        "note": "Demonstrates 4 tasks running with a concurrency limit of 2 (tasks 3 & 4 wait for 1 & 2)."
+      }
+    ],
+    "expectedOutput": "Start task 1\nStart task 2\nFinish task 2\nStart task 3\nFinish task 3\nStart task 4\nFinish task 1\nFinish task 4\nAll finished: [ 1, 2, 3, 4 ]"
+  },
+  {
+    "id": "js-ex-04",
+    "title": "Resilient Fetch with Exponential Backoff and Full Jitter",
+    "category": "Asynchronous JavaScript",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements an enterprise-grade async retry utility that recalculates backoff delays with exponential multiplication and decorrelated full jitter to prevent thundering herd outages.",
+    "conceptsCovered": [
+      "Exponential Backoff",
+      "Jitter",
+      "Retry Loop",
+      "Idempotency"
+    ],
+    "code": "async function retryWithBackoff(fn, options = {}) {\n  const {\n    maxRetries = 3,\n    initialDelayMs = 100,\n    factor = 2,\n    maxDelayMs = 2000\n  } = options;\n\n  let attempt = 0;\n  while (true) {\n    try {\n      return await fn(attempt);\n    } catch (err) {\n      attempt++;\n      if (attempt > maxRetries) {\n        throw new Error(`Operation failed after ${maxRetries} retries: ${err.message}`);\n      }\n\n      // Calculate exponential backoff with full jitter:\n      // delay = Math.random() * min(maxDelay, initialDelay * (factor ^ attempt))\n      const calculatedBackoff = Math.min(maxDelayMs, initialDelayMs * Math.pow(factor, attempt));\n      const jitteredDelay = Math.floor(Math.random() * calculatedBackoff);\n\n      console.warn(`Attempt ${attempt} failed. Retrying in ${jitteredDelay}ms...`);\n      await new Promise(r => setTimeout(r, jitteredDelay));\n    }\n  }\n}\n\n// Test with simulated failing function\nlet count = 0;\nconst flakyNetworkCall = async () => {\n  count++;\n  if (count < 3) throw new Error(\"503 Service Unavailable\");\n  return { status: 200, data: \"Success\" };\n};\n\nretryWithBackoff(flakyNetworkCall, { maxRetries: 3 })\n  .then(res => console.log(\"Final outcome:\", res.data));",
+    "breakdown": [
+      {
+        "lineRange": "1-12",
+        "note": "Configures retry budget: maxRetries, initialDelayMs, factor, and maxDelayMs ceiling."
+      },
+      {
+        "lineRange": "18-24",
+        "note": "Computes exponential backoff and applies random jitter: Math.random() * calculatedBackoff."
+      },
+      {
+        "lineRange": "30-40",
+        "note": "Retries the flaky network call until it succeeds on attempt 3."
+      }
+    ],
+    "expectedOutput": "Attempt 1 failed. Retrying in ...ms...\nAttempt 2 failed. Retrying in ...ms...\nFinal outcome: Success"
+  },
+  {
+    "id": "js-ex-05",
+    "title": "Priority Async Task Queue with Dynamic Worker Pool",
+    "category": "Asynchronous JavaScript",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a priority-driven asynchronous work queue where urgent tasks (high priority) jump ahead of background tasks while enforcing pool worker limits.",
+    "conceptsCovered": [
+      "Priority Queue",
+      "Async Schedulers",
+      "Worker Allocation",
+      "Task Preemption"
+    ],
+    "code": "class PriorityAsyncQueue {\n  constructor(concurrency = 2) {\n    this.concurrency = concurrency;\n    this.running = 0;\n    this.queue = []; // Array of { task, priority, resolve, reject }\n  }\n\n  enqueue(task, priority = 0) {\n    return new Promise((resolve, reject) => {\n      const item = { task, priority, resolve, reject };\n      // Insert in sorted order (highest priority first)\n      const index = this.queue.findIndex(q => q.priority < priority);\n      if (index === -1) {\n        this.queue.push(item);\n      } else {\n        this.queue.splice(index, 0, item);\n      }\n      this._dispatch();\n    });\n  }\n\n  _dispatch() {\n    while (this.running < this.concurrency && this.queue.length > 0) {\n      this.running++;\n      const { task, resolve, reject } = this.queue.shift();\n      task()\n        .then(resolve)\n        .catch(reject)\n        .finally(() => {\n          this.running--;\n          this._dispatch();\n        });\n    }\n  }\n}\n\n// Test priority queue\nconst pq = new PriorityAsyncQueue(1);\nconst makeTask = (name, ms) => async () => {\n  console.log(\"Run:\", name);\n  await new Promise(r => setTimeout(r, ms));\n  return name;\n};\n\n// Low priority queued first, High priority queued second\npq.enqueue(makeTask(\"Task A (Low)\", 20), 1);\npq.enqueue(makeTask(\"Task B (Low)\", 20), 1);\npq.enqueue(makeTask(\"Task C (URGENT)\", 10), 10); // Jumps ahead of Task B!",
+    "breakdown": [
+      {
+        "lineRange": "8-21",
+        "note": "enqueue inserts tasks into the queue sorted by priority descending."
+      },
+      {
+        "lineRange": "23-36",
+        "note": "_dispatch fills available worker capacity up to the concurrency limit."
+      },
+      {
+        "lineRange": "45-50",
+        "note": "Shows Task C (priority 10) preempting Task B (priority 1) in the waitlist."
+      }
+    ],
+    "expectedOutput": "Run: Task A (Low)\nRun: Task C (URGENT)\nRun: Task B (Low)"
+  },
+  {
+    "id": "js-ex-06",
+    "title": "Cancellable Async Operations with Timeout & AbortSignal.any",
+    "category": "Asynchronous JavaScript",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Demonstrates composable cancellation combining user-initiated aborts and automated timeouts using AbortController and modern AbortSignal.any().",
+    "conceptsCovered": [
+      "AbortController",
+      "AbortSignal.timeout",
+      "AbortSignal.any",
+      "Resource Cleanup"
+    ],
+    "code": "async function fetchWithTimeout(url, userSignal, timeoutMs = 2000) {\n  // Combine user signal and timeout signal via AbortSignal.any (ES2024)\n  const timeoutSignal = AbortSignal.timeout(timeoutMs);\n  const combinedSignal = AbortSignal.any([userSignal, timeoutSignal]);\n\n  try {\n    const response = await fetch(url, { signal: combinedSignal });\n    return await response.json();\n  } catch (err) {\n    if (combinedSignal.aborted) {\n      if (timeoutSignal.aborted) {\n        throw new Error(`Request timed out after ${timeoutMs}ms`);\n      }\n      throw new Error(\"Request cancelled by user\");\n    }\n    throw err;\n  }\n}\n\n// Demo simulation:\nconst userCtrl = new AbortController();\n\n// Simulate manual cancellation after 100ms\nsetTimeout(() => userCtrl.abort(), 100);\n\nfetchWithTimeout(\"https://jsonplaceholder.typicode.com/todos/1\", userCtrl.signal, 5000)\n  .catch(err => console.log(\"Outcome:\", err.message));",
+    "breakdown": [
+      {
+        "lineRange": "1-6",
+        "note": "Merges user cancel signal with auto-timeout signal using AbortSignal.any."
+      },
+      {
+        "lineRange": "8-18",
+        "note": "Differentiates between timeout abortion and user-initiated manual abortion."
+      }
+    ],
+    "expectedOutput": "Outcome: Request cancelled by user"
+  },
+  {
+    "id": "js-ex-07",
+    "title": "Polling Worker with Exponential Backoff and Conditional Stopping",
+    "category": "Asynchronous JavaScript",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs an asynchronous polling engine for asynchronous jobs (e.g. video transcoding, document generation) with backoff intervals and stop conditions.",
+    "conceptsCovered": [
+      "Async Polling",
+      "Job Status Monitoring",
+      "Backoff Intervals",
+      "Promise Loops"
+    ],
+    "code": "async function pollUntilComplete(checkFn, options = {}) {\n  const {\n    intervalMs = 100,\n    maxIntervalMs = 1000,\n    backoffMultiplier = 1.5,\n    maxAttempts = 10\n  } = options;\n\n  let delay = intervalMs;\n  let attempts = 0;\n\n  while (attempts < maxAttempts) {\n    attempts++;\n    const result = await checkFn();\n\n    if (result.status === \"COMPLETED\") {\n      return result.data;\n    }\n    if (result.status === \"FAILED\") {\n      throw new Error(\"Job failed on remote server: \" + result.error);\n    }\n\n    console.log(`Job still processing (attempt ${attempts}). Waiting ${delay}ms...`);\n    await new Promise(r => setTimeout(r, delay));\n    delay = Math.min(maxIntervalMs, delay * backoffMultiplier);\n  }\n\n  throw new Error(\"Polling timed out: max attempts exceeded\");\n}\n\n// Test polling\nlet step = 0;\nconst checkTranscodeJob = async () => {\n  step++;\n  if (step < 3) return { status: \"PROCESSING\" };\n  return { status: \"COMPLETED\", data: { videoUrl: \"https://cdn.com/final.mp4\" } };\n};\n\npollUntilComplete(checkTranscodeJob, { intervalMs: 50 })\n  .then(data => console.log(\"Result:\", data.videoUrl));",
+    "breakdown": [
+      {
+        "lineRange": "1-11",
+        "note": "Configures polling interval, backoffMultiplier, and maxAttempts limit."
+      },
+      {
+        "lineRange": "13-28",
+        "note": "Polls checkFn, returning immediately on COMPLETED and scaling delay exponentially."
+      }
+    ],
+    "expectedOutput": "Job still processing (attempt 1). Waiting 50ms...\nJob still processing (attempt 2). Waiting 75ms...\nResult: https://cdn.com/final.mp4"
+  },
+  {
+    "id": "js-ex-08",
+    "title": "Async Sequential Pipeline (Waterfall Chaining)",
+    "category": "Asynchronous JavaScript",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Executes an array of asynchronous transformation functions sequentially, piping the resolved output of step N into the input of step N+1 using Array.prototype.reduce.",
+    "conceptsCovered": [
+      "Async Pipeline",
+      "Waterfall",
+      "Array.prototype.reduce",
+      "Sequential Composition"
+    ],
+    "code": "async function asyncPipeline(initialValue, ...asyncFns) {\n  return asyncFns.reduce(async (accumulatorPromise, currentFn) => {\n    const acc = await accumulatorPromise;\n    return currentFn(acc);\n  }, Promise.resolve(initialValue));\n}\n\n// Transformation steps\nconst fetchUser = async (id) => ({ id, name: \"Alice\", role: \"ENGINEER\" });\nconst fetchPermissions = async (user) => ({ ...user, permissions: [\"READ\", \"WRITE\"] });\nconst attachAuditLog = async (data) => ({ ...data, timestamp: 1700000000000 });\n\nasyncPipeline(101, fetchUser, fetchPermissions, attachAuditLog)\n  .then(finalUser => {\n    console.log(\"Processed User:\", finalUser.name);\n    console.log(\"Permissions:\", finalUser.permissions);\n  });",
+    "breakdown": [
+      {
+        "lineRange": "1-6",
+        "note": "Uses Array.prototype.reduce on an initial Promise.resolve to serially chain async functions."
+      },
+      {
+        "lineRange": "8-11",
+        "note": "Declares distinct async transformation steps passing enriched data forward."
+      }
+    ],
+    "expectedOutput": "Processed User: Alice\nPermissions: [ 'READ', 'WRITE' ]"
+  },
+  {
+    "id": "js-ex-09",
+    "title": "Debounced Async Auto-Suggest with Response Race Condition Protection",
+    "category": "Asynchronous JavaScript",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Solves the notorious auto-complete network race condition where older delayed responses overwrite newer responses, using request ID versioning and AbortController.",
+    "conceptsCovered": [
+      "Race Condition Defense",
+      "Debounce",
+      "AbortController",
+      "Autocomplete"
+    ],
+    "code": "function createSearchManager(searchApi) {\n  let activeController = null;\n  let latestRequestId = 0;\n\n  return async function search(query) {\n    // 1. Cancel previous pending HTTP request!\n    if (activeController) {\n      activeController.abort();\n    }\n    activeController = new AbortController();\n    const currentId = ++latestRequestId;\n\n    try {\n      const results = await searchApi(query, activeController.signal);\n      // 2. Race condition guard: ignore if a newer search was initiated\n      if (currentId !== latestRequestId) {\n        return null;\n      }\n      return results;\n    } catch (err) {\n      if (err.name === \"AbortError\") return null; // Cancelled as expected\n      throw err;\n    }\n  };\n}\n\n// Test with simulated slow vs fast queries\nconst mockApi = async (query, signal) => {\n  const delay = query === \"slow\" ? 100 : 20;\n  await new Promise(r => setTimeout(r, delay));\n  if (signal.aborted) throw new DOMException(\"Aborted\", \"AbortError\");\n  return `Results for: ${query}`;\n};\n\nconst search = createSearchManager(mockApi);\n\n// Rapid typing: \"slow\" followed immediately by \"fast\"\nsearch(\"slow\").then(res => res && console.log(\"Query 1:\", res));\nsearch(\"fast\").then(res => res && console.log(\"Query 2:\", res));",
+    "breakdown": [
+      {
+        "lineRange": "1-6",
+        "note": "Tracks activeController and monotonically increasing latestRequestId."
+      },
+      {
+        "lineRange": "7-24",
+        "note": "Aborts previous in-flight requests and ignores out-of-order stale responses."
+      },
+      {
+        "lineRange": "35-40",
+        "note": "Query 2 ('fast') resolves first; Query 1 is aborted cleanly without race bugs."
+      }
+    ],
+    "expectedOutput": "Query 2: Results for: fast"
+  },
+  {
+    "id": "js-ex-10",
+    "title": "Async Lock / Mutex for Critical Section Synchronization",
+    "category": "Asynchronous JavaScript",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a Mutex (Mutual Exclusion Lock) in JavaScript that guarantees only one asynchronous operation can access a critical shared resource at any given time.",
+    "conceptsCovered": [
+      "Mutex",
+      "Critical Section",
+      "Race Conditions",
+      "Concurrency Locks"
+    ],
+    "code": "class AsyncMutex {\n  constructor() {\n    this._locked = false;\n    this._waitingQueue = [];\n  }\n\n  acquire() {\n    return new Promise(resolve => {\n      if (!this._locked) {\n        this._locked = true;\n        resolve(this._createReleaser());\n      } else {\n        this._waitingQueue.push(resolve);\n      }\n    });\n  }\n\n  _createReleaser() {\n    return () => {\n      if (this._waitingQueue.length > 0) {\n        const nextResolve = this._waitingQueue.shift();\n        nextResolve(this._createReleaser());\n      } else {\n        this._locked = false;\n      }\n    };\n  }\n}\n\n// Test shared bank account balance updates without race conditions:\nconst mutex = new AsyncMutex();\nlet sharedBalance = 100;\n\nasync function withdraw(amount, delayMs) {\n  const release = await mutex.acquire(); // Enter critical section\n  try {\n    const current = sharedBalance;\n    await new Promise(r => setTimeout(r, delayMs)); // Async I/O delay\n    sharedBalance = current - amount;\n    console.log(`Withdrew ${amount}. Remaining: ${sharedBalance}`);\n  } finally {\n    release(); // Exit critical section\n  }\n}\n\n// Simultaneous concurrent withdrawals\nPromise.all([withdraw(30, 40), withdraw(50, 10)]).then(() => {\n  console.log(\"Final balance:\", sharedBalance);\n});",
+    "breakdown": [
+      {
+        "lineRange": "1-18",
+        "note": "AsyncMutex manages locked boolean flag and queued resolver promises."
+      },
+      {
+        "lineRange": "20-30",
+        "note": "The releaser function dequeues the next waiting async task."
+      },
+      {
+        "lineRange": "36-47",
+        "note": "Guarantees sequential update of shared balance even with async delays."
+      }
+    ],
+    "expectedOutput": "Withdrew 30. Remaining: 70\nWithdrew 50. Remaining: 20\nFinal balance: 20"
+  },
+  {
+    "id": "js-ex-11",
+    "title": "Production Debounce with Leading, Trailing, and Cancel Options",
+    "category": "Functional Programming",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements a complete Lodash-style debounce utility supporting leading execution, trailing execution, maxWait ceilings, and manual cancellation.",
+    "conceptsCovered": [
+      "Debounce",
+      "Closures",
+      "Timers",
+      "Higher-Order Functions"
+    ],
+    "code": "function debounce(fn, wait, options = {}) {\n  let timerId = null;\n  let lastArgs = null;\n  let lastThis = null;\n  let result = null;\n\n  const { leading = false, trailing = true } = options;\n\n  function invoke() {\n    timerId = null;\n    if (trailing && lastArgs) {\n      result = fn.apply(lastThis, lastArgs);\n      lastArgs = lastThis = null;\n    }\n  }\n\n  function debounced(...args) {\n    lastArgs = args;\n    lastThis = this;\n\n    const isInvokingLeading = leading && !timerId;\n\n    if (timerId) clearTimeout(timerId);\n    timerId = setTimeout(invoke, wait);\n\n    if (isInvokingLeading) {\n      result = fn.apply(lastThis, lastArgs);\n      lastArgs = lastThis = null;\n    }\n\n    return result;\n  }\n\n  debounced.cancel = () => {\n    if (timerId) clearTimeout(timerId);\n    timerId = lastArgs = lastThis = null;\n  };\n\n  return debounced;\n}\n\n// Test with leading execution\nconst logImmediate = debounce((msg) => console.log(\"Fired:\", msg), 50, { leading: true, trailing: false });\nlogImmediate(\"Call 1\"); // Fires immediately\nlogImmediate(\"Call 2\"); // Ignored (in debounce window)",
+    "breakdown": [
+      {
+        "lineRange": "1-6",
+        "note": "Maintains closure state: timerId, lastArgs, lastThis, and cached result."
+      },
+      {
+        "lineRange": "18-34",
+        "note": "Checks if leading call should fire immediately or wait for trailing timeout."
+      },
+      {
+        "lineRange": "36-39",
+        "note": "Provides .cancel() method to abort pending timers on component unmount."
+      }
+    ],
+    "expectedOutput": "Fired: Call 1"
+  },
+  {
+    "id": "js-ex-12",
+    "title": "Production Throttle with Leading/Trailing Control",
+    "category": "Functional Programming",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements a throttle utility that guarantees execution at most once per time window, supporting leading and trailing triggers for high-frequency events.",
+    "conceptsCovered": [
+      "Throttle",
+      "Closures",
+      "Performance",
+      "High-Frequency Events"
+    ],
+    "code": "function throttle(fn, wait, options = {}) {\n  let timerId = null;\n  let lastArgs = null;\n  let lastThis = null;\n  let previousTime = 0;\n\n  const { leading = true, trailing = true } = options;\n\n  return function throttled(...args) {\n    const now = Date.now();\n    if (!previousTime && !leading) previousTime = now;\n    const remaining = wait - (now - previousTime);\n\n    lastArgs = args;\n    lastThis = this;\n\n    if (remaining <= 0 || remaining > wait) {\n      if (timerId) {\n        clearTimeout(timerId);\n        timerId = null;\n      }\n      previousTime = now;\n      fn.apply(lastThis, lastArgs);\n      lastArgs = lastThis = null;\n    } else if (!timerId && trailing) {\n      timerId = setTimeout(() => {\n        previousTime = leading ? Date.now() : 0;\n        timerId = null;\n        fn.apply(lastThis, lastArgs);\n        lastArgs = lastThis = null;\n      }, remaining);\n    }\n  };\n}\n\n// Verification\nconst onScroll = throttle((y) => console.log(\"Scroll Y:\", y), 50);\nonScroll(100);\nonScroll(200);",
+    "breakdown": [
+      {
+        "lineRange": "1-8",
+        "note": "Tracks last execution timestamp and pending trailing timer in closure."
+      },
+      {
+        "lineRange": "14-25",
+        "note": "Calculates remaining time in window; fires immediately if window expired."
+      },
+      {
+        "lineRange": "26-33",
+        "note": "Schedules a trailing call if options.trailing is enabled."
+      }
+    ],
+    "expectedOutput": "Scroll Y: 100"
+  },
+  {
+    "id": "js-ex-13",
+    "title": "Deep Clone Algorithm with Circular References, Symbols, and Special Types",
+    "category": "Functional Programming",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Constructs a recursive deep clone algorithm handling circular references, Symbols, Dates, RegExps, Maps, and Sets using WeakMap memoization.",
+    "conceptsCovered": [
+      "Deep Clone",
+      "Circular References",
+      "WeakMap",
+      "Reflect.ownKeys",
+      "Symbols"
+    ],
+    "code": "function deepClone(value, map = new WeakMap()) {\n  // Primitives and functions\n  if (value === null || typeof value !== \"object\") return value;\n\n  // Dates and RegExps\n  if (value instanceof Date) return new Date(value);\n  if (value instanceof RegExp) return new RegExp(value.source, value.flags);\n\n  // Circular reference check\n  if (map.has(value)) return map.get(value);\n\n  // Maps and Sets\n  if (value instanceof Map) {\n    const copyMap = new Map();\n    map.set(value, copyMap);\n    value.forEach((v, k) => copyMap.set(deepClone(k, map), deepClone(v, map)));\n    return copyMap;\n  }\n  if (value instanceof Set) {\n    const copySet = new Set();\n    map.set(value, copySet);\n    value.forEach(v => copySet.add(deepClone(v, map)));\n    return copySet;\n  }\n\n  // Arrays and Objects (preserving prototype)\n  const clone = Array.isArray(value)\n    ? []\n    : Object.create(Object.getPrototypeOf(value));\n  map.set(value, clone);\n\n  // Copy own keys including Symbols\n  for (const key of Reflect.ownKeys(value)) {\n    clone[key] = deepClone(value[key], map);\n  }\n\n  return clone;\n}\n\n// Test circular references and symbols\nconst sym = Symbol(\"private\");\nconst node = { id: 1, [sym]: \"secret\" };\nnode.self = node; // Circular!\n\nconst copy = deepClone(node);\nconsole.log(copy.id); // 1\nconsole.log(copy[sym]); // \"secret\"\nconsole.log(copy.self === copy); // true (Circular link preserved!)\nconsole.log(copy !== node); // true (Independent instance)",
+    "breakdown": [
+      {
+        "lineRange": "9-11",
+        "note": "Checks WeakMap cache to break infinite circular recursion."
+      },
+      {
+        "lineRange": "13-25",
+        "note": "Recursively handles Map and Set collections."
+      },
+      {
+        "lineRange": "28-35",
+        "note": "Preserves prototype via Object.create and copies Symbols via Reflect.ownKeys."
+      }
+    ],
+    "expectedOutput": "1\nsecret\ntrue\ntrue"
+  },
+  {
+    "id": "js-ex-14",
+    "title": "Currying Implementation with Placeholders",
+    "category": "Functional Programming",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds an advanced curry function supporting placeholders (e.g. `curry._`) allowing arguments to be specified out-of-order in functional pipelines.",
+    "conceptsCovered": [
+      "Currying",
+      "Placeholders",
+      "Partial Application",
+      "Arity"
+    ],
+    "code": "function curry(fn) {\n  const _ = Symbol(\"curry.placeholder\");\n\n  function curried(...args) {\n    // Count non-placeholder arguments\n    const complete = args.length >= fn.length &&\n      !args.slice(0, fn.length).includes(_);\n\n    if (complete) {\n      return fn.apply(this, args);\n    }\n\n    return function(...nextArgs) {\n      // Replace placeholders in args with nextArgs\n      const merged = args.map(arg => (arg === _ && nextArgs.length > 0 ? nextArgs.shift() : arg));\n      return curried.apply(this, merged.concat(nextArgs));\n    };\n  }\n\n  curried._ = _;\n  return curried;\n}\n\n// Test with placeholders\nfunction formatName(first, middle, last) {\n  return `${last}, ${first} ${middle}.`;\n}\n\nconst curriedFormat = curry(formatName);\nconst _ = curriedFormat._;\n\n// Supply 1st and 3rd arguments, leaving 2nd argument placeholder:\nconst partial = curriedFormat(\"John\", _, \"Doe\");\nconsole.log(partial(\"Q\")); // \"Doe, John Q.\"",
+    "breakdown": [
+      {
+        "lineRange": "1-3",
+        "note": "Declares a unique Symbol placeholder attached to curried._."
+      },
+      {
+        "lineRange": "5-10",
+        "note": "Checks if all required formal parameters are satisfied without placeholders."
+      },
+      {
+        "lineRange": "13-18",
+        "note": "Merges new arguments into existing placeholder slots."
+      }
+    ],
+    "expectedOutput": "Doe, John Q."
+  },
+  {
+    "id": "js-ex-15",
+    "title": "LRU (Least Recently Used) Cache Implementation",
+    "category": "Functional Programming",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements a high-performance $O(1)$ LRU Cache using JavaScript's native Map (which maintains insertion order) to evict oldest entries under capacity limits.",
+    "conceptsCovered": [
+      "LRU Cache",
+      "Map Ordering",
+      "Cache Eviction",
+      "O(1) Data Structures"
+    ],
+    "code": "class LRUCache {\n  constructor(capacity) {\n    this.capacity = capacity;\n    this.cache = new Map(); // Map preserves insertion order!\n  }\n\n  get(key) {\n    if (!this.cache.has(key)) return -1;\n    // Refresh position: delete and re-insert at end of Map!\n    const value = this.cache.get(key);\n    this.cache.delete(key);\n    this.cache.set(key, value);\n    return value;\n  }\n\n  put(key, value) {\n    if (this.cache.has(key)) {\n      this.cache.delete(key); // Remove old entry\n    } else if (this.cache.size >= this.capacity) {\n      // Evict least recently used: the first key in Map iterator!\n      const oldestKey = this.cache.keys().next().value;\n      this.cache.delete(oldestKey);\n    }\n    this.cache.set(key, value);\n  }\n}\n\n// Test LRU eviction\nconst lru = new LRUCache(2);\nlru.put(\"A\", 1);\nlru.put(\"B\", 2);\nlru.get(\"A\"); // \"A\" is accessed, making \"B\" least recently used!\nlru.put(\"C\", 3); // Evicts \"B\"!\n\nconsole.log(lru.get(\"B\")); // -1 (Evicted)\nconsole.log(lru.get(\"A\")); // 1 (Preserved)",
+    "breakdown": [
+      {
+        "lineRange": "1-5",
+        "note": "Uses JavaScript's Map which guarantees insertion order iteration."
+      },
+      {
+        "lineRange": "7-14",
+        "note": "get: re-inserts key at the end of the Map so it becomes the most recently used."
+      },
+      {
+        "lineRange": "16-25",
+        "note": "put: evicts oldest item at cache.keys().next().value when capacity is reached."
+      }
+    ],
+    "expectedOutput": "-1\n1"
+  },
+  {
+    "id": "js-ex-16",
+    "title": "Complete Event Emitter with .on(), .once(), .emit(), and .off()",
+    "category": "Functional Programming",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a production Pub-Sub EventEmitter class supporting once listeners, multi-argument emission, listener removal, and error boundary isolation.",
+    "conceptsCovered": [
+      "EventEmitter",
+      "Pub-Sub",
+      "Closures",
+      "Event Architecture"
+    ],
+    "code": "class EventEmitter {\n  constructor() {\n    this._events = new Map(); // EventName -> Set of listener functions\n  }\n\n  on(eventName, listener) {\n    if (!this._events.has(eventName)) {\n      this._events.set(eventName, new Set());\n    }\n    this._events.get(eventName).add(listener);\n    // Return unsubscribe function for convenience\n    return () => this.off(eventName, listener);\n  }\n\n  once(eventName, listener) {\n    const wrapper = (...args) => {\n      this.off(eventName, wrapper);\n      listener.apply(this, args);\n    };\n    wrapper.originalListener = listener;\n    return this.on(eventName, wrapper);\n  }\n\n  off(eventName, listener) {\n    const listeners = this._events.get(eventName);\n    if (!listeners) return;\n    for (const l of listeners) {\n      if (l === listener || l.originalListener === listener) {\n        listeners.delete(l);\n      }\n    }\n  }\n\n  emit(eventName, ...args) {\n    const listeners = this._events.get(eventName);\n    if (!listeners) return false;\n    // Copy set to prevent mutation during iteration if listeners unbind themselves\n    [...listeners].forEach(fn => {\n      try {\n        fn.apply(this, args);\n      } catch (err) {\n        console.error(`Error in event listener for ${eventName}:`, err);\n      }\n    });\n    return true;\n  }\n}\n\n// Test emitter\nconst bus = new EventEmitter();\nbus.once(\"orderPlaced\", (id) => console.log(\"Once handler order:\", id));\n\nbus.emit(\"orderPlaced\", 101); // Fires once\nbus.emit(\"orderPlaced\", 102); // Ignored",
+    "breakdown": [
+      {
+        "lineRange": "1-4",
+        "note": "Uses a Map of Sets for O(1) listener addition and removal."
+      },
+      {
+        "lineRange": "15-22",
+        "note": "once creates a self-unsubscribing wrapper preserving originalListener reference."
+      },
+      {
+        "lineRange": "34-46",
+        "note": "emit clones the listener set before invoking to prevent mutation bugs."
+      }
+    ],
+    "expectedOutput": "Once handler order: 101"
+  },
+  {
+    "id": "js-ex-17",
+    "title": "Safe Deep Object Getter and Setter (Path Resolver)",
+    "category": "Functional Programming",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs robust Lodash-style `get(obj, path, default)` and `set(obj, path, value)` utilities that navigate nested object paths and array indices without throwing TypeErrors.",
+    "conceptsCovered": [
+      "Path Navigation",
+      "Defensive Programming",
+      "RegEx Path Parsing",
+      "Immutability"
+    ],
+    "code": "function parsePath(path) {\n  if (Array.isArray(path)) return path;\n  // Parses \"a.b[0].c\" into [\"a\", \"b\", \"0\", \"c\"]\n  return path.replace(/\\[(\\w+)\\]/g, \".$1\").split(\".\").filter(Boolean);\n}\n\nfunction get(obj, path, defaultValue = undefined) {\n  const keys = parsePath(path);\n  let current = obj;\n\n  for (const key of keys) {\n    if (current === null || current === undefined) {\n      return defaultValue;\n    }\n    current = current[key];\n  }\n\n  return current === undefined ? defaultValue : current;\n}\n\nfunction set(obj, path, value) {\n  const keys = parsePath(path);\n  let current = obj;\n\n  for (let i = 0; i < keys.length - 1; i++) {\n    const key = keys[i];\n    const nextKey = keys[i + 1];\n\n    if (!(key in current) || current[key] === null || typeof current[key] !== \"object\") {\n      // Create array if next key is integer, else object\n      current[key] = String(Number(nextKey)) === nextKey ? [] : {};\n    }\n    current = current[key];\n  }\n\n  current[keys[keys.length - 1]] = value;\n  return obj;\n}\n\n// Test get and set\nconst data = { user: { orders: [{ id: \"A1\" }] } };\nconsole.log(get(data, \"user.orders[0].id\")); // \"A1\"\nconsole.log(get(data, \"user.settings.theme\", \"dark\")); // \"dark\" (Default)\n\nset(data, \"user.preferences.notifications.email\", true);\nconsole.log(data.user.preferences.notifications.email); // true",
+    "breakdown": [
+      {
+        "lineRange": "1-4",
+        "note": "parsePath uses regex to normalize bracket notation a[0].b into dotted string keys."
+      },
+      {
+        "lineRange": "6-17",
+        "note": "get traverses keys safely, returning defaultValue if an intermediate key is nullish."
+      },
+      {
+        "lineRange": "19-35",
+        "note": "set dynamically creates intermediate objects or arrays based on key types."
+      }
+    ],
+    "expectedOutput": "A1\ndark\ntrue"
+  },
+  {
+    "id": "js-ex-18",
+    "title": "Trampoline Function to Prevent Stack Overflow in Deep Recursion",
+    "category": "Functional Programming",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Eliminates call stack overflow errors in deep recursion by transforming recursive algorithms into an iterative while loop using thunks.",
+    "conceptsCovered": [
+      "Trampoline",
+      "Call Stack Overflow",
+      "Thunks",
+      "Tail Call Optimization"
+    ],
+    "code": "function trampoline(fn) {\n  return function(...args) {\n    let result = fn(...args);\n    // Continue executing thunks in a while-loop on a single stack frame!\n    while (typeof result === \"function\") {\n      result = result();\n    }\n    return result;\n  };\n}\n\n// Normal recursion throws RangeError at ~10,000 depth:\n// function sum(n, acc = 0) {\n//   if (n <= 0) return acc;\n//   return sum(n - 1, acc + n); // Exceeds maximum call stack!\n// }\n\n// Trampolined recursion: returns a thunk () => sum(...) instead of direct call\nconst safeSum = trampoline(function sum(n, acc = 0) {\n  if (n <= 0) return acc;\n  // Return thunk to trampoline loop\n  return () => sum(n - 1, acc + n);\n});\n\n// Runs 100,000 iterations safely in 1 stack frame!\nconsole.log(\"Sum 1..100000:\", safeSum(100000));",
+    "breakdown": [
+      {
+        "lineRange": "1-10",
+        "note": "The trampoline wrapper evaluates returned thunk functions in an iterative while loop."
+      },
+      {
+        "lineRange": "19-23",
+        "note": "The recursive function returns () => sum(...) rather than executing recursively."
+      },
+      {
+        "lineRange": "26",
+        "note": "Calculates sum of 100,000 integers with zero stack growth."
+      }
+    ],
+    "expectedOutput": "Sum 1..100000: 5000050000"
+  },
+  {
+    "id": "js-ex-19",
+    "title": "Deep Object and Array Flattener (Iterative)",
+    "category": "Functional Programming",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Flattens deeply nested object hierarchies into flat dot-notated key-value mappings using an iterative queue to prevent recursion limits.",
+    "conceptsCovered": [
+      "Object Flattening",
+      "Iterative Traversal",
+      "Dot Notation",
+      "Data Normalization"
+    ],
+    "code": "function flattenObject(obj, delimiter = \".\") {\n  const result = {};\n  const stack = [{ current: obj, prefix: \"\" }];\n\n  while (stack.length > 0) {\n    const { current, prefix } = stack.pop();\n\n    for (const key of Object.keys(current)) {\n      const val = current[key];\n      const newKey = prefix ? `${prefix}${delimiter}${key}` : key;\n\n      if (val !== null && typeof val === \"object\" && Object.keys(val).length > 0) {\n        stack.push({ current: val, prefix: newKey });\n      } else {\n        result[newKey] = val;\n      }\n    }\n  }\n\n  return result;\n}\n\nconst complex = {\n  app: {\n    name: \"Dashboard\",\n    settings: {\n      theme: \"dark\",\n      api: { url: \"https://api.com\", port: 443 }\n    }\n  }\n};\n\nconsole.log(flattenObject(complex));",
+    "breakdown": [
+      {
+        "lineRange": "1-4",
+        "note": "Uses an explicit stack array instead of recursion to prevent call stack limits."
+      },
+      {
+        "lineRange": "6-17",
+        "note": "Appends dot delimiters and pushes nested sub-objects onto the stack."
+      }
+    ],
+    "expectedOutput": "{\n  'app.name': 'Dashboard',\n  'app.settings.theme': 'dark',\n  'app.settings.api.url': 'https://api.com',\n  'app.settings.api.port': 443\n}"
+  },
+  {
+    "id": "js-ex-20",
+    "title": "Immutable Redux-Style State Store with Middleware Pipeline",
+    "category": "Functional Programming",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Constructs a lightweight Redux clone from scratch with state immutability, dispatching, subscriptions, and an onion-architecture middleware pipeline.",
+    "conceptsCovered": [
+      "Redux Architecture",
+      "Middleware Pipeline",
+      "State Immutability",
+      "Dispatch Action"
+    ],
+    "code": "function createStore(reducer, initialState, ...middlewares) {\n  let state = initialState;\n  const listeners = new Set();\n\n  const getState = () => state;\n\n  const rawDispatch = (action) => {\n    state = reducer(state, action);\n    listeners.forEach(fn => fn());\n    return action;\n  };\n\n  const subscribe = (listener) => {\n    listeners.add(listener);\n    return () => listeners.delete(listener);\n  };\n\n  // Middleware pipeline chaining\n  const middlewareApi = { getState, dispatch: (...args) => dispatch(...args) };\n  const chain = middlewares.map(m => m(middlewareApi));\n  const dispatch = chain.reduceRight(\n    (next, middleware) => middleware(next),\n    rawDispatch\n  );\n\n  return { getState, dispatch, subscribe };\n}\n\n// Logger Middleware\nconst loggerMiddleware = store => next => action => {\n  console.log(\"Action:\", action.type);\n  const result = next(action);\n  console.log(\"New State:\", store.getState());\n  return result;\n};\n\n// Reducer\nconst counterReducer = (state = 0, action) => {\n  return action.type === \"INC\" ? state + 1 : state;\n};\n\nconst store = createStore(counterReducer, 0, loggerMiddleware);\nstore.dispatch({ type: \"INC\" });",
+    "breakdown": [
+      {
+        "lineRange": "1-17",
+        "note": "Basic store implementation: state, getState, rawDispatch, and subscribe set."
+      },
+      {
+        "lineRange": "19-24",
+        "note": "Chains middleware via reduceRight to construct the onion dispatch pipeline."
+      },
+      {
+        "lineRange": "29-34",
+        "note": "Logger middleware demonstrates intercepting actions before and after next()."
+      }
+    ],
+    "expectedOutput": "Action: INC\nNew State: 1"
+  },
+  {
+    "id": "js-ex-21",
+    "title": "Custom Implementation of the 'new' Operator",
+    "category": "Objects & Prototypes",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Re-creates the JavaScript engine's internal [[Construct]] algorithm from scratch, handling prototype linking, 'this' execution, and primitive vs object return overrides.",
+    "conceptsCovered": [
+      "new Operator",
+      "Object.create",
+      "[[Construct]]",
+      "Constructor Return Semantics"
+    ],
+    "code": "function customNew(Constructor, ...args) {\n  if (typeof Constructor !== \"function\") {\n    throw new TypeError(\"Constructor must be a function\");\n  }\n\n  // 1 & 2: Allocate new object linked to Constructor's prototype\n  const instance = Object.create(Constructor.prototype);\n\n  // 3: Invoke constructor with 'this' bound to the new instance\n  const result = Constructor.apply(instance, args);\n\n  // 4: If constructor explicitly returns an object, return that object;\n  // otherwise return the created instance!\n  const isObject = result !== null && (typeof result === \"object\" || typeof result === \"function\");\n  return isObject ? result : instance;\n}\n\n// Verification 1: Standard constructor\nfunction Person(name, age) {\n  this.name = name;\n  this.age = age;\n}\nPerson.prototype.greet = function() { return `Hi, I am ${this.name}`; };\n\nconst p = customNew(Person, \"Alice\", 28);\nconsole.log(p instanceof Person); // true\nconsole.log(p.greet()); // \"Hi, I am Alice\"\n\n// Verification 2: Constructor returning primitive (ignored)\nfunction ReturnPrimitive() {\n  this.val = 100;\n  return 999; // Ignored!\n}\nconsole.log(customNew(ReturnPrimitive).val); // 100\n\n// Verification 3: Constructor returning explicit object (overrides this)\nfunction ReturnObj() {\n  this.val = 100;\n  return { custom: true }; // Overrides this!\n}\nconsole.log(customNew(ReturnObj)); // { custom: true }",
+    "breakdown": [
+      {
+        "lineRange": "6-7",
+        "note": "Object.create(Constructor.prototype) creates the object and sets [[Prototype]]."
+      },
+      {
+        "lineRange": "9-10",
+        "note": "Constructor.apply(instance, args) runs initialization logic."
+      },
+      {
+        "lineRange": "12-14",
+        "note": "Checks if return value is an object; primitives are ignored per the ECMAScript spec."
+      }
+    ],
+    "expectedOutput": "true\nHi, I am Alice\n100\n{ custom: true }"
+  },
+  {
+    "id": "js-ex-22",
+    "title": "Complete Polyfill for Function.prototype.bind Supporting 'new'",
+    "category": "Objects & Prototypes",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Constructs an ECMAScript-compliant polyfill for Function.prototype.bind handling currying, context binding, and constructor invocation with the 'new' operator.",
+    "conceptsCovered": [
+      "Function.prototype.bind",
+      "new Operator",
+      "Currying",
+      "Prototype Chaining"
+    ],
+    "code": "Function.prototype.myBind = function(context, ...boundArgs) {\n  if (typeof this !== \"function\") {\n    throw new TypeError(\"What is trying to be bound is not callable\");\n  }\n\n  const targetFn = this;\n\n  function boundFunction(...callArgs) {\n    // Check if invoked via 'new':\n    // If called with 'new', 'this' is an instance of boundFunction!\n    const isNew = this instanceof boundFunction;\n\n    return targetFn.apply(\n      isNew ? this : context,\n      boundArgs.concat(callArgs)\n    );\n  }\n\n  // Preserve prototype chain for 'new' constructor instances\n  if (targetFn.prototype) {\n    boundFunction.prototype = Object.create(targetFn.prototype);\n  }\n\n  return boundFunction;\n};\n\n// Test with 'new'\nfunction Point(x, y) {\n  this.x = x;\n  this.y = y;\n}\nPoint.prototype.getCoordinates = function() { return `${this.x},${this.y}`; };\n\nconst BoundPoint = Point.myBind({ ignored: true }, 10);\nconst pt = new BoundPoint(20); // 'new' overrides bound context!\n\nconsole.log(pt instanceof Point); // true\nconsole.log(pt.getCoordinates()); // \"10,20\"",
+    "breakdown": [
+      {
+        "lineRange": "8-16",
+        "note": "Checks this instanceof boundFunction to detect invocation via the 'new' keyword."
+      },
+      {
+        "lineRange": "19-21",
+        "note": "Links boundFunction.prototype to targetFn.prototype via Object.create."
+      },
+      {
+        "lineRange": "31-36",
+        "note": "Demonstrates pre-bound argument 10 combined with call argument 20 under 'new'."
+      }
+    ],
+    "expectedOutput": "true\n10,20"
+  },
+  {
+    "id": "js-ex-23",
+    "title": "Reactive State Engine with Proxy & Dependency Tracking (Vue 3 Signal)",
+    "category": "Metaprogramming & Proxies",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a production-style fine-grained reactive state container using ES6 Proxy, Reflect with receiver, and a WeakMap dependency graph.",
+    "conceptsCovered": [
+      "Proxy",
+      "Reflect",
+      "WeakMap",
+      "Reactive Signals",
+      "Dependency Tracking"
+    ],
+    "code": "const targetMap = new WeakMap();\nlet activeEffect = null;\n\nfunction track(target, key) {\n  if (!activeEffect) return;\n  let depsMap = targetMap.get(target);\n  if (!depsMap) targetMap.set(target, (depsMap = new Map()));\n  let dep = depsMap.get(key);\n  if (!dep) depsMap.set(key, (dep = new Set()));\n  dep.add(activeEffect);\n}\n\nfunction trigger(target, key) {\n  const depsMap = targetMap.get(target);\n  if (!depsMap) return;\n  const effects = depsMap.get(key);\n  if (effects) effects.forEach(fn => fn());\n}\n\nfunction reactive(obj) {\n  return new Proxy(obj, {\n    get(target, key, receiver) {\n      track(target, key);\n      return Reflect.get(target, key, receiver);\n    },\n    set(target, key, val, receiver) {\n      const oldVal = target[key];\n      const result = Reflect.set(target, key, val, receiver);\n      if (oldVal !== val) {\n        trigger(target, key);\n      }\n      return result;\n    }\n  });\n}\n\nfunction effect(fn) {\n  activeEffect = fn;\n  fn(); // Run immediately to track dependencies\n  activeEffect = null;\n}\n\n// Test reactivity\nconst state = reactive({ price: 10, quantity: 2 });\nlet total = 0;\n\neffect(() => {\n  total = state.price * state.quantity;\n  console.log(\"Calculated Total:\", total);\n});\n\nstate.quantity = 3; // Triggers effect!\nstate.price = 20;    // Triggers effect!",
+    "breakdown": [
+      {
+        "lineRange": "1-18",
+        "note": "track registers activeEffect in targetMap; trigger re-executes all dependent effects."
+      },
+      {
+        "lineRange": "20-36",
+        "note": "Proxy get trap calls track(); set trap calls trigger() on value change."
+      },
+      {
+        "lineRange": "44-55",
+        "note": "Demonstrates total updating automatically when state properties mutate."
+      }
+    ],
+    "expectedOutput": "Calculated Total: 20\nCalculated Total: 30\nCalculated Total: 60"
+  },
+  {
+    "id": "js-ex-24",
+    "title": "Schema Validation Proxy for Data Integrity",
+    "category": "Metaprogramming & Proxies",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a schema-enforced object wrapper using a Proxy that validates property types and required constraints at runtime on property assignment.",
+    "conceptsCovered": [
+      "Proxy Validation",
+      "Runtime Type Guards",
+      "Schema Enforcement",
+      "Defensive Objects"
+    ],
+    "code": "function createValidatedObject(schema) {\n  const target = {};\n\n  return new Proxy(target, {\n    set(t, prop, value) {\n      const rule = schema[prop];\n      if (!rule) {\n        throw new TypeError(`Property '${prop}' is not defined in schema`);\n      }\n\n      if (typeof value !== rule.type) {\n        throw new TypeError(`Invalid type for '${prop}'. Expected ${rule.type}, received ${typeof value}`);\n      }\n\n      if (rule.validate && !rule.validate(value)) {\n        throw new RangeError(`Value ${value} failed validation for '${prop}'`);\n      }\n\n      t[prop] = value;\n      return true; // Must return true on successful assignment!\n    }\n  });\n}\n\n// Define user schema\nconst userSchema = {\n  name: { type: \"string\", validate: (v) => v.length >= 2 },\n  age: { type: \"number\", validate: (v) => v >= 18 && v <= 120 },\n  email: { type: \"string\", validate: (v) => v.includes(\"@\") }\n};\n\nconst user = createValidatedObject(userSchema);\nuser.name = \"John\";\nuser.age = 25;\nuser.email = \"john@example.com\";\nconsole.log(\"User valid:\", user.name, user.age);\n\n// Trying bad age:\ntry {\n  user.age = 15; // Fails validation!\n} catch (err) {\n  console.log(\"Validation blocked:\", err.message);\n}",
+    "breakdown": [
+      {
+        "lineRange": "1-20",
+        "note": "set trap inspects schema rules before mutating internal target object."
+      },
+      {
+        "lineRange": "23-27",
+        "note": "Declares strict schema with types and predicate validator functions."
+      },
+      {
+        "lineRange": "35-39",
+        "note": "Catches RangeError when age < 18 is assigned."
+      }
+    ],
+    "expectedOutput": "User valid: John 25\nValidation blocked: Value 15 failed validation for 'age'"
+  },
+  {
+    "id": "js-ex-25",
+    "title": "Method Chaining Builder Pattern with Proxy",
+    "category": "Metaprogramming & Proxies",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs a dynamic query builder using Proxy that intercepts arbitrary method invocations without pre-defining every SQL/query clause.",
+    "conceptsCovered": [
+      "Proxy apply trap",
+      "Method Chaining",
+      "Dynamic Introspection",
+      "Query Builder"
+    ],
+    "code": "function createQueryBuilder(tableName) {\n  const clauses = { table: tableName, where: [], selects: [] };\n\n  const proxy = new Proxy({}, {\n    get(target, prop) {\n      if (prop === \"build\") {\n        return () => {\n          const selectClause = clauses.selects.length > 0 ? clauses.selects.join(\", \") : \"*\";\n          let sql = `SELECT ${selectClause} FROM ${clauses.table}`;\n          if (clauses.where.length > 0) {\n            sql += \" WHERE \" + clauses.where.map(w => `${w.col} = '${w.val}'`).join(\" AND \");\n          }\n          return sql;\n        };\n      }\n\n      // Dynamic chain handler for methods like select, where, orderBy:\n      return function(...args) {\n        if (prop === \"select\") {\n          clauses.selects.push(...args);\n        } else if (prop === \"where\") {\n          clauses.where.push({ col: args[0], val: args[1] });\n        }\n        return proxy; // Return proxy to enable infinite chaining!\n      };\n    }\n  });\n\n  return proxy;\n}\n\n// Build query fluently\nconst sql = createQueryBuilder(\"users\")\n  .select(\"id\", \"name\", \"email\")\n  .where(\"status\", \"ACTIVE\")\n  .where(\"role\", \"ADMIN\")\n  .build();\n\nconsole.log(sql);",
+    "breakdown": [
+      {
+        "lineRange": "4-15",
+        "note": "get trap returns terminal build() function when requested."
+      },
+      {
+        "lineRange": "17-26",
+        "note": "Dynamically returns chaining handlers that push clauses and return the proxy."
+      }
+    ],
+    "expectedOutput": "SELECT id, name, email FROM users WHERE status = 'ACTIVE' AND role = 'ADMIN'"
+  },
+  {
+    "id": "js-ex-26",
+    "title": "Revocable Proxy for Temporary Plugin Capabilities",
+    "category": "Metaprogramming & Proxies",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements capability-based security by passing a revocable proxy to an untrusted plugin and revoking all access after task completion.",
+    "conceptsCovered": [
+      "Proxy.revocable",
+      "Sandboxing",
+      "Capability Security",
+      "Access Control"
+    ],
+    "code": "function executePluginSafely(pluginFn, sensitiveContext) {\n  // Create revocable proxy around sensitive context\n  const { proxy, revoke } = Proxy.revocable(sensitiveContext, {\n    set(target, prop, value) {\n      console.log(`Plugin set ${prop} = ${value}`);\n      target[prop] = value;\n      return true;\n    }\n  });\n\n  try {\n    // Allow plugin to run during its permitted time window\n    pluginFn(proxy);\n  } finally {\n    // Revoke all access permanently!\n    revoke();\n  }\n}\n\nconst db = { connection: \"live\", activeQueries: 0 };\n\n// Untrusted plugin\nconst plugin = (api) => {\n  api.activeQueries++;\n  console.log(\"Plugin executed query successfully\");\n};\n\nexecutePluginSafely(plugin, db);\n\n// If the plugin cached the 'api' proxy and tries to use it later:\n// api.activeQueries++; // Throws TypeError: Cannot perform 'set' on a proxy that has been revoked!\nconsole.log(\"DB queries:\", db.activeQueries);",
+    "breakdown": [
+      {
+        "lineRange": "1-9",
+        "note": "Proxy.revocable creates { proxy, revoke }."
+      },
+      {
+        "lineRange": "15-18",
+        "note": "finally block guarantees that revoke() is called even if the plugin throws."
+      },
+      {
+        "lineRange": "29-33",
+        "note": "Demonstrates that internal state was updated, but future proxy access is revoked."
+      }
+    ],
+    "expectedOutput": "Plugin set activeQueries = 1\nPlugin executed query successfully\nDB queries: 1"
+  },
+  {
+    "id": "js-ex-27",
+    "title": "Prototype Pollution Sanitizer and Hardened Deep Merge",
+    "category": "Objects & Prototypes",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Defends applications against prototype pollution vulnerabilities by rejecting `__proto__`, `constructor`, and `prototype` keys during deep object merging.",
+    "conceptsCovered": [
+      "Prototype Pollution",
+      "Security Hardening",
+      "Deep Merge",
+      "Object.create(null)"
+    ],
+    "code": "function safeDeepMerge(target, source) {\n  if (target === null || typeof target !== \"object\") return source;\n  if (source === null || typeof source !== \"object\") return target;\n\n  for (const key of Object.keys(source)) {\n    // DEFENSE 1: Block prototype pollution vectors!\n    if (key === \"__proto__\" || key === \"constructor\" || key === \"prototype\") {\n      console.warn(`BLOCKED POTENTIAL EXPLOIT KEY: '${key}'`);\n      continue;\n    }\n\n    const sourceVal = source[key];\n    const targetVal = target[key];\n\n    if (Array.isArray(sourceVal)) {\n      target[key] = [...sourceVal];\n    } else if (sourceVal !== null && typeof sourceVal === \"object\") {\n      if (!targetVal || typeof targetVal !== \"object\") {\n        target[key] = Object.create(null); // DEFENSE 2: Prototype-free nested objects\n      }\n      safeDeepMerge(target[key], sourceVal);\n    } else {\n      target[key] = sourceVal;\n    }\n  }\n\n  return target;\n}\n\n// Simulated malicious payload:\nconst exploitPayload = JSON.parse('{\"__proto__\": {\"isAdmin\": true}, \"validKey\": 123}');\n\nconst appState = {};\nsafeDeepMerge(appState, exploitPayload);\n\nconsole.log(\"App state validKey:\", appState.validKey);\nconsole.log(\"Global Object polluted?\", ({}).isAdmin); // undefined (Protected!)",
+    "breakdown": [
+      {
+        "lineRange": "6-10",
+        "note": "Explicitly checks for and drops __proto__, constructor, and prototype keys."
+      },
+      {
+        "lineRange": "17-19",
+        "note": "Uses Object.create(null) for dynamic objects to ensure no prototype inheritance."
+      },
+      {
+        "lineRange": "31-35",
+        "note": "Verifies that empty objects ({}) remain unpolluted after merging malicious JSON."
+      }
+    ],
+    "expectedOutput": "BLOCKED POTENTIAL EXPLOIT KEY: '__proto__'\nApp state validKey: 123\nGlobal Object polluted? undefined"
+  },
+  {
+    "id": "js-ex-28",
+    "title": "Custom EventEmitter Subclassing EventTarget",
+    "category": "Objects & Prototypes",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Leverages the browser and Node.js native `EventTarget` class to implement an event emitter with native `CustomEvent` dispatching and memory cleanup.",
+    "conceptsCovered": [
+      "EventTarget",
+      "CustomEvent",
+      "Inheritance",
+      "Native Web APIs"
+    ],
+    "code": "class StateStore extends EventTarget {\n  constructor(initialData) {\n    super();\n    this._data = initialData;\n  }\n\n  get(key) {\n    return this._data[key];\n  }\n\n  set(key, value) {\n    const oldValue = this._data[key];\n    this._data[key] = value;\n\n    // Dispatch native CustomEvent with detail payload\n    this.dispatchEvent(new CustomEvent(\"change\", {\n      detail: { key, oldValue, value }\n    }));\n  }\n}\n\n// Test StateStore\nconst store = new StateStore({ theme: \"dark\" });\n\n// Clean addEventListener with AbortSignal auto-cleanup!\nconst controller = new AbortController();\n\nstore.addEventListener(\"change\", (e) => {\n  console.log(`Key '${e.detail.key}' changed from '${e.detail.oldValue}' to '${e.detail.value}'`);\n}, { signal: controller.signal });\n\nstore.set(\"theme\", \"light\");\n\n// Unsubscribe by aborting signal\ncontroller.abort();\nstore.set(\"theme\", \"neon\"); // Will not log because listener was cleanly unsubscribed!",
+    "breakdown": [
+      {
+        "lineRange": "1-4",
+        "note": "Extends native EventTarget class, inheriting native event dispatching methods."
+      },
+      {
+        "lineRange": "14-18",
+        "note": "Dispatches native CustomEvent with detail payload."
+      },
+      {
+        "lineRange": "25-29",
+        "note": "Uses modern { signal: controller.signal } to manage listener lifecycle cleanly."
+      }
+    ],
+    "expectedOutput": "Key 'theme' changed from 'dark' to 'light'"
+  },
+  {
+    "id": "js-ex-29",
+    "title": "Symbol.toPrimitive & Symbol.toStringTag Customization",
+    "category": "Metaprogramming & Proxies",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Customizes type coercion and inspection by implementing the well-known symbols `Symbol.toPrimitive` and `Symbol.toStringTag` on a mathematical Vector class.",
+    "conceptsCovered": [
+      "Symbol.toPrimitive",
+      "Symbol.toStringTag",
+      "Type Coercion",
+      "Vector Math"
+    ],
+    "code": "class Vector2D {\n  constructor(x, y) {\n    this.x = x;\n    this.y = y;\n  }\n\n  get magnitude() {\n    return Math.hypot(this.x, this.y);\n  }\n\n  // 1. Symbol.toStringTag customizes Object.prototype.toString\n  get [Symbol.toStringTag]() {\n    return \"Vector2D\";\n  }\n\n  // 2. Symbol.toPrimitive handles mathematical and string coercion\n  [Symbol.toPrimitive](hint) {\n    if (hint === \"number\") {\n      return this.magnitude;\n    }\n    if (hint === \"string\") {\n      return `(${this.x}, ${this.y})`;\n    }\n    return this.magnitude; // 'default' hint (+ operator)\n  }\n}\n\nconst v1 = new Vector2D(3, 4);\n\n// Inspection:\nconsole.log(Object.prototype.toString.call(v1)); // \"[object Vector2D]\"\n\n// String coercion:\nconsole.log(`Position: ${v1}`); // \"Position: (3, 4)\"\n\n// Numeric coercion (magnitude is Math.hypot(3, 4) = 5):\nconsole.log(+v1);       // 5\nconsole.log(v1 + 10);   // 15",
+    "breakdown": [
+      {
+        "lineRange": "11-14",
+        "note": "Symbol.toStringTag changes [object Object] into [object Vector2D]."
+      },
+      {
+        "lineRange": "16-25",
+        "note": "Symbol.toPrimitive handles 'number', 'string', and 'default' coercion hints."
+      },
+      {
+        "lineRange": "33-38",
+        "note": "Demonstrates arithmetic using the magnitude and template string interpolation."
+      }
+    ],
+    "expectedOutput": "[object Vector2D]\nPosition: (3, 4)\n5\n15"
+  },
+  {
+    "id": "js-ex-30",
+    "title": "Object Property Masking and Virtual Fields with Proxy",
+    "category": "Metaprogramming & Proxies",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Uses a Proxy to implement privacy masking (hiding SSNs and passwords) and virtual computed fields that do not physically exist on the underlying object.",
+    "conceptsCovered": [
+      "Proxy",
+      "Property Masking",
+      "Virtual Properties",
+      "Data Sanitization"
+    ],
+    "code": "function createSanitizedUser(rawUser) {\n  return new Proxy(rawUser, {\n    get(target, prop) {\n      // 1. Mask sensitive fields\n      if (prop === \"ssn\") {\n        return \"***-**-\" + String(target.ssn).slice(-4);\n      }\n      if (prop === \"password\") {\n        return \"[REDACTED]\";\n      }\n\n      // 2. Virtual computed field\n      if (prop === \"fullName\") {\n        return `${target.firstName} ${target.lastName}`;\n      }\n\n      return target[prop];\n    },\n\n    // Hide sensitive keys from Object.keys() and for...in\n    ownKeys(target) {\n      return Reflect.ownKeys(target).filter(k => k !== \"password\" && k !== \"ssn\");\n    }\n  });\n}\n\nconst raw = {\n  firstName: \"Ada\",\n  lastName: \"Lovelace\",\n  ssn: \"123-45-6789\",\n  password: \"super_secret_password\"\n};\n\nconst user = createSanitizedUser(raw);\nconsole.log(\"Full Name:\", user.fullName); // Virtual property: \"Ada Lovelace\"\nconsole.log(\"Masked SSN:\", user.ssn);       // Masked: \"***-**-6789\"\nconsole.log(\"Keys:\", Object.keys(user));   // ['firstName', 'lastName'] (ssn & password hidden!)",
+    "breakdown": [
+      {
+        "lineRange": "4-11",
+        "note": "get trap masks sensitive properties like ssn and password on read."
+      },
+      {
+        "lineRange": "13-16",
+        "note": "Calculates virtual fullName property dynamically."
+      },
+      {
+        "lineRange": "20-23",
+        "note": "ownKeys trap filters out ssn and password from Object.keys and reflection."
+      }
+    ],
+    "expectedOutput": "Full Name: Ada Lovelace\nMasked SSN: ***-**-6789\nKeys: [ 'firstName', 'lastName' ]"
+  },
+  {
+    "id": "js-ex-31",
+    "title": "Custom Range Generator Utility with Negative Steps",
+    "category": "Iterators & Generators",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Builds a flexible, memory-efficient Python-style `range()` generator utility supporting positive, negative, and fractional step intervals in $O(1)$ memory.",
+    "conceptsCovered": [
+      "Generators",
+      "yield",
+      "Lazy Evaluation",
+      "Range Utility"
+    ],
+    "code": "function* range(start, end, step = 1) {\n  if (end === undefined) {\n    end = start;\n    start = 0;\n  }\n\n  if (step === 0) throw new Error(\"Step cannot be zero\");\n\n  if (step > 0) {\n    for (let i = start; i < end; i += step) {\n      yield i;\n    }\n  } else {\n    for (let i = start; i > end; i += step) {\n      yield i;\n    }\n  }\n}\n\n// 1. Positive step\nconsole.log(\"Range 0..5:\", [...range(5)]); // [0, 1, 2, 3, 4]\n\n// 2. Custom step\nconsole.log(\"Range 10..20 by 2:\", [...range(10, 20, 2)]); // [10, 12, 14, 16, 18]\n\n// 3. Negative step\nconsole.log(\"Countdown 5..0:\", [...range(5, 0, -1)]); // [5, 4, 3, 2, 1]",
+    "breakdown": [
+      {
+        "lineRange": "1-6",
+        "note": "Handles single argument range(5) defaulting start to 0."
+      },
+      {
+        "lineRange": "8-18",
+        "note": "Yields numbers in sequence for both positive and negative steps."
+      },
+      {
+        "lineRange": "21-27",
+        "note": "Demonstrates lazy evaluation unpacked via the spread operator."
+      }
+    ],
+    "expectedOutput": "Range 0..5: [ 0, 1, 2, 3, 4 ]\nRange 10..20 by 2: [ 10, 12, 14, 16, 18 ]\nCountdown 5..0: [ 5, 4, 3, 2, 1 ]"
+  },
+  {
+    "id": "js-ex-32",
+    "title": "Paginated API Streamer with Async Generators and Backpressure",
+    "category": "Iterators & Generators",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs an asynchronous generator stream that fetches pages of REST API records on demand, yielding individual items to the consumer with automatic backpressure.",
+    "conceptsCovered": [
+      "Async Generators",
+      "for await...of",
+      "Pagination",
+      "Backpressure"
+    ],
+    "code": "async function* streamPaginatedApi(endpoint, pageSize = 2) {\n  let page = 1;\n  let hasMore = true;\n\n  while (hasMore) {\n    console.log(`[Fetcher] Fetching page ${page} from ${endpoint}...`);\n    // Simulated remote API response\n    await new Promise(r => setTimeout(r, 20));\n    const items = [\n      `Item ${(page - 1) * pageSize + 1}`,\n      `Item ${(page - 1) * pageSize + 2}`\n    ];\n\n    if (page >= 3) hasMore = false; // Stop after 3 pages for demo\n\n    for (const item of items) {\n      yield item; // Yield items one-by-one!\n    }\n\n    page++;\n  }\n}\n\n// Consumer handles items asynchronously with built-in backpressure:\n(async () => {\n  for await (const record of streamPaginatedApi(\"/api/users\")) {\n    console.log(\"[Consumer] Received:\", record);\n  }\n})();",
+    "breakdown": [
+      {
+        "lineRange": "1-6",
+        "note": "Initializes async generator tracking current page and hasMore flag."
+      },
+      {
+        "lineRange": "7-18",
+        "note": "Fetches page and yields each item individually to consumer."
+      },
+      {
+        "lineRange": "25-29",
+        "note": "Consumer uses for await...of; next page is fetched only when consumer demands it."
+      }
+    ],
+    "expectedOutput": "[Fetcher] Fetching page 1 from /api/users...\n[Consumer] Received: Item 1\n[Consumer] Received: Item 2\n[Fetcher] Fetching page 2 from /api/users...\n[Consumer] Received: Item 3\n[Consumer] Received: Item 4\n[Fetcher] Fetching page 3 from /api/users...\n[Consumer] Received: Item 5\n[Consumer] Received: Item 6"
+  },
+  {
+    "id": "js-ex-33",
+    "title": "Tree Traversal Generator: Depth-First Search (DFS) and Breadth-First Search (BFS)",
+    "category": "Iterators & Generators",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements tree traversal algorithms using generators, allowing consumers to iterate through tree structures in DFS or BFS order via standard `for...of` loops.",
+    "conceptsCovered": [
+      "Tree Traversal",
+      "DFS",
+      "BFS",
+      "Generators",
+      "yield*"
+    ],
+    "code": "class TreeNode {\n  constructor(val, children = []) {\n    this.val = val;\n    this.children = children;\n  }\n\n  // Depth-First Search generator (Pre-order traversal using yield*)\n  *dfs() {\n    yield this.val;\n    for (const child of this.children) {\n      yield* child.dfs(); // Recursive delegation!\n    }\n  }\n\n  // Breadth-First Search generator (Level-order traversal using queue)\n  *bfs() {\n    const queue = [this];\n    while (queue.length > 0) {\n      const current = queue.shift();\n      yield current.val;\n      for (const child of current.children) {\n        queue.push(child);\n      }\n    }\n  }\n}\n\n// Build sample tree:\n//        Root\n//       /    \\\n//      A      B\n//     / \\      \\\n//    C   D      E\nconst tree = new TreeNode(\"Root\", [\n  new TreeNode(\"A\", [new TreeNode(\"C\"), new TreeNode(\"D\")]),\n  new TreeNode(\"B\", [new TreeNode(\"E\")])\n]);\n\nconsole.log(\"DFS Order:\", [...tree.dfs()]);\nconsole.log(\"BFS Order:\", [...tree.bfs()]);",
+    "breakdown": [
+      {
+        "lineRange": "7-13",
+        "note": "dfs: yields current node value and delegates to children using yield*."
+      },
+      {
+        "lineRange": "15-25",
+        "note": "bfs: uses an iterative queue to yield nodes level-by-level."
+      },
+      {
+        "lineRange": "38-40",
+        "note": "Unpacks tree traversal values into flat arrays using the spread operator."
+      }
+    ],
+    "expectedOutput": "DFS Order: [ 'Root', 'A', 'C', 'D', 'B', 'E' ]\nBFS Order: [ 'Root', 'A', 'B', 'C', 'D', 'E' ]"
+  },
+  {
+    "id": "js-ex-34",
+    "title": "Iterable Doubly-Linked List with Bidirectional Iterators",
+    "category": "Iterators & Generators",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Constructs a Doubly-Linked List implementing the Iterable Protocol (`[Symbol.iterator]`) for forward iteration and a custom `.reverse()` generator for backward iteration.",
+    "conceptsCovered": [
+      "Doubly Linked List",
+      "Symbol.iterator",
+      "Custom Iterables",
+      "Data Structures"
+    ],
+    "code": "class ListNode {\n  constructor(val) {\n    this.val = val;\n    this.next = null;\n    this.prev = null;\n  }\n}\n\nclass DoublyLinkedList {\n  constructor() {\n    this.head = null;\n    this.tail = null;\n    this.length = 0;\n  }\n\n  push(val) {\n    const node = new ListNode(val);\n    if (!this.head) {\n      this.head = this.tail = node;\n    } else {\n      this.tail.next = node;\n      node.prev = this.tail;\n      this.tail = node;\n    }\n    this.length++;\n    return this;\n  }\n\n  // Forward iterator protocol:\n  *[Symbol.iterator]() {\n    let curr = this.head;\n    while (curr) {\n      yield curr.val;\n      curr = curr.next;\n    }\n  }\n\n  // Reverse iterator generator:\n  *reverse() {\n    let curr = this.tail;\n    while (curr) {\n      yield curr.val;\n      curr = curr.prev;\n    }\n  }\n}\n\n// Test DoublyLinkedList\nconst list = new DoublyLinkedList();\nlist.push(\"Node 1\").push(\"Node 2\").push(\"Node 3\");\n\nconsole.log(\"Forward:\", [...list]);\nconsole.log(\"Reverse:\", [...list.reverse()]);",
+    "breakdown": [
+      {
+        "lineRange": "26-33",
+        "note": "Implements [Symbol.iterator]() yielding values from head to tail."
+      },
+      {
+        "lineRange": "35-42",
+        "note": "Implements .reverse() yielding values from tail to head."
+      },
+      {
+        "lineRange": "47-50",
+        "note": "Demonstrates spreading forward and backward iterators cleanly."
+      }
+    ],
+    "expectedOutput": "Forward: [ 'Node 1', 'Node 2', 'Node 3' ]\nReverse: [ 'Node 3', 'Node 2', 'Node 1' ]"
+  },
+  {
+    "id": "js-ex-35",
+    "title": "Priority Queue with Binary Min-Heap",
+    "category": "Iterators & Generators",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements an $O(\\log N)$ Priority Queue using a Binary Min-Heap supporting enqueue, dequeue, peek, and array-based heap traversal.",
+    "conceptsCovered": [
+      "Min-Heap",
+      "Priority Queue",
+      "Binary Trees",
+      "O(log N) Algorithms"
+    ],
+    "code": "class MinHeapPriorityQueue {\n  constructor() {\n    this.heap = []; // Stores { priority, value }\n  }\n\n  enqueue(value, priority) {\n    const node = { priority, value };\n    this.heap.push(node);\n    this._bubbleUp(this.heap.length - 1);\n  }\n\n  dequeue() {\n    if (this.heap.length === 0) return null;\n    if (this.heap.length === 1) return this.heap.pop().value;\n\n    const top = this.heap[0].value;\n    this.heap[0] = this.heap.pop();\n    this._sinkDown(0);\n    return top;\n  }\n\n  _bubbleUp(index) {\n    while (index > 0) {\n      const parentIdx = Math.floor((index - 1) / 2);\n      if (this.heap[index].priority >= this.heap[parentIdx].priority) break;\n      [this.heap[index], this.heap[parentIdx]] = [this.heap[parentIdx], this.heap[index]];\n      index = parentIdx;\n    }\n  }\n\n  _sinkDown(index) {\n    const len = this.heap.length;\n    while (true) {\n      let smallest = index;\n      const left = 2 * index + 1;\n      const right = 2 * index + 2;\n\n      if (left < len && this.heap[left].priority < this.heap[smallest].priority) smallest = left;\n      if (right < len && this.heap[right].priority < this.heap[smallest].priority) smallest = right;\n      if (smallest === index) break;\n\n      [this.heap[index], this.heap[smallest]] = [this.heap[smallest], this.heap[index]];\n      index = smallest;\n    }\n  }\n}\n\n// Test MinHeap\nconst pq = new MinHeapPriorityQueue();\npq.enqueue(\"Low priority task\", 50);\npq.enqueue(\"Critical security patch\", 1);\npq.enqueue(\"Medium feature\", 20);\n\nconsole.log(\"Next task:\", pq.dequeue()); // Priority 1\nconsole.log(\"Next task:\", pq.dequeue()); // Priority 20",
+    "breakdown": [
+      {
+        "lineRange": "6-10",
+        "note": "enqueue appends element and bubbles up to restore min-heap invariant."
+      },
+      {
+        "lineRange": "12-20",
+        "note": "dequeue extracts root element, replaces with last item, and sinks down."
+      },
+      {
+        "lineRange": "47-55",
+        "note": "Verifies items are dequeued in ascending priority order."
+      }
+    ],
+    "expectedOutput": "Next task: Critical security patch\nNext task: Medium feature"
+  },
+  {
+    "id": "js-ex-36",
+    "title": "Trie (Prefix Tree) for Auto-Complete and Prefix Matching",
+    "category": "Iterators & Generators",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Constructs a Trie (Prefix Tree) data structure supporting $O(L)$ word insertion, search, and prefix matching for autocomplete search engines.",
+    "conceptsCovered": [
+      "Trie",
+      "Prefix Trees",
+      "Autocomplete",
+      "String Algorithms"
+    ],
+    "code": "class TrieNode {\n  constructor() {\n    this.children = new Map();\n    this.isEndOfWord = false;\n  }\n}\n\nclass Trie {\n  constructor() {\n    this.root = new TrieNode();\n  }\n\n  insert(word) {\n    let curr = this.root;\n    for (const char of word) {\n      if (!curr.children.has(char)) {\n        curr.children.set(char, new TrieNode());\n      }\n      curr = curr.children.get(char);\n    }\n    curr.isEndOfWord = true;\n  }\n\n  suggest(prefix) {\n    let curr = this.root;\n    for (const char of prefix) {\n      if (!curr.children.has(char)) return []; // Prefix not found\n      curr = curr.children.get(char);\n    }\n\n    const results = [];\n    // DFS to collect all words starting from prefix\n    function collect(node, path) {\n      if (node.isEndOfWord) results.push(path);\n      for (const [char, childNode] of node.children) {\n        collect(childNode, path + char);\n      }\n    }\n    collect(curr, prefix);\n    return results;\n  }\n}\n\n// Test Trie\nconst trie = new Trie();\n[\"apple\", \"app\", \"application\", \"apt\", \"banana\", \"bat\"].forEach(w => trie.insert(w));\n\nconsole.log(\"Suggestions for 'app':\", trie.suggest(\"app\"));\nconsole.log(\"Suggestions for 'ba':\", trie.suggest(\"ba\"));",
+    "breakdown": [
+      {
+        "lineRange": "1-12",
+        "note": "TrieNode stores children in a Map and tracks isEndOfWord."
+      },
+      {
+        "lineRange": "14-23",
+        "note": "insert traverses or creates child nodes per character in O(L) time."
+      },
+      {
+        "lineRange": "25-41",
+        "note": "suggest traverses to prefix node, then runs DFS to collect all matching words."
+      }
+    ],
+    "expectedOutput": "Suggestions for 'app': [ 'app', 'apple', 'application' ]\nSuggestions for 'ba': [ 'banana', 'bat' ]"
+  },
+  {
+    "id": "js-ex-37",
+    "title": "Circular Ring Buffer in Pre-Allocated Array",
+    "category": "Iterators & Generators",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements a fixed-capacity Ring Buffer (Circular Buffer) that overwrites oldest entries when full with zero memory reallocation.",
+    "conceptsCovered": [
+      "Ring Buffer",
+      "Circular Queue",
+      "Pre-Allocation",
+      "O(1) Enqueue"
+    ],
+    "code": "class RingBuffer {\n  constructor(capacity) {\n    this.capacity = capacity;\n    this.buffer = new Array(capacity);\n    this.head = 0;\n    this.tail = 0;\n    this.size = 0;\n  }\n\n  push(item) {\n    this.buffer[this.tail] = item;\n    this.tail = (this.tail + 1) % this.capacity;\n\n    if (this.size < this.capacity) {\n      this.size++;\n    } else {\n      // Overwriting oldest element: advance head pointer\n      this.head = (this.head + 1) % this.capacity;\n    }\n  }\n\n  *[Symbol.iterator]() {\n    for (let i = 0; i < this.size; i++) {\n      const idx = (this.head + i) % this.capacity;\n      yield this.buffer[idx];\n    }\n  }\n}\n\n// Test RingBuffer (Fixed capacity of 3)\nconst rb = new RingBuffer(3);\nrb.push(\"Log A\");\nrb.push(\"Log B\");\nrb.push(\"Log C\");\nrb.push(\"Log D\"); // Overwrites oldest \"Log A\"!\n\nconsole.log(\"Buffer items:\", [...rb]);",
+    "breakdown": [
+      {
+        "lineRange": "1-8",
+        "note": "Pre-allocates an array of fixed size and manages head/tail modulo pointers."
+      },
+      {
+        "lineRange": "10-20",
+        "note": "push advances tail with modulo; advances head if capacity is saturated."
+      },
+      {
+        "lineRange": "22-27",
+        "note": "Implements [Symbol.iterator]() to yield elements from oldest to newest."
+      }
+    ],
+    "expectedOutput": "Buffer items: [ 'Log B', 'Log C', 'Log D' ]"
+  },
+  {
+    "id": "js-ex-38",
+    "title": "Custom Set with Mathematical Union, Intersection, and Difference",
+    "category": "Iterators & Generators",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Extends JavaScript's native Set to implement mathematical set operations: Union, Intersection, Difference, and Symmetric Difference.",
+    "conceptsCovered": [
+      "Set Theory",
+      "Union",
+      "Intersection",
+      "Difference",
+      "Symmetric Difference"
+    ],
+    "code": "class MathSet extends Set {\n  union(otherSet) {\n    return new MathSet([...this, ...otherSet]);\n  }\n\n  intersection(otherSet) {\n    return new MathSet([...this].filter(x => otherSet.has(x)));\n  }\n\n  difference(otherSet) {\n    return new MathSet([...this].filter(x => !otherSet.has(x)));\n  }\n\n  symmetricDifference(otherSet) {\n    const diff1 = this.difference(otherSet);\n    const diff2 = otherSet.difference(this);\n    return diff1.union(diff2);\n  }\n}\n\nconst a = new MathSet([1, 2, 3, 4]);\nconst b = new MathSet([3, 4, 5, 6]);\n\nconsole.log(\"Union:\", [...a.union(b)]); // [1, 2, 3, 4, 5, 6]\nconsole.log(\"Intersection:\", [...a.intersection(b)]); // [3, 4]\nconsole.log(\"Difference (a - b):\", [...a.difference(b)]); // [1, 2]\nconsole.log(\"Symmetric Diff:\", [...a.symmetricDifference(b)]); // [1, 2, 5, 6]",
+    "breakdown": [
+      {
+        "lineRange": "2-4",
+        "note": "union merges elements using spread syntax."
+      },
+      {
+        "lineRange": "6-8",
+        "note": "intersection filters elements present in both sets."
+      },
+      {
+        "lineRange": "10-12",
+        "note": "difference filters elements present in first but not second set."
+      }
+    ],
+    "expectedOutput": "Union: [ 1, 2, 3, 4, 5, 6 ]\nIntersection: [ 3, 4 ]\nDifference (a - b): [ 1, 2 ]\nSymmetric Diff: [ 1, 2, 5, 6 ]"
+  },
+  {
+    "id": "js-ex-39",
+    "title": "Graph Traversal with Cycle Detection",
+    "category": "Iterators & Generators",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a directed graph using Adjacency Lists and implements cycle detection using three-state Depth-First Search (White/Gray/Black node coloring).",
+    "conceptsCovered": [
+      "Graph Algorithms",
+      "Cycle Detection",
+      "DFS Coloring",
+      "Adjacency List"
+    ],
+    "code": "class DirectedGraph {\n  constructor() {\n    this.adjacencyList = new Map();\n  }\n\n  addNode(node) {\n    if (!this.adjacencyList.has(node)) this.adjacencyList.set(node, []);\n  }\n\n  addEdge(from, to) {\n    this.addNode(from);\n    this.addNode(to);\n    this.adjacencyList.get(from).push(to);\n  }\n\n  hasCycle() {\n    // 0: Unvisited (White), 1: Visiting in current path (Gray), 2: Finished (Black)\n    const visited = new Map();\n\n    const hasCycleDFS = (node) => {\n      visited.set(node, 1); // Mark as visiting (Gray)\n\n      for (const neighbor of (this.adjacencyList.get(node) || [])) {\n        const state = visited.get(neighbor) || 0;\n        if (state === 1) return true; // Cycle detected: back-edge to an active ancestor!\n        if (state === 0 && hasCycleDFS(neighbor)) return true;\n      }\n\n      visited.set(node, 2); // Mark as finished (Black)\n      return false;\n    };\n\n    for (const node of this.adjacencyList.keys()) {\n      if ((visited.get(node) || 0) === 0) {\n        if (hasCycleDFS(node)) return true;\n      }\n    }\n    return false;\n  }\n}\n\n// Test Cycle Detection\nconst graph = new DirectedGraph();\ngraph.addEdge(\"A\", \"B\");\ngraph.addEdge(\"B\", \"C\");\ngraph.addEdge(\"C\", \"A\"); // Creates cycle: A -> B -> C -> A\n\nconsole.log(\"Graph has cycle:\", graph.hasCycle()); // true",
+    "breakdown": [
+      {
+        "lineRange": "1-13",
+        "note": "DirectGraph builds adjacency lists with addNode and addEdge."
+      },
+      {
+        "lineRange": "16-37",
+        "note": "hasCycle uses 3-state coloring; encountering a Gray node (1) indicates a cycle."
+      }
+    ],
+    "expectedOutput": "Graph has cycle: true"
+  },
+  {
+    "id": "js-ex-40",
+    "title": "Infinite Sequential ID & UUID Generator",
+    "category": "Iterators & Generators",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Generates monotonic incremental IDs and cryptographically secure UUID v4 tokens using generators and `crypto.randomUUID()`.",
+    "conceptsCovered": [
+      "Generators",
+      "UUID v4",
+      "Crypto API",
+      "ID Generation"
+    ],
+    "code": "// 1. Monotonic Unique ID generator (O(1) memory)\nfunction* createIdGenerator(prefix = \"id\") {\n  let counter = 1;\n  while (true) {\n    yield `${prefix}_${counter++}`;\n  }\n}\n\nconst userIdGen = createIdGenerator(\"usr\");\nconsole.log(userIdGen.next().value); // \"usr_1\"\nconsole.log(userIdGen.next().value); // \"usr_2\"\n\n// 2. UUID v4 Token generator using native crypto\nfunction* createUuidGenerator() {\n  while (true) {\n    // Native Web Crypto API\n    yield crypto.randomUUID();\n  }\n}\n\nconst uuidGen = createUuidGenerator();\nconsole.log(\"Generated UUID:\", typeof uuidGen.next().value); // string (UUID v4)",
+    "breakdown": [
+      {
+        "lineRange": "2-7",
+        "note": "createIdGenerator runs an infinite loop yielding formatted sequential IDs."
+      },
+      {
+        "lineRange": "14-19",
+        "note": "createUuidGenerator leverages native crypto.randomUUID() for secure tokens."
+      }
+    ],
+    "expectedOutput": "usr_1\nusr_2\nGenerated UUID: string"
+  },
+  {
+    "id": "js-ex-41",
+    "title": "Virtual Scrolling Engine Calculation for 100,000 Items",
+    "category": "Web APIs & Browser Concurrency",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Calculates the dynamic window slice (startIndex, endIndex, topPadding, bottomPadding) required to render 100,000 items in a virtualized scrolling container with only 20 visible DOM nodes.",
+    "conceptsCovered": [
+      "Virtual Scrolling",
+      "DOM Optimization",
+      "Memory Management",
+      "Scroll Calculations"
+    ],
+    "code": "function calculateVirtualWindow(options) {\n  const {\n    totalItems = 100000,\n    itemHeight = 40,\n    containerHeight = 400,\n    scrollTop = 0,\n    buffer = 2\n  } = options;\n\n  const totalHeight = totalItems * itemHeight;\n\n  // Calculate visible range:\n  const rawStart = Math.floor(scrollTop / itemHeight);\n  const visibleCount = Math.ceil(containerHeight / itemHeight);\n\n  // Apply buffer padding to prevent blank flashing on fast scroll:\n  const startIndex = Math.max(0, rawStart - buffer);\n  const endIndex = Math.min(totalItems - 1, rawStart + visibleCount + buffer);\n\n  const topPadding = startIndex * itemHeight;\n  const bottomPadding = (totalItems - 1 - endIndex) * itemHeight;\n\n  return {\n    totalHeight,\n    startIndex,\n    endIndex,\n    renderedCount: endIndex - startIndex + 1,\n    topPadding,\n    bottomPadding\n  };\n}\n\n// Scrolled down 1200px in a 100,000 item list:\nconst view = calculateVirtualWindow({\n  totalItems: 100000,\n  itemHeight: 40,\n  containerHeight: 400,\n  scrollTop: 1200,\n  buffer: 2\n});\n\nconsole.log(\"Total Height:\", view.totalHeight + \"px\");\nconsole.log(\"Rendering items from:\", view.startIndex, \"to\", view.endIndex);\nconsole.log(\"Total DOM nodes rendered:\", view.renderedCount); // Only 15 nodes instead of 100,000!\nconsole.log(\"Top spacer padding:\", view.topPadding + \"px\");",
+    "breakdown": [
+      {
+        "lineRange": "1-10",
+        "note": "Computes totalHeight and extracts raw start index from scrollTop / itemHeight."
+      },
+      {
+        "lineRange": "14-22",
+        "note": "Applies buffer elements and calculates top/bottom spacer padding."
+      },
+      {
+        "lineRange": "34-37",
+        "note": "Shows rendering only 15 nodes in memory for a 100,000-item collection."
+      }
+    ],
+    "expectedOutput": "Total Height: 4000000px\nRendering items from: 28 to 42\nTotal DOM nodes rendered: 15\nTop spacer padding: 1120px"
+  },
+  {
+    "id": "js-ex-42",
+    "title": "Lazy Loading Images with IntersectionObserver and Blur Placeholder",
+    "category": "Web APIs & Browser Concurrency",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements progressive lazy loading of responsive images with smooth fade-in and threshold pre-fetching via the native IntersectionObserver API.",
+    "conceptsCovered": [
+      "IntersectionObserver",
+      "Lazy Loading",
+      "Performance",
+      "DOM Manipulation"
+    ],
+    "code": "function setupLazyImages(container = document) {\n  const imageObserver = new IntersectionObserver((entries, observer) => {\n    entries.forEach(entry => {\n      if (!entry.isIntersecting) return;\n\n      const img = entry.target;\n      const trueSrc = img.dataset.src;\n\n      if (trueSrc) {\n        // Pre-load image in background\n        const preloader = new Image();\n        preloader.src = trueSrc;\n        preloader.onload = () => {\n          img.src = trueSrc;\n          img.classList.add(\"loaded\"); // Triggers CSS fade-in\n          img.removeAttribute(\"data-src\");\n        };\n      }\n\n      // Stop observing once triggered\n      observer.unobserve(img);\n    });\n  }, {\n    rootMargin: \"150px 0px\", // Pre-fetch 150px before entering viewport!\n    threshold: 0.01\n  });\n\n  const lazyImages = container.querySelectorAll(\"img[data-src]\");\n  lazyImages.forEach(img => imageObserver.observe(img));\n\n  return () => imageObserver.disconnect();\n}\n\nconsole.log(\"Lazy image observer initialized with 150px pre-fetch buffer.\");",
+    "breakdown": [
+      {
+        "lineRange": "2-22",
+        "note": "IntersectionObserver callback preloads trueSrc and unobserves image."
+      },
+      {
+        "lineRange": "23-26",
+        "note": "Sets rootMargin to 150px to fetch images just before scrolling into view."
+      }
+    ],
+    "expectedOutput": "Lazy image observer initialized with 150px pre-fetch buffer."
+  },
+  {
+    "id": "js-ex-43",
+    "title": "Cooperative Time-Slicing Scheduler with scheduler.yield() / MessageChannel",
+    "category": "Web APIs & Browser Concurrency",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Splits long-running CPU calculations into 5ms slices using `MessageChannel` (or `scheduler.yield()`), allowing the browser to paint frames and handle user inputs without freezing.",
+    "conceptsCovered": [
+      "Time Slicing",
+      "MessageChannel",
+      "Cooperative Scheduling",
+      "Core Web Vitals INP"
+    ],
+    "code": "function yieldToMain() {\n  // Polyfill scheduler.yield() via MessageChannel macro-tasking\n  if (globalThis.scheduler?.yield) {\n    return globalThis.scheduler.yield();\n  }\n  return new Promise(resolve => {\n    const channel = new MessageChannel();\n    channel.port1.onmessage = resolve;\n    channel.port2.postMessage(null);\n  });\n}\n\nasync function processBigDataset(items) {\n  let deadline = performance.now() + 5; // 5ms budget per slice\n  let processed = 0;\n\n  for (let i = 0; i < items.length; i++) {\n    // Heavy CPU work\n    doHeavyMath(items[i]);\n    processed++;\n\n    // If 5ms budget elapsed, yield control back to browser!\n    if (performance.now() >= deadline) {\n      console.log(`Yielded thread at item ${i} to let browser paint and handle clicks`);\n      await yieldToMain();\n      deadline = performance.now() + 5; // Reset budget\n    }\n  }\n\n  return processed;\n}\n\nfunction doHeavyMath(x) {\n  let total = 0;\n  for (let i = 0; i < 50000; i++) total += i;\n}\n\n// Test time-slicing\nconst largeArray = new Array(500).fill(1);\nprocessBigDataset(largeArray).then(n => console.log(\"Done processing items:\", n));",
+    "breakdown": [
+      {
+        "lineRange": "1-10",
+        "note": "yieldToMain schedules a MessageChannel macrotask to yield control to the browser."
+      },
+      {
+        "lineRange": "12-28",
+        "note": "Monitors performance.now() and yields thread every 5ms."
+      }
+    ],
+    "expectedOutput": "Yielded thread at item ... to let browser paint and handle clicks\nDone processing items: 500"
+  },
+  {
+    "id": "js-ex-44",
+    "title": "Web Worker Offloading Pipeline with Transferable ArrayBuffer",
+    "category": "Web APIs & Browser Concurrency",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Demonstrates zero-copy binary communication between the UI thread and a Web Worker using Transferable `ArrayBuffer` objects.",
+    "conceptsCovered": [
+      "Web Workers",
+      "Transferable Objects",
+      "ArrayBuffer",
+      "Zero-Copy"
+    ],
+    "code": "// Worker script definition as an inline Blob URL:\nconst workerCode = `\n  self.onmessage = function(e) {\n    const buffer = e.data; // Receives transferred ArrayBuffer\n    const view = new Uint32Array(buffer);\n    \n    // Perform CPU-heavy sorting in worker thread\n    view.sort();\n    \n    // Transfer memory ownership back to main thread (zero-copy)!\n    self.postMessage(buffer, [buffer]);\n  };\n`;\n\nconst blob = new Blob([workerCode], { type: \"application/javascript\" });\nconst workerUrl = URL.createObjectURL(blob);\nconst worker = new Worker(workerUrl);\n\n// Allocate 4MB binary buffer on main thread\nconst buffer = new ArrayBuffer(1024 * 1024 * 4);\nconst numbers = new Uint32Array(buffer);\nnumbers[0] = 999;\nnumbers[1] = 42;\n\nconsole.log(\"Main thread buffer before transfer:\", buffer.byteLength); // 4194304\n\n// Transfer ownership to worker (passes buffer in transfer list!)\nworker.postMessage(buffer, [buffer]);\n\n// Buffer on main thread is now detached and neutered:\nconsole.log(\"Main thread buffer after transfer:\", buffer.byteLength); // 0!\n\nworker.onmessage = (e) => {\n  const returnedBuffer = e.data;\n  console.log(\"Received back from worker:\", returnedBuffer.byteLength); // 4194304\n  worker.terminate();\n  URL.revokeObjectURL(workerUrl);\n};",
+    "breakdown": [
+      {
+        "lineRange": "2-13",
+        "note": "Creates an inline Web Worker script sorting a binary view."
+      },
+      {
+        "lineRange": "21-30",
+        "note": "Transfers ArrayBuffer; main thread byteLength drops to 0 instantly."
+      },
+      {
+        "lineRange": "32-37",
+        "note": "Worker transfers buffer back to main thread with zero memory cloning."
+      }
+    ],
+    "expectedOutput": "Main thread buffer before transfer: 4194304\nMain thread buffer after transfer: 0\nReceived back from worker: 4194304"
+  },
+  {
+    "id": "js-ex-45",
+    "title": "Explicit Resource Management with 'using' and Symbol.dispose",
+    "category": "Modern ECMAScript Standards",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements deterministic cleanup for database connections, file handles, and mutexes using the new ECMAScript `Symbol.dispose` and `Symbol.asyncDispose` protocols.",
+    "conceptsCovered": [
+      "Explicit Resource Management",
+      "Symbol.dispose",
+      "Deterministic Cleanup",
+      "ES2025"
+    ],
+    "code": "// Ensure Symbol.dispose is polyfilled if needed\nSymbol.dispose ??= Symbol(\"Symbol.dispose\");\n\nclass TempFileSession {\n  constructor(filename) {\n    this.filename = filename;\n    console.log(`[Resource] Opened temporary file: ${filename}`);\n  }\n\n  write(content) {\n    console.log(`[Resource] Writing to ${this.filename}: ${content}`);\n  }\n\n  // Standard disposal method invoked automatically on block exit\n  [Symbol.dispose]() {\n    console.log(`[Resource] Cleaned up and deleted ${this.filename} automatically!`);\n  }\n}\n\nfunction processData() {\n  // Manual scope simulation of 'using session = new TempFileSession(...)':\n  const session = new TempFileSession(\"temp_log.txt\");\n  try {\n    session.write(\"Diagnostic payload\");\n  } finally {\n    session[Symbol.dispose](); // Automatically triggered on scope exit\n  }\n}\n\nprocessData();",
+    "breakdown": [
+      {
+        "lineRange": "4-18",
+        "note": "Defines class with [Symbol.dispose]() cleanup method."
+      },
+      {
+        "lineRange": "20-29",
+        "note": "Simulates 'using' scope ensuring deterministic disposal in finally block."
+      }
+    ],
+    "expectedOutput": "[Resource] Opened temporary file: temp_log.txt\n[Resource] Writing to temp_log.txt: Diagnostic payload\n[Resource] Cleaned up and deleted temp_log.txt automatically!"
+  },
+  {
+    "id": "js-ex-46",
+    "title": "Array Grouping with Object.groupBy and Map.groupBy",
+    "category": "Modern ECMAScript Standards",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Utilizes the ES2024 native `Object.groupBy` and `Map.groupBy` APIs to categorize collections by string keys and object references without third-party libraries.",
+    "conceptsCovered": [
+      "Object.groupBy",
+      "Map.groupBy",
+      "ES2024",
+      "Data Grouping"
+    ],
+    "code": "// Polyfill Object.groupBy & Map.groupBy if environment is pre-ES2024\nObject.groupBy ??= function(items, callback) {\n  const result = Object.create(null);\n  for (const item of items) {\n    const key = callback(item);\n    if (!result[key]) result[key] = [];\n    result[key].push(item);\n  }\n  return result;\n};\n\nconst students = [\n  { name: \"Alice\", score: 92, grade: \"A\" },\n  { name: \"Bob\", score: 78, grade: \"C\" },\n  { name: \"Charlie\", score: 95, grade: \"A\" },\n  { name: \"Diana\", score: 85, grade: \"B\" }\n];\n\n// Group by grade string\nconst byGrade = Object.groupBy(students, s => s.grade);\n\nconsole.log(\"Grade A students:\", byGrade[\"A\"].map(s => s.name));\nconsole.log(\"Grade B students:\", byGrade[\"B\"].map(s => s.name));",
+    "breakdown": [
+      {
+        "lineRange": "2-11",
+        "note": "Provides clean fallback polyfill producing null-prototype dictionary."
+      },
+      {
+        "lineRange": "20-24",
+        "note": "Groups student records by grade attribute."
+      }
+    ],
+    "expectedOutput": "Grade A students: [ 'Alice', 'Charlie' ]\nGrade B students: [ 'Diana' ]"
+  },
+  {
+    "id": "js-ex-47",
+    "title": "Promise.withResolvers() Usage & Implementation",
+    "category": "Modern ECMAScript Standards",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Utilizes `Promise.withResolvers()` (ES2024) to cleanly decouple Promise creation from its external resolution trigger.",
+    "conceptsCovered": [
+      "Promise.withResolvers",
+      "ES2024",
+      "Asynchronous Architecture",
+      "Decoupled Resolvers"
+    ],
+    "code": "// Polyfill Promise.withResolvers (ES2024)\nPromise.withResolvers ??= function() {\n  let resolve;\n  let reject;\n  const promise = new Promise((res, rej) => {\n    resolve = res;\n    reject = rej;\n  });\n  return { promise, resolve, reject };\n};\n\nclass AsyncNotificationChannel {\n  constructor() {\n    this._resolvers = Promise.withResolvers();\n  }\n\n  // Producer emits data from anywhere\n  publish(message) {\n    this._resolvers.resolve(message);\n    // Prepare next resolver for subsequent message\n    this._resolvers = Promise.withResolvers();\n  }\n\n  // Consumer awaits message\n  receive() {\n    return this._resolvers.promise;\n  }\n}\n\nconst channel = new AsyncNotificationChannel();\n\nchannel.receive().then(msg => console.log(\"Received async notification:\", msg));\n\n// Publish from external event\nsetTimeout(() => channel.publish(\"Deploy completed!\"), 50);",
+    "breakdown": [
+      {
+        "lineRange": "2-10",
+        "note": "Standard ES2024 polyfill returning { promise, resolve, reject }."
+      },
+      {
+        "lineRange": "12-27",
+        "note": "Builds decoupled notification channel using Promise.withResolvers."
+      }
+    ],
+    "expectedOutput": "Received async notification: Deploy completed!"
+  },
+  {
+    "id": "js-ex-48",
+    "title": "Immutable Array Operations (toSorted, toReversed, toSpliced, with)",
+    "category": "Modern ECMAScript Standards",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Demonstrates ES2023's native change-array-by-copy methods that produce transformed copies without mutating the original source array.",
+    "conceptsCovered": [
+      "ES2023",
+      "toSorted",
+      "toReversed",
+      "toSpliced",
+      "with",
+      "Immutability"
+    ],
+    "code": "const scores = [85, 42, 99, 73];\n\n// 1. toSorted() - returns sorted copy\nconst sorted = scores.toSorted((a, b) => a - b);\nconsole.log(\"Sorted:\", sorted);\nconsole.log(\"Original scores untouched:\", scores); // [85, 42, 99, 73]\n\n// 2. toReversed() - returns reversed copy\nconst reversed = scores.toReversed();\nconsole.log(\"Reversed:\", reversed);\n\n// 3. toSpliced() - returns spliced copy\nconst spliced = scores.toSpliced(1, 2, 100);\nconsole.log(\"Spliced:\", spliced); // [85, 100, 73]\n\n// 4. with() - single index immutable replacement\nconst updated = scores.with(0, 90);\nconsole.log(\"Updated with index 0 = 90:\", updated); // [90, 42, 99, 73]",
+    "breakdown": [
+      {
+        "lineRange": "3-6",
+        "note": "toSorted sorts array without mutating the original scores array."
+      },
+      {
+        "lineRange": "8-16",
+        "note": "toReversed and toSpliced generate modified copies."
+      },
+      {
+        "lineRange": "18-20",
+        "note": "with(index, value) replaces element at index immutably."
+      }
+    ],
+    "expectedOutput": "Sorted: [ 42, 73, 85, 99 ]\nOriginal scores untouched: [ 85, 42, 99, 73 ]\nReversed: [ 73, 99, 42, 85 ]\nSpliced: [ 85, 100, 73 ]\nUpdated with index 0 = 90: [ 90, 42, 99, 73 ]"
+  },
+  {
+    "id": "js-ex-49",
+    "title": "DOM Event Delegation with CSS Selector Matching",
+    "category": "Web APIs & Browser Concurrency",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Implements robust DOM event delegation mapping dynamic click interactions to target handlers using `element.closest()`.",
+    "conceptsCovered": [
+      "DOM Events",
+      "Event Delegation",
+      "closest()",
+      "Performance"
+    ],
+    "code": "function delegateEvent(parentElement, eventType, selector, handler) {\n  parentElement.addEventListener(eventType, function(event) {\n    // Find closest ancestor matching selector\n    const targetElement = event.target.closest(selector);\n\n    // Ensure matched element is inside parentElement\n    if (targetElement && parentElement.contains(targetElement)) {\n      handler.call(targetElement, event, targetElement);\n    }\n  });\n}\n\n// Simulated mock element test\nconst mockParent = {\n  addEventListener(type, cb) {\n    // Simulate click event on deep child icon inside button\n    const mockIcon = { tagName: \"I\" };\n    const mockButton = {\n      tagName: \"BUTTON\",\n      dataset: { action: \"delete\", id: \"42\" },\n      closest(sel) { return sel === \"button[data-action]\" ? this : null; }\n    };\n    mockIcon.closest = (sel) => mockButton.closest(sel);\n\n    cb({ target: mockIcon });\n  },\n  contains: () => true\n};\n\ndelegateEvent(mockParent, \"click\", \"button[data-action]\", (e, el) => {\n  console.log(\"Delegated action triggered:\", el.dataset.action, \"on ID:\", el.dataset.id);\n});",
+    "breakdown": [
+      {
+        "lineRange": "1-10",
+        "note": "delegateEvent checks closest(selector) and parentElement.contains()."
+      },
+      {
+        "lineRange": "13-27",
+        "note": "Simulates clicking an internal <i> icon properly resolving to the parent button."
+      }
+    ],
+    "expectedOutput": "Delegated action triggered: delete on ID: 42"
+  },
+  {
+    "id": "js-ex-50",
+    "title": "60fps Smooth Canvas Animation Loop with Delta-Time Physics",
+    "category": "Web APIs & Browser Concurrency",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a smooth animation loop using `requestAnimationFrame` with delta-time physics calculations to guarantee identical movement speed regardless of monitor refresh rate (60Hz vs 144Hz vs 240Hz).",
+    "conceptsCovered": [
+      "requestAnimationFrame",
+      "Delta Time",
+      "V-Sync",
+      "Physics Simulation"
+    ],
+    "code": "class AnimationLoop {\n  constructor(updateFn) {\n    this.updateFn = updateFn;\n    this.lastTime = 0;\n    this.rafId = null;\n    this.running = false;\n  }\n\n  start() {\n    this.running = true;\n    this.lastTime = performance.now();\n    this._tick = (currentTime) => {\n      if (!this.running) return;\n\n      // Calculate delta time in seconds\n      const deltaTime = (currentTime - this.lastTime) / 1000;\n      this.lastTime = currentTime;\n\n      // Cap max delta to prevent physics explosion if tab was backgrounded\n      const cappedDelta = Math.min(deltaTime, 0.1);\n      this.updateFn(cappedDelta);\n\n      this.rafId = requestAnimationFrame(this._tick);\n    };\n    this.rafId = requestAnimationFrame(this._tick);\n  }\n\n  stop() {\n    this.running = false;\n    if (this.rafId) cancelAnimationFrame(this.rafId);\n  }\n}\n\n// Particle physics test (moves at 100 pixels per second):\nlet x = 0;\nconst speedPixelsPerSecond = 100;\n\nconst loop = new AnimationLoop((dt) => {\n  x += speedPixelsPerSecond * dt;\n});\n\nconsole.log(\"Animation loop initialized with delta-time physics.\");",
+    "breakdown": [
+      {
+        "lineRange": "9-26",
+        "note": "Calculates elapsed delta time and caps max delta to prevent physics jumps."
+      },
+      {
+        "lineRange": "35-39",
+        "note": "Moves entity using speed * dt for uniform speed across all refresh rates."
+      }
+    ],
+    "expectedOutput": "Animation loop initialized with delta-time physics."
+  },
+  {
+    "id": "js-ex-51",
+    "title": "Safe JSON Parse Preventing Prototype Pollution Vectors",
+    "category": "Modern ECMAScript Standards",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements a secure JSON parsing wrapper using `JSON.parse`'s native reviver function to automatically strip out `__proto__` and constructor properties.",
+    "conceptsCovered": [
+      "JSON.parse Reviver",
+      "Prototype Pollution",
+      "Security",
+      "Input Sanitization"
+    ],
+    "code": "function safeJsonParse(jsonString) {\n  // Use native JSON.parse reviver parameter to intercept keys before object construction\n  return JSON.parse(jsonString, (key, value) => {\n    if (key === \"__proto__\" || key === \"constructor\" || key === \"prototype\") {\n      console.warn(`[Security Warning] Stripped dangerous key from JSON payload: '${key}'`);\n      return undefined; // Stripping property!\n    }\n    return value;\n  });\n}\n\n// Malicious JSON payload\nconst untrustedData = '{\"title\": \"Valid Doc\", \"__proto__\": {\"isAdmin\": true}}';\n\nconst parsed = safeJsonParse(untrustedData);\nconsole.log(\"Parsed title:\", parsed.title);\nconsole.log(\"Polluted on parsed?\", parsed.isAdmin); // undefined (Stripped!)\nconsole.log(\"Global Object polluted?\", ({}).isAdmin); // undefined (Protected!)",
+    "breakdown": [
+      {
+        "lineRange": "1-9",
+        "note": "Uses JSON.parse(str, reviver) to discard __proto__ before building object."
+      },
+      {
+        "lineRange": "12-17",
+        "note": "Verifies payload key is stripped and global prototype remains safe."
+      }
+    ],
+    "expectedOutput": "[Security Warning] Stripped dangerous key from JSON payload: '__proto__'\nParsed title: Valid Doc\nPolluted on parsed? undefined\nGlobal Object polluted? undefined"
+  },
+  {
+    "id": "js-ex-52",
+    "title": "High-Resolution Benchmarking & Performance Profiler",
+    "category": "Web APIs & Browser Concurrency",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs an accurate micro-benchmarking harness using `performance.now()` with warm-up cycles, statistical variance calculations, and memory metrics.",
+    "conceptsCovered": [
+      "performance.now",
+      "Benchmarking",
+      "Statistical Variance",
+      "V8 Warmup"
+    ],
+    "code": "function benchmark(name, fn, iterations = 1000) {\n  // 1. Warm-up cycle to allow V8 JIT compiler to optimize code\n  for (let i = 0; i < 50; i++) fn();\n\n  // 2. Timed run\n  const times = [];\n  for (let i = 0; i < iterations; i++) {\n    const start = performance.now();\n    fn();\n    const end = performance.now();\n    times.push(end - start);\n  }\n\n  // 3. Statistical calculations\n  const total = times.reduce((a, b) => a + b, 0);\n  const mean = total / iterations;\n  const sorted = [...times].sort((a, b) => a - b);\n  const p95 = sorted[Math.floor(iterations * 0.95)];\n\n  return {\n    name,\n    iterations,\n    totalTimeMs: total.toFixed(2),\n    meanMs: mean.toFixed(5),\n    p95Ms: p95.toFixed(5)\n  };\n}\n\n// Test Array.from vs Spread\nconst bench1 = benchmark(\"Spread Operator\", () => [...new Set([1, 2, 3])], 100);\nconsole.log(`${bench1.name} (Mean): ${bench1.meanMs}ms, P95: ${bench1.p95Ms}ms`);",
+    "breakdown": [
+      {
+        "lineRange": "2-3",
+        "note": "Executes 50 warm-up runs to trigger V8 JIT TurboFan compilation."
+      },
+      {
+        "lineRange": "6-12",
+        "note": "Uses performance.now() to measure high-resolution execution timestamps."
+      },
+      {
+        "lineRange": "15-26",
+        "note": "Calculates total, mean, and 95th percentile (P95) execution latency."
+      }
+    ],
+    "expectedOutput": "Spread Operator (Mean): ...ms, P95: ...ms"
+  }
+]

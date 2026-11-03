@@ -5,7 +5,11 @@
     "icon": "JS",
     "iconColor": "bg-amber-400 text-black",
     "description": "Language fundamentals, runtime and browser concepts",
-    "dataFile": "javascript.json"
+    "dataFile": "javascript.json",
+    "qaFile": "javascript.qa.json",
+    "deepFile": "javascript.deep.json",
+    "examplesFile": "javascript.examples.json",
+    "productionFile": "javascript.production.json"
   },
   {
     "id": "nodejs",
@@ -13,7 +17,11 @@
     "icon": "Node",
     "iconColor": "bg-emerald-600 text-white",
     "description": "Event loop, asynchronous patterns, streams and core modules",
-    "dataFile": "nodejs.json"
+    "dataFile": "nodejs.json",
+    "qaFile": "nodejs.qa.json",
+    "deepFile": "nodejs.deep.json",
+    "examplesFile": "nodejs.examples.json",
+    "productionFile": "nodejs.production.json"
   },
   {
     "id": "react",
@@ -29,7 +37,11 @@
     "icon": "TS",
     "iconColor": "bg-blue-600 text-white",
     "description": "Type system, generics, type manipulation, utility types & TS 4-6 evolution",
-    "dataFile": "typescript.json"
+    "dataFile": "typescript.json",
+    "qaFile": "typescript.qa.json",
+    "deepFile": "typescript.deep.json",
+    "examplesFile": "typescript.examples.json",
+    "productionFile": "typescript.production.json"
   },
   {
     "id": "sql",
@@ -53,7 +65,11 @@
     "icon": "EXP",
     "iconColor": "bg-zinc-800 text-zinc-100",
     "description": "Routing, middleware, error handling, REST API design",
-    "dataFile": "express.json"
+    "dataFile": "express.json",
+    "qaFile": "express.qa.json",
+    "deepFile": "express.deep.json",
+    "examplesFile": "express.examples.json",
+    "productionFile": "express.production.json"
   },
   {
     "id": "angular",

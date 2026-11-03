@@ -1,0 +1,1170 @@
+[
+  {
+    "id": "express-001",
+    "category": "express",
+    "concept": "Express.js Fundamentals",
+    "priority": "must-know",
+    "question": "What is Express.js and why is it used with Node.js?",
+    "answer": "Express.js is a minimal and flexible Node.js web application framework that provides a robust set of features for web and mobile applications. It simplifies building web servers by providing routing, middleware, and HTTP utility methods.",
+    "code": "const express = require('express');\nconst app = express();\n\napp.get('/', (req, res) => {\n  res.send('Hello World');\n});\n\napp.listen(3000);",
+    "explanation": "Express reduces boilerplate code and provides structure to Node.js applications. It handles HTTP requests, routing, and integrates easily with templating engines, databases, and authentication.",
+    "recallHint": "Web framework, simplifies Node.js HTTP server creation, middleware-based.",
+    "practice": [
+      "Explain why Express was created.",
+      "Describe the benefits of using Express over raw Node.js HTTP.",
+      "Give three use cases for Express."
+    ]
+  },
+  {
+    "id": "express-002",
+    "category": "express",
+    "concept": "Express vs Node.js",
+    "priority": "must-know",
+    "question": "What is the difference between Node.js and Express.js?",
+    "answer": "Node.js is a JavaScript runtime that provides the foundation for building servers. Express.js is a framework built on top of Node.js that adds structure, routing, and middleware capabilities. You can build a server with just Node.js, but Express simplifies the process.",
+    "code": "// Raw Node.js\nconst http = require('http');\nhttp.createServer((req, res) => {\n  res.writeHead(200, { 'Content-Type': 'text/plain' });\n  res.end('Hello World');\n}).listen(3000);\n\n// Express.js\nconst express = require('express');\nconst app = express();\napp.get('/', (req, res) => res.send('Hello World'));\napp.listen(3000);",
+    "explanation": "Node.js handles the low-level networking, while Express provides an abstraction layer. Express simplifies routing, middleware composition, and request/response handling, making development faster and more organized.",
+    "recallHint": "Node.js = runtime, Express = framework on top.",
+    "practice": [
+      "Explain what Node.js provides vs what Express provides.",
+      "Describe when to use raw Node.js vs Express.",
+      "Explain why Express was created."
+    ]
+  },
+  {
+    "id": "express-003",
+    "category": "express",
+    "concept": "Basic Express Server",
+    "priority": "must-know",
+    "question": "How do you create a basic Express server?",
+    "answer": "Create a server by requiring Express, creating an app instance, defining routes, and calling app.listen(). The server starts listening on the specified port.",
+    "code": "const express = require('express');\nconst app = express();\n\napp.get('/', (req, res) => {\n  res.send('Hello Express');\n});\n\napp.listen(3000, () => {\n  console.log('Server running on port 3000');\n});",
+    "explanation": "The app.listen() method binds to a port and starts the server. The callback is optional but helpful for confirming the server is running. Express wraps Node's http.createServer().",
+    "recallHint": "require express, create app, define routes, app.listen().",
+    "practice": [
+      "Write a basic Express server.",
+      "Explain what app.listen does.",
+      "Describe the callback in app.listen."
+    ]
+  },
+  {
+    "id": "express-004",
+    "category": "express",
+    "concept": "Routes",
+    "priority": "must-know",
+    "question": "What is a route in Express and how do you define different HTTP methods?",
+    "answer": "A route is a combination of an HTTP method and a URL path that defines how the server responds to incoming requests. Express supports GET, POST, PUT, DELETE, PATCH, and other HTTP methods.",
+    "code": "app.get('/users', (req, res) => res.json(users));\napp.post('/users', (req, res) => res.status(201).json(newUser));\napp.put('/users/:id', (req, res) => res.json(updatedUser));\napp.patch('/users/:id', (req, res) => res.json(partiallyUpdatedUser));\napp.delete('/users/:id', (req, res) => res.status(204).send());",
+    "explanation": "Routes are the heart of Express. Each route maps an HTTP method to a path and a handler function. The order matters - Express matches routes in the order they are defined.",
+    "recallHint": "HTTP method + path + handler = route.",
+    "practice": [
+      "Explain the different HTTP methods.",
+      "Describe the difference between PUT and PATCH.",
+      "Write a GET route that returns a user by ID."
+    ]
+  },
+  {
+    "id": "express-005",
+    "category": "express",
+    "concept": "PUT vs PATCH",
+    "priority": "must-know",
+    "question": "What is the difference between PUT and PATCH?",
+    "answer": "PUT replaces the entire resource with the provided data. PATCH partially updates the resource with only the provided fields. PUT is idempotent (repeated requests have same effect), PATCH may or may not be idempotent.",
+    "code": "// PUT - replace entire user\napp.put('/users/:id', (req, res) => {\n  const user = users.find(u => u.id === req.params.id);\n  // Replace ALL fields with req.body\n  user.name = req.body.name;\n  user.email = req.body.email;\n  user.age = req.body.age;\n  res.json(user);\n});\n\n// PATCH - partial update\napp.patch('/users/:id', (req, res) => {\n  const user = users.find(u => u.id === req.params.id);\n  // Update ONLY provided fields\n  if (req.body.name) user.name = req.body.name;\n  if (req.body.email) user.email = req.body.email;\n  res.json(user);\n});",
+    "explanation": "PUT requires the full resource representation, while PATCH only needs the changes. PUT is idempotent, meaning multiple identical requests have the same outcome. PATCH is useful for large resources where only a few fields change.",
+    "recallHint": "PUT = full replace, PATCH = partial update.",
+    "practice": [
+      "Explain the difference between PUT and PATCH.",
+      "Describe idempotency and why it matters.",
+      "Give examples of when to use each."
+    ]
+  },
+  {
+    "id": "express-006",
+    "category": "express",
+    "concept": "Route and Query Parameters",
+    "priority": "must-know",
+    "question": "What are route parameters and query parameters in Express?",
+    "answer": "Route parameters are dynamic segments in the URL path (e.g., /users/:id). Query parameters are key-value pairs in the URL after '?' (e.g., ?page=2&limit=10). Both are used to pass data to the server.",
+    "code": "// Route parameters\napp.get('/users/:userId/posts/:postId', (req, res) => {\n  const { userId, postId } = req.params;\n  res.json({ userId, postId });\n});\n\n// Query parameters\napp.get('/users', (req, res) => {\n  const { page = 1, limit = 10, sort = 'name' } = req.query;\n  res.json({ page, limit, sort });\n});",
+    "explanation": "Route parameters identify specific resources (/users/123). Query parameters filter, sort, or paginate results (/users?page=2&limit=10). Use route params for resource IDs and query params for optional modifiers.",
+    "recallHint": "req.params for URL segments, req.query for URL parameters.",
+    "practice": [
+      "Explain the difference between route and query parameters.",
+      "Describe when to use each type.",
+      "Write a route with both route and query parameters."
+    ]
+  },
+  {
+    "id": "express-007",
+    "category": "express",
+    "concept": "req.params vs req.query vs req.body",
+    "priority": "must-know",
+    "question": "What is the difference between req.params, req.query, and req.body?",
+    "answer": "req.params: Route parameters from the URL path (/users/:id → /users/123). req.query: Query string parameters (/users?page=2). req.body: Request body data (POST/PUT/PATCH). Each serves a different purpose for passing data.",
+    "code": "// req.params - URL segments\n// GET /users/123/posts/456\napp.get('/users/:userId/posts/:postId', (req, res) => {\n  req.params.userId; // '123'\n  req.params.postId; // '456'\n});\n\n// req.query - query string\n// GET /users?page=2&limit=10\napp.get('/users', (req, res) => {\n  req.query.page; // '2'\n  req.query.limit; // '10'\n});\n\n// req.body - request body (requires express.json())\n// POST /users with JSON body\napp.post('/users', (req, res) => {\n  req.body.name; // 'John'\n  req.body.email; // 'john@example.com'\n});",
+    "explanation": "Use req.params for resource identification, req.query for filtering/pagination, and req.body for creating/updating resources. req.body requires parsing middleware like express.json() or express.urlencoded().",
+    "recallHint": "params = URL segments, query = ?key=value, body = request payload.",
+    "practice": [
+      "Explain when to use each type of data.",
+      "Describe what middleware is needed for req.body.",
+      "Write routes that use all three."
+    ]
+  },
+  {
+    "id": "express-008",
+    "category": "express",
+    "concept": "Sending Responses",
+    "priority": "must-know",
+    "question": "How do you send a JSON response in Express?",
+    "answer": "Use res.json() or res.send() with an object. res.json() automatically sets Content-Type: application/json and converts objects to JSON. It's preferred for API responses.",
+    "code": "// res.json() - explicit JSON response\napp.get('/users', (req, res) => {\n  res.json({ users: [{ id: 1, name: 'John' }] });\n});\n\n// res.send() - can also send JSON\napp.get('/users', (req, res) => {\n  res.send({ users: [] }); // Automatically JSON\n});\n\n// res.json() with status code\napp.get('/users/:id', (req, res) => {\n  res.status(200).json({ user: { id: 1, name: 'John' } });\n});",
+    "explanation": "res.json() is specifically for JSON responses. It automatically sets headers and serializes the object. res.send() is more general - it can send HTML, text, or JSON. Use res.json() for APIs.",
+    "recallHint": "res.json() for APIs, res.send() for general responses.",
+    "practice": [
+      "Explain the difference between res.json and res.send.",
+      "Describe how to set status codes with JSON responses.",
+      "Write a route that returns a JSON response."
+    ]
+  },
+  {
+    "id": "express-009",
+    "category": "express",
+    "concept": "res.send vs res.json vs res.end",
+    "priority": "must-know",
+    "question": "What is the difference between res.send(), res.json(), and res.end()?",
+    "answer": "res.send() sends a response with automatic content-type detection. res.json() sends JSON response. res.end() ends the response without a body. res.send and res.json automatically set headers and end the response.",
+    "code": "// res.send() - detects content type\nres.send('Hello'); // text/html\nres.send({ name: 'John' }); // application/json\nres.send('<h1>Hello</h1>'); // text/html\n\n// res.json() - always JSON\nres.json({ name: 'John' }); // application/json\n\n// res.end() - no body\nres.status(204).end(); // No content",
+    "explanation": "res.send is more flexible but can be ambiguous. res.json is explicit and preferred for APIs. res.end is used when you don't want to send a body (e.g., 204 No Content).",
+    "recallHint": "res.send = general, res.json = JSON, res.end = no body.",
+    "practice": [
+      "Explain the differences between the three methods.",
+      "Describe when to use each.",
+      "Give examples of appropriate use cases."
+    ]
+  },
+  {
+    "id": "express-010",
+    "category": "express",
+    "concept": "HTTP Status Codes",
+    "priority": "must-know",
+    "question": "How do you set an HTTP status code in Express?",
+    "answer": "Use res.status() before sending the response. Chain it with res.json(), res.send(), or res.sendFile(). The default status is 200 for successful requests.",
+    "code": "// Success responses\nres.status(200).json({ data: users });\nres.status(201).json({ created: user }); // Created\nres.status(204).end(); // No Content\n\n// Client errors\nres.status(400).json({ error: 'Invalid input' });\nres.status(401).json({ error: 'Unauthorized' });\nres.status(403).json({ error: 'Forbidden' });\nres.status(404).json({ error: 'Not found' });\n\n// Server errors\nres.status(500).json({ error: 'Internal server error' });",
+    "explanation": "Proper status codes are essential for RESTful APIs. Express allows chaining with res.status(). Always use appropriate status codes to communicate the outcome of the request.",
+    "recallHint": "res.status(code).send() or .json().",
+    "practice": [
+      "List common HTTP status codes and when to use them.",
+      "Describe 2xx, 3xx, 4xx, and 5xx ranges.",
+      "Write routes with different status codes."
+    ]
+  },
+  {
+    "id": "express-011",
+    "category": "express",
+    "concept": "Redirects",
+    "priority": "must-know",
+    "question": "How do you redirect a request in Express?",
+    "answer": "Use res.redirect() to redirect to a different URL. It sets the Location header and sends a 302 (Found) or 301 (Permanent) redirect status.",
+    "code": "// Redirect to different path\napp.get('/old-path', (req, res) => {\n  res.redirect('/new-path');\n});\n\n// Redirect with status code\napp.get('/permanent', (req, res) => {\n  res.redirect(301, '/new-permanent');\n});\n\n// Redirect to external URL\napp.get('/external', (req, res) => {\n  res.redirect('https://example.com');\n});",
+    "explanation": "Redirects are used for URL changes, authentication flows (OAuth), and post-submission (Post/Redirect/Get pattern). Use 301 for permanent redirects and 302 for temporary ones.",
+    "recallHint": "res.redirect(url) or res.redirect(status, url).",
+    "practice": [
+      "Explain how to redirect in Express.",
+      "Describe the difference between 301 and 302 redirects.",
+      "Give examples of when to use redirects."
+    ]
+  },
+  {
+    "id": "express-012",
+    "category": "express",
+    "concept": "404 Handling",
+    "priority": "must-know",
+    "question": "How do you handle a 404 Not Found route in Express?",
+    "answer": "Define a catch-all route at the end of all routes that returns a 404 response. Express matches routes in order, so this catches any unmatched routes.",
+    "code": "// Catch-all 404 middleware (after all routes)\napp.use((req, res) => {\n  res.status(404).json({ error: 'Route not found' });\n});\n\n// With custom error handler\napp.use((req, res) => {\n  res.status(404).send({\n    status: 'error',\n    message: 'Resource not found',\n    path: req.originalUrl\n  });\n});",
+    "explanation": "The 404 handler should be the LAST middleware registered. It catches any requests that didn't match earlier routes. This is different from error-handling middleware (which has 4 parameters).",
+    "recallHint": "Put 404 handler after all routes, before error handler.",
+    "practice": [
+      "Explain how to implement a 404 handler.",
+      "Describe the difference between 404 handling and error handling.",
+      "Write a 404 handler with a JSON response."
+    ]
+  },
+  {
+    "id": "express-013",
+    "category": "express",
+    "concept": "Middleware Fundamentals",
+    "priority": "must-know",
+    "question": "What is middleware in Express and why is it used?",
+    "answer": "Middleware are functions that have access to the request (req) and response (res) objects and the next middleware function. They execute in sequence and can modify req/res, end the request cycle, or pass control to the next middleware.",
+    "code": "// Simple middleware\napp.use((req, res, next) => {\n  console.log(`${req.method} ${req.url}`);\n  next(); // Pass to next middleware\n});\n\n// Route-specific middleware\napp.get('/protected', authenticate, (req, res) => {\n  res.send('Protected content');\n});",
+    "explanation": "Middleware is the core of Express. It enables: logging, authentication, validation, parsing request bodies, error handling, and compression. Each middleware can decide to process, modify, or end the request.",
+    "recallHint": "Functions in request-response cycle with access to req, res, next.",
+    "practice": [
+      "Explain what middleware is and why it's important.",
+      "Describe the middleware execution flow.",
+      "Give examples of common middleware."
+    ]
+  },
+  {
+    "id": "express-014",
+    "category": "express",
+    "concept": "Middleware Arguments",
+    "priority": "must-know",
+    "question": "What are the arguments of Express middleware?",
+    "answer": "Standard middleware receives three arguments: (req, res, next). Error-handling middleware receives four: (err, req, res, next). The req is the request object, res is the response object, and next is the callback to pass control.",
+    "code": "// Standard middleware\napp.use((req, res, next) => {\n  console.log('Processing request');\n  next();\n});\n\n// Error-handling middleware (4 parameters)\napp.use((err, req, res, next) => {\n  console.error(err.stack);\n  res.status(500).json({ error: err.message });\n});",
+    "explanation": "The next() function passes control to the next middleware. If you don't call next(), the request hangs. Error-handling middleware has 4 parameters to distinguish it from regular middleware.",
+    "recallHint": "3 params = normal, 4 params = error handler.",
+    "practice": [
+      "Explain the difference between normal and error middleware.",
+      "Describe the purpose of the next() function.",
+      "What happens if next() is not called?"
+    ]
+  },
+  {
+    "id": "express-015",
+    "category": "express",
+    "concept": "next() Function",
+    "priority": "must-know",
+    "question": "What does next() do and what happens if middleware doesn't call it?",
+    "answer": "next() passes control to the next middleware function in the chain. If a middleware doesn't call next() and doesn't send a response, the request hangs (times out). It's a critical mechanism for middleware flow control.",
+    "code": "// Correct - calls next()\napp.use((req, res, next) => {\n  console.log('Middleware 1');\n  next(); // Passes to next middleware\n});\n\n// Incorrect - request hangs\napp.use((req, res, next) => {\n  console.log('This middleware never calls next or sends response');\n  // Request hangs forever\n});\n\n// Alternative - ends response\napp.use((req, res, next) => {\n  res.send('Response sent');\n  // No need to call next() since response is sent\n});",
+    "explanation": "The request-response cycle continues only if next() is called. If not, the request remains pending. Always either: 1) call next(), 2) send a response, or 3) call next('route') to skip remaining route handlers.",
+    "recallHint": "Always call next() OR send a response.",
+    "practice": [
+      "Explain what happens if next() is not called.",
+      "Describe when you would NOT call next().",
+      "Explain the difference between next() and next('route')."
+    ]
+  },
+  {
+    "id": "express-016",
+    "category": "express",
+    "concept": "Middleware Types",
+    "priority": "must-know",
+    "question": "What are the different types of middleware in Express?",
+    "answer": "Types include: Application-level (app.use()), Router-level (router.use()), Built-in (express.json, express.static), Third-party (cors, helmet), and Error-handling (err, req, res, next). Each serves different purposes.",
+    "code": "// Application-level\napp.use(express.json());\napp.use((req, res, next) => next());\n\n// Router-level\nconst router = express.Router();\nrouter.use(express.json());\n\n// Built-in\napp.use(express.json());\napp.use(express.urlencoded({ extended: true }));\napp.use(express.static('public'));\n\n// Third-party\nconst cors = require('cors');\napp.use(cors());\n\n// Error-handling\napp.use((err, req, res, next) => {\n  res.status(500).send('Something broke!');\n});",
+    "explanation": "Understanding middleware types helps organize Express applications. Application-level affects all routes, router-level affects specific routes, and built-in provides common functionality.",
+    "recallHint": "Application, Router, Built-in, Third-party, Error.",
+    "practice": [
+      "List the types of middleware.",
+      "Explain the difference between app.use and router.use.",
+      "Give examples of built-in middleware."
+    ]
+  },
+  {
+    "id": "express-017",
+    "category": "express",
+    "concept": "Custom Middleware",
+    "priority": "must-know",
+    "question": "How do you create custom middleware and what can it do?",
+    "answer": "Create middleware by defining a function that takes (req, res, next). It can modify req/res, authenticate requests, validate data, log information, compress responses, and more. Always call next() or send a response.",
+    "code": "// Request logger middleware\nconst logger = (req, res, next) => {\n  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);\n  next();\n};\napp.use(logger);\n\n// Authentication middleware\nconst authenticate = (req, res, next) => {\n  const token = req.headers.authorization;\n  if (!token) {\n    return res.status(401).json({ error: 'Unauthorized' });\n  }\n  // Verify token logic\n  req.user = { id: 1, name: 'John' };\n  next();\n};\napp.get('/profile', authenticate, (req, res) => {\n  res.json(req.user);\n});\n\n// Validation middleware\nconst validateUser = (req, res, next) => {\n  const { name, email } = req.body;\n  if (!name || !email) {\n    return res.status(400).json({ error: 'Name and email required' });\n  }\n  next();\n};",
+    "explanation": "Custom middleware promotes code reuse and separation of concerns. Common uses: authentication, validation, logging, rate limiting, and request transformation.",
+    "recallHint": "Function with (req, res, next), then call next() or send response.",
+    "practice": [
+      "Create a logging middleware.",
+      "Create an authentication middleware.",
+      "Create a validation middleware."
+    ]
+  },
+  {
+    "id": "express-018",
+    "category": "express",
+    "concept": "Middleware Order",
+    "priority": "must-know",
+    "question": "In what order does Express execute middleware and what happens when multiple middleware are attached?",
+    "answer": "Express executes middleware in the order they are registered using app.use() or route handlers. All middleware in the chain execute sequentially until one ends the request or passes control to the next.",
+    "code": "// Execution order demonstration\napp.use((req, res, next) => {\n  console.log('1. Global middleware');\n  next();\n});\n\napp.use('/api', (req, res, next) => {\n  console.log('2. Route middleware');\n  next();\n});\n\napp.get('/api/users', (req, res, next) => {\n  console.log('3. Route handler');\n  res.json([]);\n});\n\n// Multiple middleware on one route\napp.get('/api',\n  (req, res, next) => {\n    console.log('Middleware 1');\n    next();\n  },\n  (req, res, next) => {\n    console.log('Middleware 2');\n    next();\n  },\n  (req, res) => {\n    console.log('Handler');\n    res.send('Done');\n  }\n);",
+    "explanation": "Order matters significantly. Express matches routes in order and executes middleware in registration order. Place route-specific middleware before route handlers and global middleware at the top.",
+    "recallHint": "Execution order = registration order.",
+    "practice": [
+      "Explain middleware execution order.",
+      "Describe what happens with multiple middleware on one route.",
+      "Write code demonstrating middleware ordering."
+    ]
+  },
+  {
+    "id": "express-019",
+    "category": "express",
+    "concept": "Middleware vs Controllers",
+    "priority": "must-know",
+    "question": "What is the difference between middleware and a controller?",
+    "answer": "Middleware handles cross-cutting concerns like authentication, logging, and validation. Controllers contain business logic for specific routes. Middleware can be reused across routes, while controllers are route-specific.",
+    "code": "// Middleware (cross-cutting)\nconst authMiddleware = (req, res, next) => {\n  // Authentication logic\n  next();\n};\n\n// Controller (route-specific)\nconst userController = {\n  getUsers: (req, res) => {\n    // Business logic for fetching users\n    res.json(users);\n  },\n  createUser: (req, res) => {\n    // Business logic for creating user\n    res.status(201).json(newUser);\n  }\n};\n\n// Using both\napp.get('/users', authMiddleware, userController.getUsers);",
+    "explanation": "Middleware handles what happens BEFORE or AFTER the controller (authentication, logging, validation). Controllers handle the business logic for the specific endpoint.",
+    "recallHint": "Middleware = cross-cutting (auth, logging), Controller = business logic.",
+    "practice": [
+      "Explain the difference between middleware and controllers.",
+      "Describe what each should contain.",
+      "Give examples of middleware vs controller responsibilities."
+    ]
+  },
+  {
+    "id": "express-020",
+    "category": "express",
+    "concept": "express.Router",
+    "priority": "must-know",
+    "question": "What is express.Router() and why would you use it?",
+    "answer": "express.Router() creates modular, mountable route handlers. It allows you to group related routes and middleware, making the application more organized and maintainable, especially for large applications.",
+    "code": "// userRoutes.js\nconst router = express.Router();\n\nrouter.get('/', (req, res) => res.json(users));\nrouter.post('/', (req, res) => res.status(201).json(newUser));\nrouter.get('/:id', (req, res) => res.json(user));\n\nmodule.exports = router;\n\n// app.js\nconst userRoutes = require('./userRoutes');\napp.use('/api/users', userRoutes);\n\n// All routes are prefixed with /api/users\n// GET /api/users, POST /api/users, GET /api/users/:id",
+    "explanation": "Router provides: 1) Route grouping, 2) Middleware applied to specific groups, 3) Code organization, 4) Reusability. It's the foundation of modular Express architecture.",
+    "recallHint": "Modular routing, group related routes.",
+    "practice": [
+      "Explain why express.Router is useful.",
+      "Describe how to organize routes with Router.",
+      "Write a router for a blog application."
+    ]
+  },
+  {
+    "id": "express-021",
+    "category": "express",
+    "concept": "app.use vs app.get",
+    "priority": "must-know",
+    "question": "What is the difference between app.use() and app.get() in Express?",
+    "answer": "app.use() mounts middleware that runs for all HTTP methods at a specified path. app.get() handles only GET requests to a specific path. app.use() is for middleware, app.get() is for route handling.",
+    "code": "// app.use - all HTTP methods\napp.use('/api', (req, res, next) => {\n  console.log('Middleware for /api');\n  next();\n});\n\n// app.get - only GET requests\napp.get('/api/users', (req, res) => {\n  res.json(users);\n});\n\n// app.use with path\napp.use('/users', userRouter); // Mounts router\n\n// app.use without path - global middleware\napp.use(express.json());\napp.use(logger);",
+    "explanation": "app.use() is for middleware functions that can handle all HTTP methods. app.get() is for route handlers that only respond to GET requests. Use app.use() for middleware and app.get()/post()/put() for route handlers.",
+    "recallHint": "app.use = middleware (all HTTP methods), app.get = specific route.",
+    "practice": [
+      "Explain the difference between app.use and app.get.",
+      "Describe when to use each.",
+      "Why would you use app.use with a path?"
+    ]
+  },
+  {
+    "id": "express-022",
+    "category": "express",
+    "concept": "Route Organization",
+    "priority": "must-know",
+    "question": "How do you organize routes in a large Express application?",
+    "answer": "Organize routes using express.Router() with separate files for each resource. Use a routes/index.js to import and combine all routes. Group related endpoints and apply middleware at the router level for reusability.",
+    "code": "// routes/users.js\nconst router = require('express').Router();\nrouter.get('/', userController.getAll);\nrouter.post('/', userController.create);\nrouter.get('/:id', userController.getOne);\nmodule.exports = router;\n\n// routes/posts.js\nconst router = require('express').Router();\nrouter.get('/', postController.getAll);\nrouter.post('/', postController.create);\nmodule.exports = router;\n\n// routes/index.js\nconst userRoutes = require('./users');\nconst postRoutes = require('./posts');\nmodule.exports = (app) => {\n  app.use('/api/users', userRoutes);\n  app.use('/api/posts', postRoutes);\n};\n\n// app.js\nconst setupRoutes = require('./routes');\nsetupRoutes(app);",
+    "explanation": "Organizing routes keeps the codebase maintainable. Each resource gets its own file with its own router. This separation makes the application more testable, scalable, and easier to navigate.",
+    "recallHint": "Separate router files, combine in index.js.",
+    "practice": [
+      "Design a route structure for a blog API.",
+      "Explain how to organize routes for large applications.",
+      "Describe the benefits of modular route organization."
+    ]
+  },
+  {
+    "id": "express-023",
+    "category": "express",
+    "concept": "Route Parameters Advanced",
+    "priority": "important",
+    "question": "How do route parameters work in Express with multiple and optional parameters?",
+    "answer": "Route parameters are defined with :paramName. Multiple parameters are allowed. Optional parameters use ? after the parameter. Parameters are captured in req.params and can be validated with regex patterns.",
+    "code": "// Multiple parameters\napp.get('/users/:userId/posts/:postId', (req, res) => {\n  const { userId, postId } = req.params;\n  res.json({ userId, postId });\n});\n\n// Optional parameter\napp.get('/users/:userId?/profile', (req, res) => {\n  const userId = req.params.userId || 'default';\n  res.json({ userId });\n});\n\n// Regex pattern matching\napp.get('/users/:userId(\\\\d+)', (req, res) => {\n  // userId must be digits only\n  res.json({ userId: req.params.userId });\n});\n\n// Optional with default\napp.get('/page/:page?', (req, res) => {\n  const page = parseInt(req.params.page) || 1;\n  res.json({ page });\n});",
+    "explanation": "Route parameters are powerful for building dynamic URLs. Multiple parameters are common for nested resources (users/:userId/posts/:postId). Optional parameters handle flexible routes.",
+    "recallHint": ":param for required, :param? for optional, regex for validation.",
+    "practice": [
+      "Explain how multiple route parameters work.",
+      "Describe how to make route parameters optional.",
+      "Explain regex pattern matching in routes."
+    ]
+  },
+  {
+    "id": "express-024",
+    "category": "express",
+    "concept": "Route Chaining",
+    "priority": "important",
+    "question": "What is route chaining in Express and how do you use it?",
+    "answer": "Route chaining is the practice of defining multiple route handlers for the same HTTP method on a single route. It allows applying multiple middleware before the final handler. Use app.route() to chain methods.",
+    "code": "// Route chaining with app.route()\napp.route('/users/:id')\n  .get((req, res) => {\n    res.json(user);\n  })\n  .put(validateUser, (req, res) => {\n    res.json(updatedUser);\n  })\n  .delete(authMiddleware, (req, res) => {\n    res.status(204).end();\n  });\n\n// Without chaining (separate)\napp.get('/users/:id', (req, res) => res.json(user));\napp.put('/users/:id', (req, res) => res.json(updatedUser));\napp.delete('/users/:id', (req, res) => res.status(204).end());",
+    "explanation": "Route chaining keeps code DRY and groups related routes together. It's especially useful when multiple HTTP methods share the same path and middleware.",
+    "recallHint": "app.route('/path').get().post().put().delete()",
+    "practice": [
+      "Explain what route chaining is.",
+      "Describe the benefits of route chaining.",
+      "Write a route chain for a resource."
+    ]
+  },
+  {
+    "id": "express-025",
+    "category": "express",
+    "concept": "Middleware on Routers",
+    "priority": "important",
+    "question": "How do you apply middleware to a specific route or entire router?",
+    "answer": "Apply middleware to a specific route by passing it as an argument before the route handler. Apply to an entire router using router.use(). This allows modular middleware management.",
+    "code": "// Middleware on specific route\napp.get('/protected', authMiddleware, (req, res) => {\n  res.send('Protected');\n});\n\n// Multiple middleware on one route\napp.post('/users', \n  validateUser, \n  checkDuplicate, \n  (req, res) => {\n    res.status(201).json(newUser);\n  }\n);\n\n// Middleware on entire router\nconst router = express.Router();\nrouter.use(authMiddleware); // All routes need authentication\nrouter.get('/profile', (req, res) => res.json(req.user));\nrouter.put('/profile', (req, res) => res.json(updated));\n\n// Conditional middleware on router\nrouter.use('/admin', adminAuthMiddleware);\nrouter.use('/public', (req, res, next) => next());",
+    "explanation": "Applying middleware at the router level is efficient when you need the same middleware for multiple routes. Route-level middleware is specific to individual routes.",
+    "recallHint": "Route: app.method(path, middleware, handler). Router: router.use(middleware).",
+    "practice": [
+      "Explain how to apply middleware to specific routes.",
+      "Describe router-level middleware application.",
+      "Write a router with authentication middleware."
+    ]
+  },
+  {
+    "id": "express-026",
+    "category": "express",
+    "concept": "Route Matching",
+    "priority": "important",
+    "question": "How does Express decide which route matches a request and what happens with multiple matching routes?",
+    "answer": "Express matches routes in the order they are defined. It uses a first-match-wins strategy. More specific routes should be defined before more generic ones. Middleware order also matters.",
+    "code": "// Route matching order\napp.get('/users/:id', (req, res) => {\n  // Matches /users/123\n  res.json({ id: req.params.id });\n});\n\napp.get('/users/profile', (req, res) => {\n  // NEVER MATCHES - /users/profile is caught by :id first\n  res.json({ profile: true });\n});\n\n// Correct order (specific first)\napp.get('/users/profile', (req, res) => {\n  // This runs first\n  res.json({ profile: true });\n});\n\napp.get('/users/:id', (req, res) => {\n  // Matches /users/123 but not /users/profile\n  res.json({ id: req.params.id });\n});",
+    "explanation": "Route order matters significantly. Always place specific routes before parameterized routes. Use the 'next' function for multiple route handlers, but remember they execute in order.",
+    "recallHint": "Routes match in definition order, specific before generic.",
+    "practice": [
+      "Explain Express route matching.",
+      "Describe what happens with conflicting routes.",
+      "Why should you put /users/profile before /users/:id?"
+    ]
+  },
+  {
+    "id": "express-027",
+    "category": "express",
+    "concept": "Request Headers",
+    "priority": "must-know",
+    "question": "How do you read request headers and cookies in Express?",
+    "answer": "Read headers with req.get() or req.headers. Read cookies with req.cookies (requires cookie-parser middleware). Headers contain metadata like authentication tokens, content-type, and user-agent.",
+    "code": "const cookieParser = require('cookie-parser');\napp.use(cookieParser());\n\n// Reading headers\napp.get('/headers', (req, res) => {\n  const auth = req.get('Authorization');\n  const contentType = req.headers['content-type'];\n  const userAgent = req.headers['user-agent'];\n  \n  res.json({ auth, contentType, userAgent });\n});\n\n// Reading cookies\napp.get('/cookies', (req, res) => {\n  const token = req.cookies.token;\n  const session = req.cookies.sessionId;\n  res.json({ token, session });\n});\n\n// Setting headers\napp.get('/set-header', (req, res) => {\n  res.set('X-Custom-Header', 'Custom-Value');\n  res.json({ message: 'Header set' });\n});",
+    "explanation": "Headers are essential for authentication, CORS, and content negotiation. Cookies are used for sessions and client-side storage. Always validate and sanitize header data before use.",
+    "recallHint": "req.get() or req.headers, req.cookies with cookie-parser.",
+    "practice": [
+      "Explain how to read request headers.",
+      "Describe how to read cookies.",
+      "Explain how to set response headers."
+    ]
+  },
+  {
+    "id": "express-028",
+    "category": "express",
+    "concept": "Request Body Parsing",
+    "priority": "must-know",
+    "question": "How do you read the request body in Express and what middleware is needed?",
+    "answer": "Use express.json() for JSON payloads and express.urlencoded() for URL-encoded form data. The parsed body is available in req.body. Without these middleware, req.body is undefined.",
+    "code": "// Required middleware\napp.use(express.json()); // Parses application/json\napp.use(express.urlencoded({ extended: true })); // Parses application/x-www-form-urlencoded\n\n// Using req.body\napp.post('/users', (req, res) => {\n  const { name, email, age } = req.body;\n  \n  if (!name || !email) {\n    return res.status(400).json({ error: 'Missing required fields' });\n  }\n  \n  const newUser = { id: Date.now(), name, email, age };\n  res.status(201).json(newUser);\n});\n\n// Raw body (for webhooks)\napp.use(express.raw({ type: 'application/json' }));",
+    "explanation": "express.json() is essential for REST APIs. express.urlencoded() is needed for form submissions. The 'extended' option uses qs library for nested objects (true) or querystring (false).",
+    "recallHint": "app.use(express.json()) for JSON, express.urlencoded() for forms.",
+    "practice": [
+      "Explain what middleware is needed for req.body.",
+      "Describe the difference between json and urlencoded.",
+      "What happens if express.json() is not configured?"
+    ]
+  },
+  {
+    "id": "express-029",
+    "category": "express",
+    "concept": "File Uploads",
+    "priority": "important",
+    "question": "How do you handle file uploads in Express?",
+    "answer": "Use middleware like multer, busboy, or formidable. Multer is the most popular. It handles multipart/form-data, stores files in memory or disk, and provides file metadata in req.file or req.files.",
+    "code": "const multer = require('multer');\nconst upload = multer({ dest: 'uploads/' });\n\n// Single file upload\napp.post('/upload', upload.single('file'), (req, res) => {\n  // req.file contains uploaded file info\n  res.json({ file: req.file });\n});\n\n// Multiple files\napp.post('/upload-multiple', upload.array('files', 5), (req, res) => {\n  res.json({ files: req.files });\n});\n\n// Custom storage\nconst storage = multer.diskStorage({\n  destination: (req, file, cb) => cb(null, 'uploads/'),\n  filename: (req, file, cb) => {\n    const unique = Date.now() + '-' + file.originalname;\n    cb(null, unique);\n  }\n});\nconst upload = multer({ storage });\n\n// File filter (images only)\nconst imageFilter = (req, file, cb) => {\n  if (file.mimetype.startsWith('image/')) {\n    cb(null, true);\n  } else {\n    cb(new Error('Only images allowed'), false);\n  }\n};",
+    "explanation": "Multer is the standard for file uploads. It handles multipart/form-data, validates file types, limits file sizes, and stores files. Always validate file types and sizes for security.",
+    "recallHint": "multer for multipart/form-data, req.file for uploaded file.",
+    "practice": [
+      "Explain how to handle file uploads.",
+      "Describe multer configuration options.",
+      "Explain file validation and filtering."
+    ]
+  },
+  {
+    "id": "express-030",
+    "category": "express",
+    "concept": "Request Validation",
+    "priority": "must-know",
+    "question": "How do you validate incoming request data in Express?",
+    "answer": "Use validation libraries like Joi, express-validator, yup, or zod. Validate req.body, req.params, and req.query. Return validation errors with proper HTTP status codes.",
+    "code": "const { body, validationResult } = require('express-validator');\n\n// Validation chain\napp.post('/users',\n  body('name').isLength({ min: 3 }).trim(),\n  body('email').isEmail().normalizeEmail(),\n  body('age').isInt({ min: 18, max: 120 }),\n  (req, res) => {\n    // Check validation results\n    const errors = validationResult(req);\n    if (!errors.isEmpty()) {\n      return res.status(400).json({ errors: errors.array() });\n    }\n    \n    // Valid data\n    const { name, email, age } = req.body;\n    res.status(201).json({ name, email, age });\n  }\n);\n\n// Custom validation middleware\nconst validateUser = (req, res, next) => {\n  const { name, email } = req.body;\n  \n  if (!name || name.length < 3) {\n    return res.status(400).json({ error: 'Name must be at least 3 characters' });\n  }\n  \n  if (!email || !email.includes('@')) {\n    return res.status(400).json({ error: 'Invalid email' });\n  }\n  \n  next();\n};\n\napp.post('/users', validateUser, (req, res) => {\n  res.status(201).json(req.body);\n});",
+    "explanation": "Validation is critical for security and data integrity. Use dedicated validation libraries for complex rules. Return clear, consistent error messages. Never trust client input.",
+    "recallHint": "express-validator, Joi, or custom validation middleware.",
+    "practice": [
+      "Explain why validation is important.",
+      "Describe how to validate request data.",
+      "Write validation for a user registration endpoint."
+    ]
+  },
+  {
+    "id": "express-031",
+    "category": "express",
+    "concept": "Error Handling Middleware",
+    "priority": "must-know",
+    "question": "How does Express handle errors and what is error-handling middleware?",
+    "answer": "Error-handling middleware has four parameters: (err, req, res, next). It catches errors from synchronous and asynchronous code. It should be defined after all routes and regular middleware.",
+    "code": "// Error-handling middleware\napp.use((err, req, res, next) => {\n  console.error('Error:', err.message);\n  console.error('Stack:', err.stack);\n  \n  // Determine status code\n  const status = err.statusCode || 500;\n  const message = err.isOperational ? err.message : 'Internal Server Error';\n  \n  res.status(status).json({\n    status: 'error',\n    message: message,\n    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })\n  });\n});\n\n// Throwing errors in routes\napp.get('/users/:id', (req, res, next) => {\n  const user = findUser(req.params.id);\n  if (!user) {\n    const err = new Error('User not found');\n    err.statusCode = 404;\n    throw err; // Caught by error handler\n  }\n  res.json(user);\n});",
+    "explanation": "Error middleware catches all errors that occur in the request-response cycle. It should be the last middleware registered. Always include proper logging and client-friendly error messages.",
+    "recallHint": "4 parameters, defined after all routes, catches all errors.",
+    "practice": [
+      "Explain error-handling middleware.",
+      "Describe the four parameters.",
+      "Where should error middleware be registered?"
+    ]
+  },
+  {
+    "id": "express-032",
+    "category": "express",
+    "concept": "Async Error Handling",
+    "priority": "must-know",
+    "question": "How do you handle errors from asynchronous operations in Express?",
+    "answer": "Use try/catch with async/await, .catch() with promises, or a wrapper like express-async-errors. Without proper handling, async errors will crash the server or cause unhandled rejections.",
+    "code": "// Method 1: try/catch\napp.get('/users', async (req, res, next) => {\n  try {\n    const users = await User.find();\n    res.json(users);\n  } catch (err) {\n    next(err); // Pass to error handler\n  }\n});\n\n// Method 2: .catch()\napp.get('/users', (req, res, next) => {\n  User.find()\n    .then(users => res.json(users))\n    .catch(err => next(err));\n});\n\n// Method 3: express-async-errors package\nrequire('express-async-errors');\n\napp.get('/users', async (req, res) => {\n  // Any error is automatically passed to error handler\n  const users = await User.find();\n  res.json(users);\n});\n\n// Method 4: wrapper function\nconst asyncHandler = (fn) => (req, res, next) => {\n  Promise.resolve(fn(req, res, next)).catch(next);\n};\n\napp.get('/users', asyncHandler(async (req, res) => {\n  const users = await User.find();\n  res.json(users);\n}));",
+    "explanation": "Always handle async errors. Without proper handling, unhandled rejections crash the application. Use express-async-errors for a clean solution or create your own async wrapper.",
+    "recallHint": "try/catch, .catch(), express-async-errors, asyncHandler wrapper.",
+    "practice": [
+      "Explain how to handle async errors.",
+      "Describe the express-async-errors package.",
+      "Write an asyncHandler wrapper function."
+    ]
+  },
+  {
+    "id": "express-033",
+    "category": "express",
+    "concept": "Custom Application Errors",
+    "priority": "must-know",
+    "question": "How would you create custom application errors and distinguish between operational and programming errors?",
+    "answer": "Create custom error classes extending Error. Operational errors are predictable (user errors, validation failures) and should be handled gracefully. Programming errors are bugs (undefined variables, type errors) and should crash the process.",
+    "code": "// Custom error class\nclass AppError extends Error {\n  constructor(message, statusCode, isOperational = true) {\n    super(message);\n    this.statusCode = statusCode;\n    this.isOperational = isOperational;\n    this.timestamp = new Date().toISOString();\n    Error.captureStackTrace(this, this.constructor);\n  }\n}\n\n// Usage\napp.get('/users/:id', (req, res, next) => {\n  const user = findUser(req.params.id);\n  if (!user) {\n    return next(new AppError('User not found', 404, true));\n  }\n  res.json(user);\n});\n\n// Error handler\napp.use((err, req, res, next) => {\n  if (err.isOperational) {\n    // Known error - send client-friendly response\n    return res.status(err.statusCode).json({\n      status: 'error',\n      message: err.message\n    });\n  }\n  \n  // Programming error - log and exit\n  console.error('UNEXPECTED ERROR:', err);\n  process.exit(1); // Or log and restart\n});",
+    "explanation": "Operational errors are part of normal operation (404, validation errors). Programming errors are bugs that shouldn't happen in production. Differentiating them helps with error handling strategy.",
+    "recallHint": "Operational = expected, handled. Programming = bugs, crash.",
+    "practice": [
+      "Explain the difference between operational and programming errors.",
+      "Create a custom error class.",
+      "Describe error handling strategies for each type."
+    ]
+  },
+  {
+    "id": "express-034",
+    "category": "express",
+    "concept": "Global Error Handler",
+    "priority": "must-know",
+    "question": "How would you create a global error handler and return consistent error responses?",
+    "answer": "Create a centralized error handler middleware that catches all errors, formats responses consistently, logs errors appropriately, and differentiates between environment (dev/prod) for error details.",
+    "code": "// Global error handler\nconst globalErrorHandler = (err, req, res, next) => {\n  // Log error\n  console.error('Error:', {\n    message: err.message,\n    stack: err.stack,\n    path: req.path,\n    method: req.method,\n    ip: req.ip,\n    timestamp: new Date().toISOString()\n  });\n  \n  // Determine status code\n  let statusCode = err.statusCode || 500;\n  let message = err.message || 'Internal Server Error';\n  \n  // Handle specific error types\n  if (err.name === 'ValidationError') {\n    statusCode = 400;\n    message = err.message;\n  }\n  \n  if (err.name === 'CastError') {\n    statusCode = 400;\n    message = 'Invalid ID format';\n  }\n  \n  if (err.name === 'JsonWebTokenError') {\n    statusCode = 401;\n    message = 'Invalid token';\n  }\n  \n  // Response\n  const response = {\n    status: 'error',\n    statusCode,\n    message,\n    timestamp: new Date().toISOString(),\n    path: req.originalUrl\n  };\n  \n  // Add stack trace in development only\n  if (process.env.NODE_ENV === 'development') {\n    response.stack = err.stack;\n  }\n  \n  res.status(statusCode).json(response);\n};\n\n// Using the handler\napp.use(globalErrorHandler);",
+    "explanation": "A global error handler ensures consistent error responses, proper logging, and security (stack traces only in development). It's a best practice for production applications.",
+    "recallHint": "Centralized handler with consistent format, logging, and environment-specific details.",
+    "practice": [
+      "Create a global error handler.",
+      "Explain consistent error responses.",
+      "Describe when to include stack traces."
+    ]
+  },
+  {
+    "id": "express-035",
+    "category": "express",
+    "concept": "Promise.all in Express",
+    "priority": "important",
+    "question": "When would you use Promise.all() in an Express controller and what happens if one operation fails?",
+    "answer": "Promise.all() is used when making multiple independent asynchronous calls that can run in parallel. It rejects immediately if any promise rejects. Use Promise.allSettled() if you need all results regardless of failures.",
+    "code": "// Parallel operations with Promise.all\napp.get('/dashboard', async (req, res, next) => {\n  try {\n    const [user, posts, notifications] = await Promise.all([\n      User.findById(req.user.id),\n      Post.findByUserId(req.user.id),\n      Notification.findByUserId(req.user.id)\n    ]);\n    \n    res.json({ user, posts, notifications });\n  } catch (err) {\n    next(err); // Any failure rejects the whole Promise.all\n  }\n});\n\n// Promise.allSettled - get all results\napp.get('/external-data', async (req, res, next) => {\n  try {\n    const results = await Promise.allSettled([\n      fetch('https://api1.example.com'),\n      fetch('https://api2.example.com'),\n      fetch('https://api3.example.com')\n    ]);\n    \n    const data = results.map(result => \n      result.status === 'fulfilled' ? result.value : { error: 'Failed' }\n    );\n    \n    res.json(data);\n  } catch (err) {\n    next(err);\n  }\n});",
+    "explanation": "Promise.all() improves performance by running operations in parallel. Use it when operations are independent. Promise.allSettled() is useful when you need partial results even if some fail.",
+    "recallHint": "Promise.all = fail fast, Promise.allSettled = all results.",
+    "practice": [
+      "Explain when to use Promise.all in Express.",
+      "Describe the difference between Promise.all and Promise.allSettled.",
+      "Write a controller that calls multiple APIs."
+    ]
+  },
+  {
+    "id": "express-036",
+    "category": "express",
+    "concept": "Authentication",
+    "priority": "must-know",
+    "question": "How would you implement authentication in Express with JWT?",
+    "answer": "Implement JWT authentication by: 1) Login endpoint that validates credentials and generates JWT, 2) Auth middleware that verifies JWT on protected routes, 3) Secure JWT with proper expiration and signing.",
+    "code": "const jwt = require('jsonwebtoken');\nconst bcrypt = require('bcrypt');\n\n// Login endpoint\napp.post('/login', async (req, res, next) => {\n  try {\n    const { email, password } = req.body;\n    const user = await User.findOne({ email });\n    \n    if (!user) {\n      return res.status(401).json({ error: 'Invalid credentials' });\n    }\n    \n    const validPassword = await bcrypt.compare(password, user.password);\n    if (!validPassword) {\n      return res.status(401).json({ error: 'Invalid credentials' });\n    }\n    \n    // Generate JWT\n    const token = jwt.sign(\n      { userId: user.id, email: user.email, role: user.role },\n      process.env.JWT_SECRET,\n      { expiresIn: '1h' }\n    );\n    \n    res.json({ token, user: { id: user.id, email: user.email } });\n  } catch (err) {\n    next(err);\n  }\n});\n\n// Auth middleware\nconst authenticate = (req, res, next) => {\n  const authHeader = req.headers.authorization;\n  \n  if (!authHeader || !authHeader.startsWith('Bearer ')) {\n    return res.status(401).json({ error: 'No token provided' });\n  }\n  \n  const token = authHeader.split(' ')[1];\n  \n  try {\n    const decoded = jwt.verify(token, process.env.JWT_SECRET);\n    req.user = decoded;\n    next();\n  } catch (err) {\n    return res.status(401).json({ error: 'Invalid or expired token' });\n  }\n};\n\n// Protected route\napp.get('/profile', authenticate, (req, res) => {\n  res.json({ user: req.user });\n});",
+    "explanation": "JWT authentication is stateless and scalable. Always use HTTPS, store JWT securely (HTTP-only cookies for web apps), and implement token refresh for better security.",
+    "recallHint": "Login → generate JWT, Auth middleware → verify JWT.",
+    "practice": [
+      "Explain JWT authentication flow.",
+      "Describe auth middleware implementation.",
+      "Explain where to store JWT tokens."
+    ]
+  },
+  {
+    "id": "express-037",
+    "category": "express",
+    "concept": "Authorization",
+    "priority": "must-know",
+    "question": "What is the difference between authentication and authorization and how do you implement role-based authorization?",
+    "answer": "Authentication verifies WHO you are. Authorization verifies WHAT you can do. Implement role-based authorization with middleware that checks the user's role against required permissions.",
+    "code": "// Auth middleware (verifies identity)\nconst authenticate = (req, res, next) => {\n  // Verify JWT and set req.user\n  next();\n};\n\n// Authorization middleware (verifies permissions)\nconst authorize = (roles = []) => {\n  return (req, res, next) => {\n    if (!req.user) {\n      return res.status(401).json({ error: 'Unauthorized' });\n    }\n    \n    if (!roles.includes(req.user.role)) {\n      return res.status(403).json({ \n        error: 'Insufficient permissions'\n      });\n    }\n    \n    next();\n  };\n};\n\n// Usage\napp.get('/admin', authenticate, authorize(['admin']), (req, res) => {\n  res.json({ message: 'Admin content' });\n});\n\napp.get('/manager', authenticate, authorize(['admin', 'manager']), (req, res) => {\n  res.json({ message: 'Manager content' });\n});\n\n// Protect a group of routes\nconst router = express.Router();\nrouter.use(authenticate);\nrouter.use(authorize(['admin']));\n\nrouter.get('/reports', (req, res) => res.json(reports));\nrouter.post('/reports', (req, res) => res.status(201).json(newReport));",
+    "explanation": "Authentication comes before authorization. Authorization middleware checks the authenticated user's permissions. Role-based access control (RBAC) is the most common authorization pattern.",
+    "recallHint": "Auth = identity, Authorization = permissions.",
+    "practice": [
+      "Explain the difference between authentication and authorization.",
+      "Create role-based authorization middleware.",
+      "Describe how to protect groups of routes."
+    ]
+  },
+  {
+    "id": "express-038",
+    "category": "express",
+    "concept": "Session Authentication",
+    "priority": "important",
+    "question": "What is session-based authentication and how does it compare to JWT?",
+    "answer": "Session-based authentication uses server-side sessions stored in memory or Redis. The client receives a session cookie. JWT is stateless, sessions are stateful. Choose JWT for stateless APIs, sessions for server-rendered apps.",
+    "code": "const session = require('express-session');\nconst RedisStore = require('connect-redis')(session);\n\n// Session configuration\napp.use(session({\n  store: new RedisStore({ host: 'localhost', port: 6379 }),\n  secret: process.env.SESSION_SECRET,\n  resave: false,\n  saveUninitialized: false,\n  cookie: {\n    secure: process.env.NODE_ENV === 'production',\n    httpOnly: true,\n    maxAge: 1000 * 60 * 60 * 24 // 24 hours\n  }\n}));\n\n// Login with session\napp.post('/login', async (req, res) => {\n  const user = await User.findOne({ email: req.body.email });\n  \n  if (user && await bcrypt.compare(req.body.password, user.password)) {\n    // Store user in session\n    req.session.userId = user.id;\n    req.session.role = user.role;\n    res.json({ message: 'Logged in' });\n  } else {\n    res.status(401).json({ error: 'Invalid credentials' });\n  }\n});\n\n// Auth middleware for sessions\nconst authenticateSession = (req, res, next) => {\n  if (!req.session.userId) {\n    return res.status(401).json({ error: 'Unauthorized' });\n  }\n  req.user = { id: req.session.userId, role: req.session.role };\n  next();\n};",
+    "explanation": "Sessions are easier to manage for server-rendered apps and provide built-in invalidation. JWT is better for distributed systems and microservices. Use sessions with Redis for horizontal scaling.",
+    "recallHint": "Sessions = stateful, server-side. JWT = stateless, client-side.",
+    "practice": [
+      "Explain session-based authentication.",
+      "Describe the differences between session and JWT.",
+      "Explain when to use each approach."
+    ]
+  },
+  {
+    "id": "express-039",
+    "category": "express",
+    "concept": "CORS",
+    "priority": "must-know",
+    "question": "What is CORS and how do you configure it in Express?",
+    "answer": "CORS (Cross-Origin Resource Sharing) is a security mechanism that controls cross-origin requests. Use the cors package or set headers manually to configure which origins can access your API.",
+    "code": "const cors = require('cors');\n\n// Global CORS\napp.use(cors()); // Allows all origins (development only)\n\n// Specific configuration\napp.use(cors({\n  origin: 'https://myfrontend.com',\n  methods: ['GET', 'POST', 'PUT', 'DELETE'],\n  allowedHeaders: ['Content-Type', 'Authorization'],\n  credentials: true,\n  maxAge: 86400 // Cache preflight requests\n}));\n\n// Dynamic origin\napp.use(cors({\n  origin: (origin, callback) => {\n    const allowedOrigins = ['https://app1.com', 'https://app2.com'];\n    if (!origin || allowedOrigins.includes(origin)) {\n      callback(null, true);\n    } else {\n      callback(new Error('Not allowed by CORS'));\n    }\n  }\n}));\n\n// Manual CORS headers\napp.use((req, res, next) => {\n  res.header('Access-Control-Allow-Origin', '*');\n  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');\n  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');\n  \n  if (req.method === 'OPTIONS') {\n    return res.status(204).end();\n  }\n  next();\n});",
+    "explanation": "CORS is essential for frontend-backend separation. In production, always specify allowed origins, not * wildcard. Handle preflight (OPTIONS) requests properly.",
+    "recallHint": "cors package, origin configuration, preflight requests.",
+    "practice": [
+      "Explain CORS and why it's needed.",
+      "Describe how to configure CORS in Express.",
+      "Explain preflight requests."
+    ]
+  },
+  {
+    "id": "express-040",
+    "category": "express",
+    "concept": "Security Best Practices",
+    "priority": "must-know",
+    "question": "What security risks exist in Express applications and how do you mitigate them?",
+    "answer": "Common risks: XSS, CSRF, SQL injection, brute force, CORS misconfiguration, and data exposure. Mitigations include: Helmet.js, CORS configuration, rate limiting, input validation, and secure headers.",
+    "code": "const helmet = require('helmet');\nconst cors = require('cors');\nconst rateLimit = require('express-rate-limit');\nconst xss = require('xss-clean');\nconst hpp = require('hpp');\n\n// Security middleware\napp.use(helmet()); // Security headers\napp.use(cors({ origin: allowedOrigins })); // CORS\n\n// Rate limiting\nconst limiter = rateLimit({\n  windowMs: 15 * 60 * 1000, // 15 minutes\n  max: 100, // 100 requests per window\n  message: 'Too many requests from this IP'\n});\napp.use('/api', limiter);\n\n// XSS protection\napp.use(xss());\n\n// Parameter pollution protection\napp.use(hpp());\n\n// Input validation\napp.post('/users', validateUser, (req, res) => {\n  // Validated data\n});\n\n// No sensitive data in responses\napp.get('/users/:id', (req, res) => {\n  const user = users.find(u => u.id === req.params.id);\n  // Remove password before sending\n  delete user.password;\n  res.json(user);\n});\n\n// Environment variables for secrets\nconst JWT_SECRET = process.env.JWT_SECRET; // Not hard-coded",
+    "explanation": "Security should be implemented from the start. Use helmet for headers, rate limiting for DDoS protection, validation for injection attacks, and proper CORS configuration.",
+    "recallHint": "Helmet, CORS, rate limiting, validation, secure headers.",
+    "practice": [
+      "List common security risks.",
+      "Explain how to mitigate each risk.",
+      "Describe the Helmet package and what it protects against."
+    ]
+  },
+  {
+    "id": "express-041",
+    "category": "express",
+    "concept": "Rate Limiting",
+    "priority": "must-know",
+    "question": "What is rate limiting and how would you implement it in Express?",
+    "answer": "Rate limiting controls the number of requests a client can make within a time window. It prevents DDoS attacks and abuse. Implement using express-rate-limit middleware.",
+    "code": "const rateLimit = require('express-rate-limit');\n\n// General rate limiter\nconst limiter = rateLimit({\n  windowMs: 15 * 60 * 1000, // 15 minutes\n  max: 100, // Limit each IP to 100 requests\n  message: {\n    status: 'error',\n    message: 'Too many requests, please try again later'\n  },\n  standardHeaders: true, // Return rate limit info in headers\n  legacyHeaders: false\n});\napp.use('/api', limiter);\n\n// Strict limiter for auth endpoints\nconst authLimiter = rateLimit({\n  windowMs: 60 * 60 * 1000, // 1 hour\n  max: 5, // 5 login attempts\n  message: 'Too many login attempts, please try again later'\n});\napp.post('/login', authLimiter, loginHandler);\n\n// Custom key generator (by user ID)\nconst userLimiter = rateLimit({\n  windowMs: 60 * 1000,\n  max: 10,\n  keyGenerator: (req) => req.user.id\n});",
+    "explanation": "Rate limiting is essential for API security and stability. Different endpoints may need different limits (auth endpoints stricter than public endpoints).",
+    "recallHint": "express-rate-limit, windowMs, max requests.",
+    "practice": [
+      "Explain why rate limiting is important.",
+      "Implement rate limiting for different endpoints.",
+      "Describe how to create custom rate limiter keys."
+    ]
+  },
+  {
+    "id": "express-042",
+    "category": "express",
+    "concept": "Database Integration",
+    "priority": "must-know",
+    "question": "How do you connect Express to PostgreSQL and where should database logic live?",
+    "answer": "Connect using the pg package or an ORM like Sequelize/Prisma. Database logic should live in repository/data access layers, not in controllers. Use connection pools for performance.",
+    "code": "const { Pool } = require('pg');\n\n// Database connection pool\nconst pool = new Pool({\n  host: process.env.DB_HOST,\n  port: process.env.DB_PORT,\n  database: process.env.DB_NAME,\n  user: process.env.DB_USER,\n  password: process.env.DB_PASSWORD,\n  max: 20, // Max connections in pool\n  idleTimeoutMillis: 30000,\n  connectionTimeoutMillis: 2000\n});\n\n// Repository layer\nclass UserRepository {\n  async findAll(page = 1, limit = 10) {\n    const offset = (page - 1) * limit;\n    const result = await pool.query(\n      'SELECT id, name, email FROM users LIMIT $1 OFFSET $2',\n      [limit, offset]\n    );\n    return result.rows;\n  }\n  \n  async findById(id) {\n    const result = await pool.query(\n      'SELECT id, name, email FROM users WHERE id = $1',\n      [id]\n    );\n    return result.rows[0];\n  }\n  \n  async create(user) {\n    const result = await pool.query(\n      'INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id',\n      [user.name, user.email, user.password]\n    );\n    return result.rows[0];\n  }\n}\n\n// Service layer\nclass UserService {\n  constructor(userRepository) {\n    this.userRepository = userRepository;\n  }\n  \n  async getUsers(page, limit) {\n    return this.userRepository.findAll(page, limit);\n  }\n}\n\n// Controller\napp.get('/users', async (req, res, next) => {\n  try {\n    const userService = new UserService(new UserRepository());\n    const users = await userService.getUsers(req.query.page, req.query.limit);\n    res.json(users);\n  } catch (err) {\n    next(err);\n  }\n});",
+    "explanation": "Database logic should be abstracted to allow testing and maintainability. Use repositories for data access, services for business logic, and controllers for HTTP handling.",
+    "recallHint": "Repository = data access, Service = business logic, Controller = HTTP.",
+    "practice": [
+      "Explain the Repository pattern.",
+      "Describe how to structure database code.",
+      "Explain connection pooling."
+    ]
+  },
+  {
+    "id": "express-043",
+    "category": "express",
+    "concept": "Connection Pooling",
+    "priority": "must-know",
+    "question": "What is a connection pool and how does it work in Express?",
+    "answer": "A connection pool maintains reusable database connections that can be shared across requests. It improves performance by reducing connection overhead and manages concurrent database access.",
+    "code": "// Connection pool with PostgreSQL\nconst { Pool } = require('pg');\nconst pool = new Pool({\n  max: 20, // Maximum connections\n  min: 2,  // Minimum connections\n  idleTimeoutMillis: 30000,\n  connectionTimeoutMillis: 2000\n});\n\n// Using the pool\nasync function query(sql, params) {\n  let client;\n  try {\n    client = await pool.connect(); // Get connection from pool\n    const result = await client.query(sql, params);\n    return result;\n  } finally {\n    client.release(); // Return connection to pool\n  }\n}\n\n// Express route\napp.get('/users', async (req, res, next) => {\n  try {\n    const result = await query('SELECT * FROM users');\n    res.json(result.rows);\n  } catch (err) {\n    next(err);\n  }\n});\n\n// Handle pool exhaustion\npool.on('error', (err) => {\n  console.error('Unexpected pool error:', err);\n});",
+    "explanation": "Connection pooling is critical for performance. It avoids creating a new connection for every request. Pool size should be based on max concurrent requests and database capacity.",
+    "recallHint": "Reusable connections, improves performance, handles concurrent requests.",
+    "practice": [
+      "Explain what a connection pool is.",
+      "Describe how pooling works.",
+      "Explain what happens when all connections are busy."
+    ]
+  },
+  {
+    "id": "express-044",
+    "category": "express",
+    "concept": "API Architecture",
+    "priority": "must-know",
+    "question": "How would you structure a large Express application using Controller → Service → Repository pattern?",
+    "answer": "Layer the application: Controllers handle HTTP (req/res), Services contain business logic, Repositories handle data access. This separates concerns, improves testability, and makes the application maintainable.",
+    "code": "// Structure\nsrc/\n├── routes/\n│   └── user.routes.js\n├── controllers/\n│   └── user.controller.js\n├── services/\n│   └── user.service.js\n├── repositories/\n│   └── user.repository.js\n├── models/\n│   └── user.model.js\n├── middleware/\n│   ├── auth.middleware.js\n│   └── error.middleware.js\n├── validators/\n│   └── user.validator.js\n└── config/\n    └── database.js\n\n// Repository (data access)\nclass UserRepository {\n  async findAll() { /* DB query */ }\n  async findById(id) { /* DB query */ }\n  async create(data) { /* DB insert */ }\n}\n\n// Service (business logic)\nclass UserService {\n  constructor(userRepository) {\n    this.userRepository = userRepository;\n  }\n  \n  async getUsers() {\n    // Business logic, filtering, transformations\n    const users = await this.userRepository.findAll();\n    return users.map(u => ({ ...u, fullName: `${u.firstName} ${u.lastName}` }));\n  }\n}\n\n// Controller (HTTP handling)\nclass UserController {\n  constructor(userService) {\n    this.userService = userService;\n  }\n  \n  getUsers = async (req, res, next) => {\n    try {\n      const users = await this.userService.getUsers();\n      res.json(users);\n    } catch (err) {\n      next(err);\n    }\n  };\n}\n\n// Routes\nconst router = express.Router();\nconst userRepository = new UserRepository();\nconst userService = new UserService(userRepository);\nconst userController = new UserController(userService);\n\nrouter.get('/', userController.getUsers);\nrouter.post('/', validateUser, userController.createUser);",
+    "explanation": "This architecture provides clear separation of concerns. Controllers handle HTTP, Services contain business logic, Repositories handle data. It makes testing easier and code more maintainable.",
+    "recallHint": "Controller (HTTP) → Service (business) → Repository (data).",
+    "practice": [
+      "Explain the Controller-Service-Repository pattern.",
+      "Describe what each layer should contain.",
+      "Why shouldn't controllers contain business logic?"
+    ]
+  },
+  {
+    "id": "express-045",
+    "category": "express",
+    "concept": "API Versioning",
+    "priority": "important",
+    "question": "How would you version an Express API?",
+    "answer": "Version APIs using URL paths (/api/v1/users), headers (Accept-Version: 1.0), or query parameters (?version=1). URL versioning is most common and explicit.",
+    "code": "// Version 1 routes\nconst routerV1 = express.Router();\nrouterV1.get('/users', (req, res) => res.json(usersV1));\n\n// Version 2 routes (with new fields)\nconst routerV2 = express.Router();\nrouterV2.get('/users', (req, res) => res.json(usersV2));\n\n// Mount versions\napp.use('/api/v1', routerV1);\napp.use('/api/v2', routerV2);\n\n// Versioned controllers\nclass UserControllerV1 {\n  getAll() { /* returns v1 format */ }\n}\n\nclass UserControllerV2 {\n  getAll() { /* returns v2 format with extra fields */ }\n}\n\n// Version with middleware\napp.use((req, res, next) => {\n  const version = req.headers['api-version'];\n  req.apiVersion = version || '1.0';\n  next();\n});",
+    "explanation": "API versioning allows you to make breaking changes without affecting existing clients. URL versioning is most common and easiest to understand. Always support multiple versions during deprecation periods.",
+    "recallHint": "URL path (/v1/), header, or query parameter.",
+    "practice": [
+      "Explain different API versioning strategies.",
+      "Describe the pros and cons of each.",
+      "Implement URL-based versioning."
+    ]
+  },
+  {
+    "id": "express-046",
+    "category": "express",
+    "concept": "Pagination and Filtering",
+    "priority": "must-know",
+    "question": "How would you handle pagination, filtering, and sorting in an Express API?",
+    "answer": "Use query parameters for pagination (page, limit), filtering (fields with values), and sorting (sort). Implement these in the service layer with database query building.",
+    "code": "app.get('/users', async (req, res, next) => {\n  try {\n    // Pagination\n    const page = Math.max(1, parseInt(req.query.page) || 1);\n    const limit = Math.min(100, parseInt(req.query.limit) || 10);\n    const offset = (page - 1) * limit;\n    \n    // Filtering\n    const filters = {};\n    if (req.query.status) filters.status = req.query.status;\n    if (req.query.role) filters.role = req.query.role;\n    if (req.query.search) filters.search = req.query.search;\n    \n    // Sorting\n    const sortField = req.query.sort || 'createdAt';\n    const sortOrder = req.query.order === 'desc' ? 'DESC' : 'ASC';\n    \n    // Service call\n    const result = await userService.getUsers({\n      page,\n      limit,\n      offset,\n      filters,\n      sortField,\n      sortOrder\n    });\n    \n    res.json({\n      data: result.users,\n      pagination: {\n        page,\n        limit,\n        total: result.total,\n        pages: Math.ceil(result.total / limit)\n      },\n      filters,\n      sort: { field: sortField, order: sortOrder }\n    });\n  } catch (err) {\n    next(err);\n  }\n});\n\n// Usage examples\n// GET /users?page=2&limit=20\n// GET /users?status=active&role=admin\n// GET /users?sort=name&order=asc",
+    "explanation": "Pagination prevents large data transfers and improves performance. Filtering allows data selection. Sorting provides ordered results. Always validate and sanitize query parameters.",
+    "recallHint": "page, limit for pagination; query params for filters; sort for ordering.",
+    "practice": [
+      "Explain pagination implementation.",
+      "Describe filtering and sorting strategies.",
+      "Implement a paginated endpoint."
+    ]
+  },
+  {
+    "id": "express-047",
+    "category": "express",
+    "concept": "Scaling Express",
+    "priority": "must-know",
+    "question": "How would you scale an Express application?",
+    "answer": "Scale Express by: 1) Using Node.js cluster module or PM2 for multi-core, 2) Using a load balancer (Nginx), 3) Stateless design (session store like Redis), 4) Horizontal scaling with multiple instances.",
+    "code": "// PM2 cluster mode\n// pm2 start app.js -i max --name express-app\n\n// Node.js cluster\nconst cluster = require('cluster');\nconst os = require('os');\n\nif (cluster.isMaster) {\n  const numCPUs = os.cpus().length;\n  for (let i = 0; i < numCPUs; i++) {\n    cluster.fork();\n  }\n  \n  cluster.on('exit', (worker) => {\n    console.log(`Worker ${worker.process.pid} died, restarting...`);\n    cluster.fork();\n  });\n} else {\n  // Application code\n  const app = express();\n  app.listen(3000);\n}\n\n// Stateless design with Redis\nconst session = require('express-session');\nconst RedisStore = require('connect-redis')(session);\n\napp.use(session({\n  store: new RedisStore({ host: 'redis' }),\n  secret: process.env.SESSION_SECRET,\n  // ...\n}));\n\n// Load balancer setup (Nginx)\n// upstream express-app {\n//   server 127.0.0.1:3000;\n//   server 127.0.0.1:3001;\n//   server 127.0.0.1:3002;\n// }",
+    "explanation": "Scaling strategies depend on application requirements. Clustering provides vertical scaling (using all CPU cores). Horizontal scaling with load balancers provides more capacity.",
+    "recallHint": "Clustering, PM2, load balancer, stateless design.",
+    "practice": [
+      "Explain scaling strategies for Express.",
+      "Describe clustering vs horizontal scaling.",
+      "Explain why statelessness is important for scaling."
+    ]
+  },
+  {
+    "id": "express-048",
+    "category": "express",
+    "concept": "Graceful Shutdown",
+    "priority": "must-know",
+    "question": "How would you handle graceful shutdown in Express?",
+    "answer": "Handle SIGTERM and SIGINT signals, close the server to stop accepting new connections, complete existing requests, close database connections, and exit cleanly.",
+    "code": "const app = require('./app');\nconst server = app.listen(3000);\n\n// Graceful shutdown function\nconst gracefulShutdown = async (signal) => {\n  console.log(`Received ${signal}, shutting down gracefully...`);\n  \n  // Stop accepting new connections\n  server.close(() => {\n    console.log('HTTP server closed');\n  });\n  \n  // Wait for existing requests to complete\n  // (Assuming you track active requests)\n  await waitForActiveRequests();\n  \n  // Close database connections\n  await pool.end();\n  console.log('Database connections closed');\n  \n  process.exit(0);\n};\n\n// Signal handlers\nprocess.on('SIGTERM', () => gracefulShutdown('SIGTERM'));\nprocess.on('SIGINT', () => gracefulShutdown('SIGINT'));\n\n// Health check endpoint\napp.get('/health', (req, res) => {\n  res.json({ status: 'up', timestamp: new Date().toISOString() });\n});\n\n// Readiness check\napp.get('/ready', (req, res) => {\n  // Check database connection\n  if (pool.isConnected()) {\n    res.json({ status: 'ready' });\n  } else {\n    res.status(503).json({ status: 'not ready' });\n  }\n});\n\n// Force shutdown after timeout\nsetTimeout(() => {\n  console.error('Force shutdown after timeout');\n  process.exit(1);\n}, 30000);",
+    "explanation": "Graceful shutdown prevents request loss and data corruption. It's essential for zero-downtime deployments and proper container lifecycle management.",
+    "recallHint": "Close server → complete existing requests → close connections → exit.",
+    "practice": [
+      "Explain graceful shutdown implementation.",
+      "Describe the difference between SIGTERM and SIGINT.",
+      "Explain why graceful shutdown is important for deployments."
+    ]
+  },
+  {
+    "id": "express-049",
+    "category": "express",
+    "concept": "Health Checks",
+    "priority": "must-know",
+    "question": "What is the difference between liveness and readiness probes and how do you implement them?",
+    "answer": "Liveness probes check if the application is running. Readiness probes check if the application can handle requests (dependencies like database are available). Both are used in container orchestration (Kubernetes).",
+    "code": "// Liveness - is the app running?\napp.get('/health/live', (req, res) => {\n  res.status(200).json({ status: 'alive' });\n});\n\n// Readiness - is the app ready to serve traffic?\napp.get('/health/ready', async (req, res) => {\n  try {\n    // Check database connection\n    await pool.query('SELECT 1');\n    \n    // Check Redis connection\n    await redis.ping();\n    \n    // Check other services\n    // ...\n    \n    res.status(200).json({ status: 'ready' });\n  } catch (err) {\n    res.status(503).json({ \n      status: 'not ready', \n      reason: err.message \n    });\n  }\n});\n\n// Combined health endpoint\napp.get('/health', (req, res) => {\n  res.json({\n    status: 'healthy',\n    uptime: process.uptime(),\n    memory: process.memoryUsage(),\n    timestamp: new Date().toISOString()\n  });\n});",
+    "explanation": "Liveness checks keep your app alive (restart if dead). Readiness checks control traffic routing (don't send traffic if dependencies are down). Both are critical for Kubernetes deployments.",
+    "recallHint": "Liveness = app running, Readiness = can serve traffic.",
+    "practice": [
+      "Explain the difference between liveness and readiness.",
+      "Describe health check implementation.",
+      "Explain why both are needed in Kubernetes."
+    ]
+  },
+  {
+    "id": "express-050",
+    "category": "express",
+    "concept": "Express vs Alternatives",
+    "priority": "important",
+    "question": "How does Express compare to alternatives like Fastify, Nest.js, and Koa?",
+    "answer": "Express is minimal and flexible, Fastify is faster with built-in validation, Nest.js is opinionated with TypeScript and dependency injection, Koa uses async/await and no middleware callback hell. Choose based on project needs.",
+    "code": "// Express - minimal, flexible\nconst express = require('express');\nconst app = express();\napp.get('/', (req, res) => res.send('Hello'));\n\n// Fastify - faster with validation\nconst fastify = require('fastify')();\nfastify.get('/', {\n  schema: { /* validation */ },\n  handler: (req, reply) => reply.send('Hello')\n});\n\n// Koa - modern with async/await\nconst Koa = require('koa');\nconst app = new Koa();\napp.use(async (ctx) => {\n  ctx.body = 'Hello';\n});\n\n// Nest.js - opinionated TypeScript\n@Controller()\nclass AppController {\n  @Get()\n  getHello(): string {\n    return 'Hello';\n  }\n}",
+    "explanation": "Express is the most widely used and has the largest ecosystem. Fastify is faster and has built-in validation. Nest.js is great for large enterprise applications. Koa is more modern but less popular.",
+    "recallHint": "Express = popular, Fastify = fast, Nest.js = structured, Koa = modern.",
+    "practice": [
+      "Explain the differences between Express and other frameworks.",
+      "Describe when to use each framework.",
+      "Explain the pros and cons of Express."
+    ]
+  },
+  {
+    "id": "express-051",
+    "category": "express",
+    "concept": "Static Files",
+    "priority": "must-know",
+    "question": "How do you serve static files with Express?",
+    "answer": "Use express.static middleware to serve static files like HTML, CSS, JavaScript, and images. It handles file serving, caching, and MIME types automatically.",
+    "code": "// Serve static files\napp.use(express.static('public'));\n// Files in /public are served at root: /image.jpg → /public/image.jpg\n\n// Multiple static directories\napp.use('/static', express.static('public'));\napp.use('/assets', express.static('assets'));\n\n// Virtual path prefix\napp.use('/static', express.static('public'));\n// Files accessible at /static/images/cat.jpg\n\n// Custom options\napp.use(express.static('public', {\n  maxAge: '1d', // Cache for 1 day\n  index: false, // Disable index.html\n  dotfiles: 'ignore', // Ignore dotfiles\n  etag: true,\n  lastModified: true\n}));\n\n// Advanced: serve static with fallback (SPA)\nconst path = require('path');\napp.use(express.static('dist'));\napp.get('*', (req, res) => {\n  res.sendFile(path.join(__dirname, 'dist', 'index.html'));\n});",
+    "explanation": "express.static is the built-in middleware for serving static assets. It's efficient and handles caching headers. For production, consider using a CDN or Nginx for static files.",
+    "recallHint": "express.static('directory'), virtual path, caching options.",
+    "practice": [
+      "Explain how to serve static files.",
+      "Describe static file caching.",
+      "Explain how to serve a SPA with Express."
+    ]
+  },
+  {
+    "id": "express-052",
+    "category": "express",
+    "concept": "Response Streaming",
+    "priority": "important",
+    "question": "How do you stream responses from Express for large data?",
+    "answer": "Use streams with res.write() for chunked responses, or pipe a readable stream to res. This allows sending large data without loading everything into memory.",
+    "code": "// Streaming JSON (one by one)\napp.get('/users-stream', (req, res) => {\n  res.setHeader('Content-Type', 'application/json');\n  res.write('[');\n  \n  let first = true;\n  const stream = db.getUserStream(); // Returns ReadableStream\n  \n  stream.on('data', (user) => {\n    if (first) {\n      res.write(JSON.stringify(user));\n      first = false;\n    } else {\n      res.write(',' + JSON.stringify(user));\n    }\n  });\n  \n  stream.on('end', () => {\n    res.write(']');\n    res.end();\n  });\n});\n\n// Pipe a file stream\napp.get('/download/:file', (req, res) => {\n  const filePath = path.join(__dirname, 'files', req.params.file);\n  const stat = fs.statSync(filePath);\n  \n  res.setHeader('Content-Length', stat.size);\n  res.setHeader('Content-Disposition', 'attachment; filename=report.csv');\n  \n  const readStream = fs.createReadStream(filePath);\n  readStream.pipe(res);\n});\n\n// Server-Sent Events (SSE)\napp.get('/events', (req, res) => {\n  res.setHeader('Content-Type', 'text/event-stream');\n  res.setHeader('Cache-Control', 'no-cache');\n  res.setHeader('Connection', 'keep-alive');\n  \n  const interval = setInterval(() => {\n    res.write(`data: ${JSON.stringify({ time: Date.now() })}\\n\\n`);\n  }, 1000);\n  \n  req.on('close', () => clearInterval(interval));\n});",
+    "explanation": "Streaming is memory-efficient and improves user experience for large responses. Use it for large files, real-time data, or when you want to send data progressively.",
+    "recallHint": "res.write() for chunked responses, piping streams.",
+    "practice": [
+      "Explain how to stream responses.",
+      "Describe use cases for streaming.",
+      "Implement a streaming JSON endpoint."
+    ]
+  },
+  {
+    "id": "express-053",
+    "category": "express",
+    "concept": "WebSockets with Express",
+    "priority": "important",
+    "question": "How do you integrate WebSockets with Express for real-time communication?",
+    "answer": "Use socket.io or ws library. Express handles HTTP requests, while WebSocket handles real-time bidirectional communication. They can run on the same server or separate ports.",
+    "code": "const express = require('express');\nconst http = require('http');\nconst socketIO = require('socket.io');\n\nconst app = express();\nconst server = http.createServer(app);\nconst io = socketIO(server);\n\n// Express routes\napp.get('/', (req, res) => res.send('Hello'));\n\n// WebSocket handling\nio.on('connection', (socket) => {\n  console.log('Client connected:', socket.id);\n  \n  socket.on('join-room', (roomId) => {\n    socket.join(roomId);\n    io.to(roomId).emit('user-joined', socket.id);\n  });\n  \n  socket.on('message', (data) => {\n    // Broadcast to room\n    io.to(data.room).emit('message', {\n      user: socket.id,\n      text: data.text,\n      timestamp: Date.now()\n    });\n  });\n  \n  socket.on('disconnect', () => {\n    console.log('Client disconnected:', socket.id);\n  });\n});\n\n// REST endpoints with WebSocket integration\napp.post('/notify', (req, res) => {\n  io.emit('notification', req.body);\n  res.json({ sent: true });\n});\n\nserver.listen(3000);",
+    "explanation": "WebSockets provide real-time communication. Socket.io is the most popular choice with fallback to polling. Use for chat, live updates, multiplayer games, and real-time dashboards.",
+    "recallHint": "socket.io or ws, real-time bidirectional communication.",
+    "practice": [
+      "Explain WebSocket integration with Express.",
+      "Describe socket.io vs ws.",
+      "Build a simple chat application."
+    ]
+  },
+  {
+    "id": "express-054",
+    "category": "express",
+    "concept": "Environment Configuration",
+    "priority": "must-know",
+    "question": "How do you manage environment configuration in Express applications?",
+    "answer": "Use dotenv for environment variables, config files for different environments (development, staging, production), and validate configuration on startup.",
+    "code": "// config/index.js\nrequire('dotenv').config();\n\nconst config = {\n  env: process.env.NODE_ENV || 'development',\n  port: parseInt(process.env.PORT) || 3000,\n  \n  database: {\n    host: process.env.DB_HOST,\n    port: parseInt(process.env.DB_PORT) || 5432,\n    name: process.env.DB_NAME,\n    user: process.env.DB_USER,\n    password: process.env.DB_PASSWORD\n  },\n  \n  jwt: {\n    secret: process.env.JWT_SECRET,\n    expiresIn: process.env.JWT_EXPIRES_IN || '1h'\n  },\n  \n  redis: {\n    host: process.env.REDIS_HOST,\n    port: parseInt(process.env.REDIS_PORT) || 6379\n  }\n};\n\n// Validate required config\nconst requiredVars = [\n  'DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD',\n  'JWT_SECRET'\n];\n\nrequiredVars.forEach(varName => {\n  if (!process.env[varName]) {\n    throw new Error(`Missing required environment variable: ${varName}`);\n  }\n});\n\n// Use in app\nconst app = require('./app');\nconst config = require('./config');\n\napp.listen(config.port, () => {\n  console.log(`Server running on port ${config.port} in ${config.env} mode`);\n});\n\n// Different configs\n// .env.development\n// .env.staging\n// .env.production",
+    "explanation": "Environment configuration enables the same code to run in different environments. Never commit secrets to version control. Validate all required variables on startup.",
+    "recallHint": "dotenv, environment-specific config, validation.",
+    "practice": [
+      "Explain environment configuration.",
+      "Describe how to use dotenv.",
+      "Explain why validation is important."
+    ]
+  },
+  {
+    "id": "express-055",
+    "category": "express",
+    "concept": "Request Timeout",
+    "priority": "important",
+    "question": "How would you implement request timeouts to prevent long-running requests from hanging?",
+    "answer": "Use the timeout middleware or set server timeouts. This prevents resource exhaustion and improves user experience by failing fast on slow requests.",
+    "code": "// Express timeout middleware\nconst timeout = require('connect-timeout');\n\n// Route-specific timeout\napp.get('/slow', timeout('5s'), (req, res) => {\n  setTimeout(() => {\n    res.json({ data: 'This request might timeout' });\n  }, 10000); // 10 second operation, timeout at 5 seconds\n});\n\n// Global timeout\napp.use(timeout('30s'));\napp.use((req, res, next) => {\n  // All requests timeout after 30 seconds\n  next();\n});\n\n// Server timeout\nconst server = app.listen(3000);\nserver.timeout = 30000; // 30 seconds\n\n// Custom timeout handling\napp.use(timeout('5s'));\napp.use((req, res, next) => {\n  req.setTimeout(5000, () => {\n    res.status(408).json({ error: 'Request timeout' });\n  });\n  next();\n});\n\n// Async operation with timeout\napp.get('/search', async (req, res, next) => {\n  try {\n    const results = await Promise.race([\n      searchService.search(req.query.q),\n      new Promise((_, reject) => setTimeout(\n        () => reject(new Error('Search timeout')), 5000\n      ))\n    ]);\n    res.json(results);\n  } catch (err) {\n    next(err);\n  }\n});",
+    "explanation": "Timeouts prevent hanging requests from consuming resources. Set reasonable timeouts based on expected operation duration. Implement graceful error handling for timeout scenarios.",
+    "recallHint": "connect-timeout middleware, server.timeout, Promise.race.",
+    "practice": [
+      "Explain why request timeouts are important.",
+      "Implement timeouts in Express.",
+      "Describe how to handle timeout errors gracefully."
+    ]
+  },
+  {
+    "id": "express-056",
+    "category": "express",
+    "concept": "Downstream Services",
+    "priority": "important",
+    "question": "How would you handle downstream service failures in Express?",
+    "answer": "Use circuit breakers, retries with exponential backoff, fallback responses, and timeouts. This creates resilience and prevents cascading failures.",
+    "code": "// Circuit breaker pattern\nconst CircuitBreaker = require('circuit-breaker-js');\nconst breaker = new CircuitBreaker({\n  windowDuration: 10000, // 10 seconds\n  numBuckets: 10,\n  timeoutDuration: 3000,\n  errorThreshold: 50 // 50% error rate\n});\n\napp.get('/external-data', async (req, res, next) => {\n  try {\n    const result = await new Promise((resolve, reject) => {\n      breaker.run(\n        (success, failure) => {\n          // Call external service\n          axios.get('https://api.example.com/data')\n            .then(response => success(response.data))\n            .catch(err => failure(err));\n        },\n        {\n          onSuccess: (data) => resolve(data),\n          onFailure: (err) => reject(err)\n        }\n      );\n    });\n    \n    res.json(result);\n  } catch (err) {\n    // Fallback response\n    res.status(503).json({\n      error: 'Service temporarily unavailable',\n      fallback: cache.get('external-data') // Use cached data\n    });\n  }\n});\n\n// Retry with exponential backoff\nconst axiosRetry = require('axios-retry');\naxiosRetry(axios, {\n  retries: 3,\n  retryDelay: (retryCount) => {\n    return retryCount * 1000; // 1s, 2s, 3s\n  },\n  retryCondition: (error) => {\n    return error.response?.status >= 500;\n  }\n});\n\n// Bulkhead pattern (limit concurrent external calls)\nconst semaphore = require('semaphore')(10); // Max 10 concurrent calls\n\napp.get('/limited', (req, res, next) => {\n  semaphore.take(() => {\n    axios.get('https://api.example.com/data')\n      .then(response => {\n        semaphore.leave();\n        res.json(response.data);\n      })\n      .catch(err => {\n        semaphore.leave();\n        next(err);\n      });\n  });\n});",
+    "explanation": "Resilience patterns prevent failures from cascading. Circuit breakers stop calling failing services. Retries handle transient failures. Fallback responses provide degraded service instead of failure.",
+    "recallHint": "Circuit breaker, retries, fallback, timeouts.",
+    "practice": [
+      "Explain resilience patterns for downstream services.",
+      "Implement a circuit breaker.",
+      "Describe fallback response strategies."
+    ]
+  },
+  {
+    "id": "express-057",
+    "category": "express",
+    "concept": "asyncHandler Wrapper",
+    "priority": "must-know",
+    "question": "What is an asyncHandler wrapper and why would you use it?",
+    "answer": "asyncHandler is a higher-order function that wraps async route handlers to catch errors and pass them to Express error middleware. It eliminates repetitive try/catch blocks in controllers.",
+    "code": "// Async handler wrapper\nconst asyncHandler = (fn) => (req, res, next) => {\n  Promise.resolve(fn(req, res, next)).catch(next);\n};\n\n// Usage - no try/catch needed\napp.get('/users', asyncHandler(async (req, res) => {\n  const users = await User.find();\n  res.json(users);\n}));\n\n// With multiple middleware\napp.post('/users',\n  validateUser,\n  asyncHandler(async (req, res) => {\n    const user = await User.create(req.body);\n    res.status(201).json(user);\n  })\n);\n\n// Alternative with express-async-errors (automatically handles all async)\nrequire('express-async-errors');\n\napp.get('/users', async (req, res) => {\n  // Any error automatically caught\n  const users = await User.find();\n  res.json(users);\n});\n\n// Combine with custom error class\nconst asyncHandler = (fn) => (req, res, next) => {\n  Promise.resolve(fn(req, res, next))\n    .catch(err => {\n      if (!err.statusCode) {\n        err.statusCode = 500;\n      }\n      next(err);\n    });\n};",
+    "explanation": "asyncHandler reduces boilerplate and ensures all async errors are caught. Without it, you need try/catch in every async route handler. It's a common pattern in Express projects.",
+    "recallHint": "Wraps async handlers, catches errors, passes to next().",
+    "practice": [
+      "Explain the asyncHandler pattern.",
+      "Write an asyncHandler wrapper.",
+      "Describe the express-async-errors package."
+    ]
+  },
+  {
+    "id": "express-058",
+    "category": "express",
+    "concept": "Request/Response Lifecycle",
+    "priority": "important",
+    "question": "What is the complete request/response lifecycle in Express?",
+    "answer": "Request lifecycle: 1) HTTP request arrives, 2) Express parses request, 3) Middleware executes in order, 4) Route matching and handling, 5) Response sent, 6) Error handling if needed.",
+    "code": "// Lifecycle demonstration\napp.use((req, res, next) => {\n  console.log('1. Global middleware');\n  next();\n});\n\napp.use(express.json());\n\napp.use((req, res, next) => {\n  console.log('2. After body parser');\n  next();\n});\n\napp.get('/users/:id',\n  (req, res, next) => {\n    console.log('3. Route-specific middleware');\n    next();\n  },\n  (req, res, next) => {\n    console.log('4. Before controller');\n    next();\n  },\n  async (req, res, next) => {\n    console.log('5. Controller');\n    const user = await User.findById(req.params.id);\n    res.json(user);\n    console.log('6. Response sent');\n  }\n);\n\napp.use((err, req, res, next) => {\n  console.log('7. Error handler (if error occurred)');\n  res.status(500).json({ error: err.message });\n});\n\n// Request processing flow\n// 1. Request arrives\n// 2. Middleware stack (in order)\n// 3. Route matching\n// 4. Route handler execution\n// 5. Response generation\n// 6. Error middleware (if error)",
+    "explanation": "Understanding the request lifecycle helps debug issues and design middleware. Each request passes through the middleware stack in order, then route handlers, then error handlers.",
+    "recallHint": "Request → Middleware stack → Route matching → Handler → Response.",
+    "practice": [
+      "Describe the request lifecycle.",
+      "Explain middleware execution order.",
+      "Describe when error handlers execute."
+    ]
+  },
+  {
+    "id": "express-059",
+    "category": "express",
+    "concept": "Express behind Nginx",
+    "priority": "important",
+    "question": "How do you configure Express behind Nginx or a load balancer?",
+    "answer": "Configure Express with trust proxy, set appropriate headers, handle forwarded IPs, and use HTTPS. Nginx handles SSL termination, static files, and load balancing.",
+    "code": "// Express configuration behind Nginx\napp.set('trust proxy', true); // Trust proxy headers\n\n// Access real client IP\napp.get('/ip', (req, res) => {\n  const ip = req.ip; // Trusts X-Forwarded-For\n  const forwarded = req.headers['x-forwarded-for'];\n  res.json({ ip, forwarded });\n});\n\n// Handle HTTPS in production\napp.use((req, res, next) => {\n  if (process.env.NODE_ENV === 'production') {\n    // Force HTTPS\n    if (!req.secure && req.headers['x-forwarded-proto'] !== 'https') {\n      return res.redirect(301, 'https://' + req.hostname + req.url);\n    }\n  }\n  next();\n});\n\n// Nginx configuration\n// server {\n//   listen 80;\n//   server_name example.com;\n//   \n//   location / {\n//     proxy_pass http://localhost:3000;\n//     proxy_http_version 1.1;\n//     proxy_set_header Upgrade $http_upgrade;\n//     proxy_set_header Connection 'upgrade';\n//     proxy_set_header Host $host;\n//     proxy_cache_bypass $http_upgrade;\n//     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n//     proxy_set_header X-Forwarded-Proto $scheme;\n//   }\n//   \n//   location /static/ {\n//     alias /var/www/static/;\n//     expires 1y;\n//   }\n// }\n\n// Health checks for load balancer\napp.get('/health', (req, res) => {\n  res.status(200).send('OK');\n});",
+    "explanation": "Nginx is commonly used as a reverse proxy for Express. It handles static files, SSL, load balancing, and security. Configure trust proxy to get real client IPs and protocol.",
+    "recallHint": "trust proxy, X-Forwarded headers, reverse proxy configuration.",
+    "practice": [
+      "Explain Express configuration behind Nginx.",
+      "Describe trust proxy and its purpose.",
+      "Explain how to handle HTTPS behind a proxy."
+    ]
+  },
+  {
+    "id": "express-060",
+    "category": "express",
+    "concept": "Monitoring and Metrics",
+    "priority": "important",
+    "question": "What metrics would you monitor in an Express application and how?",
+    "answer": "Monitor request rate, error rate, response time, memory usage, event loop lag, database query performance, and HTTP status codes. Use tools like PM2, New Relic, Datadog, or Prometheus.",
+    "code": "const promClient = require('prom-client');\n\n// Metrics setup\nconst register = new promClient.Registry();\n\n// Request count\nconst requestCounter = new promClient.Counter({\n  name: 'http_requests_total',\n  help: 'Total HTTP requests',\n  labelNames: ['method', 'route', 'status_code']\n});\nregister.registerMetric(requestCounter);\n\n// Request duration\nconst requestDuration = new promClient.Histogram({\n  name: 'http_request_duration_seconds',\n  help: 'HTTP request duration in seconds',\n  labelNames: ['method', 'route'],\n  buckets: [0.1, 0.3, 0.5, 1, 3, 5, 10]\n});\nregister.registerMetric(requestDuration);\n\n// Custom middleware for metrics\napp.use((req, res, next) => {\n  const start = Date.now();\n  res.on('finish', () => {\n    const duration = (Date.now() - start) / 1000;\n    \n    requestCounter.inc({\n      method: req.method,\n      route: req.route?.path || 'unknown',\n      status_code: res.statusCode\n    });\n    \n    requestDuration.observe({\n      method: req.method,\n      route: req.route?.path || 'unknown'\n    }, duration);\n  });\n  next();\n});\n\n// Metrics endpoint\napp.get('/metrics', async (req, res) => {\n  res.set('Content-Type', register.contentType);\n  res.send(await register.metrics());\n});\n\n// Event loop lag monitoring\nconst { monitorEventLoopDelay } = require('perf_hooks');\nconst eventLoopMonitor = monitorEventLoopDelay();\neventLoopMonitor.enable();\n\nsetInterval(() => {\n  const lag = eventLoopMonitor.percentile(50);\n  if (lag > 100) {\n    console.warn('Event loop lag detected:', lag);\n  }\n}, 5000);",
+    "explanation": "Monitoring is essential for production applications. Track performance metrics to identify issues, plan capacity, and ensure SLAs. Use APM tools for comprehensive monitoring.",
+    "recallHint": "Request rate, error rate, latency, memory, event loop lag.",
+    "practice": [
+      "Explain important metrics for Express apps.",
+      "Describe how to implement monitoring.",
+      "Explain event loop lag monitoring."
+    ]
+  },
+  {
+    "id": "express-061",
+    "category": "express",
+    "concept": "Memory Leak Debugging",
+    "priority": "important",
+    "question": "How would you identify memory leaks in an Express application?",
+    "answer": "Monitor memory usage over time, use heap snapshots, analyze closures and global variables, check event listeners, use profiling tools (Chrome DevTools), and implement proper cleanup.",
+    "code": "// Memory monitoring middleware\nconst memoryLogger = (req, res, next) => {\n  const usage = process.memoryUsage();\n  console.log('Memory:', {\n    heapUsed: Math.round(usage.heapUsed / 1024 / 1024) + 'MB',\n    heapTotal: Math.round(usage.heapTotal / 1024 / 1024) + 'MB',\n    external: Math.round(usage.external / 1024 / 1024) + 'MB'\n  });\n  next();\n};\n\n// Memory leak example (global cache)\nlet cache = {}; // Global cache that never clears\napp.get('/cache/:key', (req, res) => {\n  const key = req.params.key;\n  if (!cache[key]) {\n    cache[key] = { data: 'large data', timestamp: Date.now() };\n  }\n  res.json(cache[key]);\n});\n\n// Fix: Use LRU cache with TTL\nconst NodeCache = require('node-cache');\nconst cache = new NodeCache({ stdTTL: 600, checkperiod: 120 });\n\n// Debugging with heap snapshot\n// node --inspect app.js\n// Open Chrome DevTools → Memory → Take heap snapshot\n// Compare snapshots to find leaks\n\n// Check for event listener leaks\napp.setMaxListeners(20); // Increase if getting warnings\nprocess.on('warning', (warning) => {\n  console.warn('Node warning:', warning);\n});\n\n// Memory profiling in code\nconst v8 = require('v8');\nfunction getHeapStats() {\n  const stats = v8.getHeapStatistics();\n  console.log('Heap stats:', {\n    used: Math.round(stats.used_heap_size / 1024 / 1024) + 'MB',\n    total: Math.round(stats.total_heap_size / 1024 / 1024) + 'MB'\n  });\n}\nsetInterval(getHeapStats, 60000);",
+    "explanation": "Memory leaks degrade performance and cause crashes. Common causes: global caches, event listeners, closures, and improper cleanup. Regular monitoring and profiling prevent issues.",
+    "recallHint": "Global caches, event listeners, closures, heap snapshots.",
+    "practice": [
+      "Explain common memory leak causes.",
+      "Describe how to identify leaks.",
+      "Implement memory monitoring."
+    ]
+  },
+  {
+    "id": "express-062",
+    "category": "express",
+    "concept": "View Engines",
+    "priority": "important",
+    "question": "How do you use view engines like EJS or Pug with Express?",
+    "answer": "Configure Express with app.set('view engine', 'ejs') and app.set('views', './views'). Render templates with res.render(). View engines enable server-side rendering (SSR).",
+    "code": "// EJS setup\napp.set('view engine', 'ejs');\napp.set('views', path.join(__dirname, 'views'));\n\n// Route rendering\napp.get('/user/:id', async (req, res) => {\n  const user = await User.findById(req.params.id);\n  res.render('profile', { \n    user: user,\n    title: 'User Profile',\n    page: 'profile'\n  });\n});\n\n// views/profile.ejs\n<!DOCTYPE html>\n<html>\n<head>\n  <title><%= title %></title>\n</head>\n<body>\n  <h1>Welcome <%= user.name %></h1>\n  <p>Email: <%= user.email %></p>\n  \n  <% if (user.isAdmin) { %>\n    <a href=\"/admin\">Admin Panel</a>\n  <% } %>\n</body>\n</html>\n\n// Pug setup\napp.set('view engine', 'pug');\napp.set('views', './views');\n\n// views/profile.pug\nhtml\n  head\n    title= title\n  body\n    h1 Welcome #{user.name}\n    p Email: #{user.email}\n    if user.isAdmin\n      a(href=\"/admin\") Admin Panel\n\n// Layouts with EJS (using express-ejs-layouts)\nconst ejsLayouts = require('express-ejs-layouts');\napp.use(ejsLayouts);\napp.set('layout', 'layouts/main');",
+    "explanation": "View engines enable server-side rendering (SSR). EJS is popular for its simplicity, Pug has cleaner syntax. They're still used in traditional web apps, but modern apps often separate frontend and backend.",
+    "recallHint": "app.set('view engine'), res.render(), templates.",
+    "practice": [
+      "Explain how to set up view engines.",
+      "Describe the difference between EJS and Pug.",
+      "Implement a simple render route."
+    ]
+  },
+  {
+    "id": "express-063",
+    "category": "express",
+    "concept": "Subdomain Routing",
+    "priority": "advanced",
+    "question": "How do you handle subdomain routing in Express?",
+    "answer": "Use the vhost middleware or check req.subdomains. This allows different routes for different subdomains (api.example.com, admin.example.com) within the same Express application.",
+    "code": "const vhost = require('vhost');\n\n// API subdomain\nconst api = express();\napi.get('/users', (req, res) => res.json(users));\napp.use(vhost('api.example.com', api));\n\n// Admin subdomain\nconst admin = express();\nadmin.use('/dashboard', authMiddleware, dashboardRoutes);\napp.use(vhost('admin.example.com', admin));\n\n// Manual subdomain handling\napp.use((req, res, next) => {\n  const host = req.headers.host;\n  const subdomain = host.split('.')[0];\n  \n  if (subdomain === 'api') {\n    req.apiVersion = 'v1';\n  } else if (subdomain === 'admin') {\n    req.isAdmin = true;\n  }\n  \n  next();\n});\n\n// Subdomain-based routing\napp.get('*', (req, res, next) => {\n  const subdomain = req.subdomains[0];\n  \n  switch(subdomain) {\n    case 'api':\n      // Handle API request\n      break;\n    case 'admin':\n      // Handle admin request\n      break;\n    default:\n      // Handle main domain\n  }\n});",
+    "explanation": "Subdomain routing allows different services or versions on the same server. It's useful for separating APIs, admin panels, or different applications.",
+    "recallHint": "vhost middleware, req.subdomains, separate routers.",
+    "practice": [
+      "Explain subdomain routing.",
+      "Describe vhost middleware.",
+      "Implement API and admin subdomains."
+    ]
+  },
+  {
+    "id": "express-064",
+    "category": "express",
+    "concept": "Compression",
+    "priority": "important",
+    "question": "How do you implement compression in Express?",
+    "answer": "Use the compression middleware. It compresses response bodies with gzip/deflate/brotli, reducing bandwidth usage and improving load times.",
+    "code": "const compression = require('compression');\n\n// Global compression\napp.use(compression());\n\n// With options\napp.use(compression({\n  level: 6, // Compression level (1-9)\n  threshold: 1024, // Only compress responses > 1KB\n  filter: (req, res) => {\n    // Custom filter - don't compress images\n    if (req.path.match(/\\.(jpg|png|gif)$/)) {\n      return false;\n    }\n    return compression.filter(req, res);\n  }\n}));\n\n// Brotli compression (better but newer)\napp.use(compression({\n  brotli: {\n    enabled: true,\n    params: {\n      [zlib.constants.BROTLI_PARAM_QUALITY]: 11\n    }\n  }\n}));\n\n// Manual compression\napp.get('/large-data', (req, res) => {\n  const data = generateLargeData();\n  res.setHeader('Content-Encoding', 'gzip');\n  const gzip = zlib.createGzip();\n  res.pipe(gzip);\n  res.write(JSON.stringify(data));\n  res.end();\n});",
+    "explanation": "Compression reduces response size significantly (often 70%+), improving performance and bandwidth usage. Use it for JSON responses, HTML, and text files. Images are usually already compressed.",
+    "recallHint": "compression middleware, gzip, brotli, threshold.",
+    "practice": [
+      "Explain how compression works in Express.",
+      "Describe compression middleware options.",
+      "Explain the trade-offs of compression."
+    ]
+  },
+  {
+    "id": "express-065",
+    "category": "express",
+    "concept": "Request Sanitization",
+    "priority": "must-know",
+    "question": "How do you sanitize and validate request data for security?",
+    "answer": "Sanitize by trimming strings, escaping HTML, converting types, and removing dangerous characters. Use libraries like express-validator, sanitize-html, or DOMPurify for comprehensive protection.",
+    "code": "const { body, validationResult, sanitizeBody } = require('express-validator');\nconst sanitizeHtml = require('sanitize-html');\n\n// Express-validator with sanitization\napp.post('/comments',\n  body('email').isEmail().normalizeEmail(),\n  body('name').trim().escape(),\n  body('content').trim().escape(),\n  body('age').toInt(),\n  (req, res) => {\n    const errors = validationResult(req);\n    if (!errors.isEmpty()) {\n      return res.status(400).json({ errors: errors.array() });\n    }\n    res.json(req.body);\n  }\n);\n\n// Custom sanitization\napp.post('/profile', (req, res) => {\n  // Trim all string fields\n  Object.keys(req.body).forEach(key => {\n    if (typeof req.body[key] === 'string') {\n      req.body[key] = req.body[key].trim();\n    }\n  });\n  \n  // Sanitize HTML content (allow basic formatting)\n  req.body.content = sanitizeHtml(req.body.content, {\n    allowedTags: ['b', 'i', 'em', 'strong', 'p', 'br'],\n    allowedAttributes: {}\n  });\n  \n  // Validate email\n  if (!validator.isEmail(req.body.email)) {\n    return res.status(400).json({ error: 'Invalid email' });\n  }\n  \n  res.json(req.body);\n});\n\n// Prevent XSS\nconst xss = require('xss');\napp.use((req, res, next) => {\n  // Sanitize request body\n  if (req.body) {\n    Object.keys(req.body).forEach(key => {\n      if (typeof req.body[key] === 'string') {\n        req.body[key] = xss(req.body[key]);\n      }\n    });\n  }\n  next();\n});",
+    "explanation": "Sanitization is critical for security. Never trust user input. Trim whitespace, escape HTML to prevent XSS, validate email formats, and convert types for type safety.",
+    "recallHint": "trim, escape, validate, convert, sanitize-HTML.",
+    "practice": [
+      "Explain why sanitization is important.",
+      "Describe sanitization techniques.",
+      "Implement validation and sanitization."
+    ]
+  },
+  {
+    "id": "express-066",
+    "category": "express",
+    "concept": "View Engine vs SPA",
+    "priority": "important",
+    "question": "When should you use server-side rendering vs a separate frontend?",
+    "answer": "Use SSR (view engines) for SEO-critical apps, simple websites, or when sharing logic. Use separate frontend (React/Angular/Vue) for complex SPAs with rich interactivity, better user experience, and when APIs are needed for multiple clients.",
+    "code": "// Server-side rendering (SSR) with EJS\napp.get('/product/:id', async (req, res) => {\n  const product = await Product.findById(req.params.id);\n  res.render('product', { product });\n});\n\n// SPA with API\n// Frontend (React)\napp.use(express.static('dist'));\napp.get('*', (req, res) => {\n  res.sendFile(path.join(__dirname, 'dist', 'index.html'));\n});\n\n// API for SPA\napp.get('/api/products/:id', async (req, res) => {\n  const product = await Product.findById(req.params.id);\n  res.json(product);\n});",
+    "explanation": "SSR is simpler for traditional web apps and better for SEO. SPAs provide better interactivity and user experience. Many modern apps use both: a SPA with an Express API backend.",
+    "recallHint": "SSR = server templates, SPA = client-side + API.",
+    "practice": [
+      "Explain the differences between SSR and SPA.",
+      "Describe when to use each approach.",
+      "Explain the pros and cons of each."
+    ]
+  },
+  {
+    "id": "express-067",
+    "category": "express",
+    "concept": "Database Transactions",
+    "priority": "important",
+    "question": "How do you handle database transactions in an Express API?",
+    "answer": "Use transaction middleware or transaction functions to ensure data consistency. Begin transaction, perform operations, commit on success, rollback on failure.",
+    "code": "// PostgreSQL transaction\napp.post('/transfer', async (req, res, next) => {\n  const client = await pool.connect();\n  \n  try {\n    await client.query('BEGIN');\n    \n    const { fromAccount, toAccount, amount } = req.body;\n    \n    // Deduct from source\n    await client.query(\n      'UPDATE accounts SET balance = balance - $1 WHERE id = $2',\n      [amount, fromAccount]\n    );\n    \n    // Add to destination\n    await client.query(\n      'UPDATE accounts SET balance = balance + $1 WHERE id = $2',\n      [amount, toAccount]\n    );\n    \n    // Record transaction\n    await client.query(\n      'INSERT INTO transactions (from_account, to_account, amount) VALUES ($1, $2, $3)',\n      [fromAccount, toAccount, amount]\n    );\n    \n    await client.query('COMMIT');\n    res.json({ success: true });\n  } catch (err) {\n    await client.query('ROLLBACK');\n    next(err);\n  } finally {\n    client.release();\n  }\n});\n\n// Transaction middleware\nconst transactionMiddleware = async (req, res, next) => {\n  const client = await pool.connect();\n  try {\n    await client.query('BEGIN');\n    req.dbClient = client;\n    next();\n    await client.query('COMMIT');\n  } catch (err) {\n    await client.query('ROLLBACK');\n    next(err);\n  } finally {\n    client.release();\n  }\n};\n\napp.post('/order', transactionMiddleware, async (req, res) => {\n  const { client } = req;\n  await client.query('INSERT INTO orders ...');\n  await client.query('INSERT INTO order_items ...');\n  await client.query('UPDATE inventory ...');\n  res.json({ success: true });\n});",
+    "explanation": "Transactions ensure data consistency across multiple operations. They're essential for financial operations, order processing, and any operation that requires atomic updates.",
+    "recallHint": "BEGIN → operations → COMMIT/ROLLBACK.",
+    "practice": [
+      "Explain database transactions.",
+      "Implement a transaction endpoint.",
+      "Describe rollback scenarios."
+    ]
+  },
+  {
+    "id": "express-068",
+    "category": "express",
+    "concept": "Request Validation Error Response",
+    "priority": "must-know",
+    "question": "How do you return validation errors in a consistent format?",
+    "answer": "Use a consistent error response format with status code, message, and detailed errors. Include which fields failed validation and why.",
+    "code": "// Consistent validation error response\napp.post('/users', validateUser, async (req, res) => {\n  // ...\n});\n\n// Validation middleware with consistent response\nconst validateUser = (req, res, next) => {\n  const errors = validationResult(req);\n  if (!errors.isEmpty()) {\n    return res.status(400).json({\n      status: 'error',\n      code: 'VALIDATION_ERROR',\n      message: 'Validation failed',\n      errors: errors.array().map(err => ({\n        field: err.param,\n        message: err.msg,\n        value: err.value\n      })),\n      timestamp: new Date().toISOString()\n    });\n  }\n  next();\n};\n\n// Global validation error handler\napp.use((err, req, res, next) => {\n  if (err.name === 'ValidationError') {\n    return res.status(400).json({\n      status: 'error',\n      code: 'VALIDATION_ERROR',\n      message: err.message,\n      errors: Object.values(err.errors).map(e => ({\n        field: e.path,\n        message: e.message,\n        value: e.value\n      })),\n      timestamp: new Date().toISOString()\n    });\n  }\n  next(err);\n});",
+    "explanation": "Consistent validation responses make client-side error handling easier. Include field-specific errors with clear messages so clients can display errors accurately.",
+    "recallHint": "400 status, field-specific errors, consistent format.",
+    "practice": [
+      "Design a validation error response format.",
+      "Implement validation middleware.",
+      "Explain why consistency matters."
+    ]
+  },
+  {
+    "id": "express-069",
+    "category": "express",
+    "concept": "Practical Coding - REST API",
+    "priority": "must-know",
+    "question": "Build a basic Express REST API from scratch.",
+    "answer": "Create a REST API with proper routes, middleware, error handling, validation, and database integration. Follow the Controller-Service-Repository pattern.",
+    "code": "// app.js\nconst express = require('express');\nconst cors = require('cors');\nconst helmet = require('helmet');\nconst morgan = require('morgan');\nconst { errorHandler } = require('./middleware/error.middleware');\nconst routes = require('./routes');\n\nconst app = express();\n\n// Middleware\napp.use(helmet());\napp.use(cors());\napp.use(express.json());\napp.use(express.urlencoded({ extended: true }));\napp.use(morgan('combined'));\n\n// Routes\napp.use('/api/v1', routes);\n\n// 404 handler\napp.use((req, res) => {\n  res.status(404).json({ error: 'Route not found' });\n});\n\n// Global error handler\napp.use(errorHandler);\n\nmodule.exports = app;\n\n// server.js\nconst app = require('./app');\nconst config = require('./config');\nconst server = app.listen(config.port, () => {\n  console.log(`Server running on port ${config.port}`);\n});\n\nmodule.exports = server;\n\n// routes/index.js\nconst router = require('express').Router();\nconst userRoutes = require('./user.routes');\nconst authRoutes = require('./auth.routes');\n\nrouter.use('/users', userRoutes);\nrouter.use('/auth', authRoutes);\n\nmodule.exports = router;\n\n// user.routes.js\nconst router = require('express').Router();\nconst { authenticate } = require('../middleware/auth.middleware');\nconst { validateUser } = require('../validators/user.validator');\nconst userController = require('../controllers/user.controller');\n\nrouter.get('/', userController.getUsers);\nrouter.get('/:id', authenticate, userController.getUser);\nrouter.post('/', validateUser, userController.createUser);\nrouter.put('/:id', authenticate, validateUser, userController.updateUser);\nrouter.delete('/:id', authenticate, userController.deleteUser);\n\nmodule.exports = router;",
+    "explanation": "A well-structured REST API includes: proper middleware, route organization, validation, authentication, error handling, and separation of concerns.",
+    "recallHint": "Middleware → Routes → Controllers → Services → Repositories.",
+    "practice": [
+      "Build a complete REST API.",
+      "Implement all CRUD operations.",
+      "Add authentication and validation."
+    ]
+  },
+  {
+    "id": "express-070",
+    "category": "express",
+    "concept": "Practical Coding - Auth Middleware",
+    "priority": "must-know",
+    "question": "Create authentication middleware for a REST API.",
+    "answer": "Create middleware that verifies JWT tokens, extracts user data, attaches user to request, and handles invalid/expired tokens gracefully.",
+    "code": "// auth.middleware.js\nconst jwt = require('jsonwebtoken');\nconst config = require('../config');\n\nconst authenticate = (req, res, next) => {\n  try {\n    const authHeader = req.headers.authorization;\n    \n    if (!authHeader) {\n      return res.status(401).json({\n        status: 'error',\n        message: 'Authentication required',\n        code: 'MISSING_TOKEN'\n      });\n    }\n    \n    if (!authHeader.startsWith('Bearer ')) {\n      return res.status(401).json({\n        status: 'error',\n        message: 'Invalid token format',\n        code: 'INVALID_TOKEN_FORMAT'\n      });\n    }\n    \n    const token = authHeader.split(' ')[1];\n    \n    const decoded = jwt.verify(token, config.jwt.secret, {\n      algorithms: ['HS256']\n    });\n    \n    // Attach user to request\n    req.user = decoded;\n    req.userId = decoded.userId;\n    \n    next();\n  } catch (err) {\n    if (err.name === 'JsonWebTokenError') {\n      return res.status(401).json({\n        status: 'error',\n        message: 'Invalid token',\n        code: 'INVALID_TOKEN'\n      });\n    }\n    \n    if (err.name === 'TokenExpiredError') {\n      return res.status(401).json({\n        status: 'error',\n        message: 'Token expired',\n        code: 'TOKEN_EXPIRED'\n      });\n    }\n    \n    next(err);\n  }\n};\n\nconst authorize = (...roles) => {\n  return (req, res, next) => {\n    if (!req.user) {\n      return res.status(401).json({ error: 'Unauthorized' });\n    }\n    \n    if (!roles.includes(req.user.role)) {\n      return res.status(403).json({\n        status: 'error',\n        message: 'Insufficient permissions',\n        code: 'FORBIDDEN'\n      });\n    }\n    \n    next();\n  };\n};\n\nmodule.exports = { authenticate, authorize };",
+    "explanation": "Good auth middleware handles all error cases, provides clear error messages, and attaches user data for downstream use. Always verify JWT signature and expiration.",
+    "recallHint": "Verify JWT, attach user, handle errors.",
+    "practice": [
+      "Create authentication middleware.",
+      "Add role-based authorization.",
+      "Handle token expiration gracefully."
+    ]
+  },
+  {
+    "id": "express-071",
+    "category": "express",
+    "concept": "Practical Coding - Error Handler",
+    "priority": "must-know",
+    "question": "Create a global error handler for an Express application.",
+    "answer": "Create a centralized error handler that catches all errors, logs them, and returns consistent JSON responses without exposing stack traces in production.",
+    "code": "// error.middleware.js\nconst logger = require('../utils/logger');\n\nclass AppError extends Error {\n  constructor(message, statusCode, code = 'INTERNAL_ERROR') {\n    super(message);\n    this.statusCode = statusCode;\n    this.code = code;\n    this.isOperational = true;\n    Error.captureStackTrace(this, this.constructor);\n  }\n}\n\nconst errorHandler = (err, req, res, next) => {\n  // Log error\n  logger.error('Error occurred:', {\n    message: err.message,\n    stack: err.stack,\n    path: req.path,\n    method: req.method,\n    ip: req.ip,\n    userId: req.userId,\n    timestamp: new Date().toISOString()\n  });\n  \n  // Determine status code\n  const statusCode = err.statusCode || 500;\n  const code = err.code || 'INTERNAL_ERROR';\n  const message = statusCode === 500 && !err.isOperational\n    ? 'Internal server error'\n    : err.message;\n  \n  // Build response\n  const response = {\n    status: 'error',\n    code,\n    message,\n    path: req.path,\n    timestamp: new Date().toISOString()\n  };\n  \n  // Add stack in development\n  if (process.env.NODE_ENV === 'development') {\n    response.stack = err.stack;\n    response.details = err.details;\n  }\n  \n  // Validation errors\n  if (err.name === 'ValidationError') {\n    response.code = 'VALIDATION_ERROR';\n    response.errors = Object.values(err.errors).map(e => ({\n      field: e.path,\n      message: e.message\n    }));\n  }\n  \n  // JWT errors\n  if (err.name === 'JsonWebTokenError') {\n    response.code = 'INVALID_TOKEN';\n    response.message = 'Invalid authentication token';\n  }\n  \n  if (err.name === 'TokenExpiredError') {\n    response.code = 'TOKEN_EXPIRED';\n    response.message = 'Authentication token expired';\n  }\n  \n  // Database errors\n  if (err.code === '23505') { // PostgreSQL unique violation\n    response.code = 'DUPLICATE_ERROR';\n    response.message = 'Duplicate entry detected';\n  }\n  \n  res.status(statusCode).json(response);\n};\n\nmodule.exports = { AppError, errorHandler };",
+    "explanation": "A good error handler provides consistent responses, logs errors with context, handles different error types, and prevents sensitive information leakage.",
+    "recallHint": "Log, categorize, format, don't expose stack in production.",
+    "practice": [
+      "Create a global error handler.",
+      "Create custom error classes.",
+      "Handle different error types consistently."
+    ]
+  },
+  {
+    "id": "express-072",
+    "category": "express",
+    "concept": "Practical Coding - Pagination",
+    "priority": "must-know",
+    "question": "Create a paginated /users endpoint.",
+    "answer": "Create an endpoint that supports pagination with page and limit query parameters. Include pagination metadata (total, pages, next/previous links) in the response.",
+    "code": "// user.service.js\nclass UserService {\n  async getUsers({ page = 1, limit = 10, search = '', sort = 'createdAt', order = 'desc' }) {\n    const offset = (page - 1) * limit;\n    \n    // Build query\n    let query = 'SELECT id, name, email, createdAt FROM users';\n    const params = [];\n    \n    if (search) {\n      query += ' WHERE name ILIKE $1 OR email ILIKE $1';\n      params.push(`%${search}%`);\n    }\n    \n    query += ` ORDER BY ${sort} ${order}`;\n    query += ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;\n    params.push(limit, offset);\n    \n    // Count query\n    let countQuery = 'SELECT COUNT(*) FROM users';\n    const countParams = [];\n    if (search) {\n      countQuery += ' WHERE name ILIKE $1 OR email ILIKE $1';\n      countParams.push(`%${search}%`);\n    }\n    \n    const [usersResult, countResult] = await Promise.all([\n      pool.query(query, params),\n      pool.query(countQuery, countParams)\n    ]);\n    \n    const total = parseInt(countResult.rows[0].count);\n    const totalPages = Math.ceil(total / limit);\n    \n    return {\n      data: usersResult.rows,\n      pagination: {\n        page: parseInt(page),\n        limit: parseInt(limit),\n        total,\n        totalPages,\n        hasNext: page < totalPages,\n        hasPrevious: page > 1\n      }\n    };\n  }\n}\n\n// user.controller.js\nclass UserController {\n  async getUsers(req, res, next) {\n    try {\n      const result = await userService.getUsers(req.query);\n      \n      // Build links\n      const baseUrl = `${req.protocol}://${req.get('host')}${req.path}`;\n      const links = {\n        self: `${baseUrl}?page=${result.pagination.page}&limit=${result.pagination.limit}`\n      };\n      \n      if (result.pagination.hasNext) {\n        links.next = `${baseUrl}?page=${result.pagination.page + 1}&limit=${result.pagination.limit}`;\n      }\n      \n      if (result.pagination.hasPrevious) {\n        links.prev = `${baseUrl}?page=${result.pagination.page - 1}&limit=${result.pagination.limit}`;\n      }\n      \n      res.json({\n        data: result.data,\n        pagination: result.pagination,\n        links\n      });\n    } catch (err) {\n      next(err);\n    }\n  }\n}",
+    "explanation": "Pagination is essential for any API that returns multiple resources. Include metadata and links for better client experience and API discoverability.",
+    "recallHint": "page, limit, total, totalPages, links.",
+    "practice": [
+      "Implement pagination in an endpoint.",
+      "Add pagination metadata.",
+      "Build next/prev links."
+    ]
+  },
+  {
+    "id": "express-073",
+    "category": "express",
+    "concept": "Practical Coding - External APIs",
+    "priority": "important",
+    "question": "Create an endpoint that calls two external APIs concurrently.",
+    "answer": "Use Promise.all or Promise.allSettled to call multiple external APIs concurrently. Handle failures gracefully and combine responses.",
+    "code": "// external.controller.js\nconst axios = require('axios');\nconst { AppError } = require('../middleware/error.middleware');\n\nclass ExternalController {\n  async getCombinedData(req, res, next) {\n    try {\n      // Call multiple external APIs concurrently\n      const [users, posts, comments] = await Promise.all([\n        axios.get('https://jsonplaceholder.typicode.com/users'),\n        axios.get('https://jsonplaceholder.typicode.com/posts'),\n        axios.get('https://jsonplaceholder.typicode.com/comments')\n      ]);\n      \n      res.json({\n        users: users.data.slice(0, 5),\n        posts: posts.data.slice(0, 5),\n        comments: comments.data.slice(0, 5),\n        meta: {\n          totalUsers: users.data.length,\n          totalPosts: posts.data.length,\n          totalComments: comments.data.length\n        }\n      });\n    } catch (err) {\n      next(err);\n    }\n  }\n  \n  async getDataWithFallback(req, res, next) {\n    try {\n      // Use allSettled to handle partial failures\n      const results = await Promise.allSettled([\n        axios.get('https://api1.example.com/data'),\n        axios.get('https://api2.example.com/data'),\n        axios.get('https://api3.example.com/data')\n      ]);\n      \n      const response = {\n        data: [],\n        failures: []\n      };\n      \n      results.forEach((result, index) => {\n        if (result.status === 'fulfilled') {\n          response.data.push(result.value.data);\n        } else {\n          response.failures.push({\n            source: `API ${index + 1}`,\n            error: result.reason.message\n          });\n        }\n      });\n      \n      // If all fail, return error\n      if (response.data.length === 0) {\n        throw new AppError('All external services unavailable', 503);\n      }\n      \n      res.json(response);\n    } catch (err) {\n      next(err);\n    }\n  }\n  \n  async getDataWithTimeout(req, res, next) {\n    try {\n      const timeout = 5000;\n      \n      const results = await Promise.race([\n        Promise.all([\n          axios.get('https://api1.example.com/data'),\n          axios.get('https://api2.example.com/data')\n        ]),\n        new Promise((_, reject) => \n          setTimeout(() => reject(new Error('Request timeout')), timeout)\n        )\n      ]);\n      \n      res.json(results);\n    } catch (err) {\n      next(err);\n    }\n  }\n}",
+    "explanation": "Concurrent external API calls improve performance. Use Promise.all for \"all or nothing\", Promise.allSettled for partial results, and timeouts to prevent hanging.",
+    "recallHint": "Promise.all for parallel calls, Promise.allSettled for partial failures.",
+    "practice": [
+      "Call multiple external APIs concurrently.",
+      "Handle partial failures.",
+      "Implement timeouts."
+    ]
+  }
+]

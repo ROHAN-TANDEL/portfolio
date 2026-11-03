@@ -1,0 +1,1358 @@
+[
+  {
+    "id": "ts-ex-01",
+    "title": "Recursive DeepReadonly<T> with Function & Array Guards",
+    "category": "Mapped & Utility Types",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements a production-grade DeepReadonly<T> utility type that recursively marks all nested object and array properties readonly while preserving primitive types and function references.",
+    "conceptsCovered": [
+      "DeepReadonly",
+      "Recursive Mapped Types",
+      "Function Guards",
+      "Array & Tuple Handling",
+      "ReadonlyArray"
+    ],
+    "code": "// DeepReadonly type definition\ntype DeepReadonly<T> = T extends (...args: any[]) => any\n  ? T // Preserve functions unmodified\n  : T extends ReadonlyArray<infer Item>\n    ? ReadonlyArray<DeepReadonly<Item>> // Recursively freeze arrays/tuples\n    : T extends object\n      ? { readonly [K in keyof T]: DeepReadonly<T[K]> } // Recursively freeze objects\n      : T; // Primitives (string, number, boolean) remain as-is\n\n// Test Data Structure\ninterface UserAccount {\n  id: string;\n  profile: {\n    name: string;\n    roles: string[];\n    settings: {\n      theme: 'dark' | 'light';\n      notifications: boolean;\n    };\n  };\n  logActivity: (event: string) => void;\n}\n\n// Verification:\ntype ImmutableAccount = DeepReadonly<UserAccount>;\n\nconst account: ImmutableAccount = {\n  id: 'usr_101',\n  profile: {\n    name: 'Alice',\n    roles: ['admin', 'editor'],\n    settings: {\n      theme: 'dark',\n      notifications: true\n    }\n  },\n  logActivity: (event) => console.log('Event:', event)\n};\n\n// Compilation assertions:\n// account.id = 'usr_102'; // ERROR: Cannot assign to 'id' because it is a read-only property.\n// account.profile.name = 'Bob'; // ERROR: Cannot assign to 'name' because it is a read-only property.\n// account.profile.roles.push('viewer'); // ERROR: Property 'push' does not exist on type 'readonly string[]'.\naccount.logActivity('login'); // OK! Function invocation preserved.",
+    "breakdown": [
+      {
+        "lineRange": "2-9",
+        "note": "Tests against function signatures first to avoid mapped types breaking function prototypes; recursively maps arrays and objects."
+      },
+      {
+        "lineRange": "24-38",
+        "note": "Instantiates a nested mock object demonstrating compile-time immutability across all nesting levels."
+      }
+    ],
+    "expectedOutput": "Compile-time enforcement: all nested properties and arrays become immutable (readonly)."
+  },
+  {
+    "id": "ts-ex-02",
+    "title": "Recursive DeepPartial<T> and DeepRequired<T>",
+    "category": "Mapped & Utility Types",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds deep recursive versions of TypeScript's built-in Partial<T> and Required<T>, recursively adding or removing optional modifiers (?) on all nested levels.",
+    "conceptsCovered": [
+      "DeepPartial",
+      "DeepRequired",
+      "-? Mapping Modifier",
+      "Recursive Mapped Types",
+      "Optional Fields"
+    ],
+    "code": "// Recursively marks all nested properties optional\ntype DeepPartial<T> = T extends Function\n  ? T\n  : T extends Array<infer U>\n    ? _DeepPartialArray<U>\n    : T extends object\n      ? { [P in keyof T]?: DeepPartial<T[P]> }\n      : T;\n\ninterface _DeepPartialArray<T> extends Array<DeepPartial<T>> {}\n\n// Recursively removes optionality (-?) from all nested properties\ntype DeepRequired<T> = T extends Function\n  ? T\n  : T extends Array<infer U>\n    ? _DeepRequiredArray<U>\n    : T extends object\n      ? { [P in keyof T]-?: DeepRequired<T[P]> }\n      : T;\n\ninterface _DeepRequiredArray<T> extends Array<DeepRequired<T>> {}\n\n// Test interface with nested optionals\ninterface Config {\n  env?: string;\n  server?: {\n    port?: number;\n    ssl?: {\n      enabled?: boolean;\n      cert?: string;\n    };\n  };\n}\n\n// DeepRequired forces ALL nested fields to be supplied!\ntype StrictConfig = DeepRequired<Config>;\n\n// DeepPartial allows updating ANY single deep property!\ntype PatchConfig = DeepPartial<Config>;\n\nconst patch: PatchConfig = {\n  server: {\n    ssl: {\n      enabled: true // Valid! No need to specify port, env, or cert!\n    }\n  }\n};",
+    "breakdown": [
+      {
+        "lineRange": "2-10",
+        "note": "DeepPartial uses mapped type [P in keyof T]?: DeepPartial<T[P]> to mark nested fields optional."
+      },
+      {
+        "lineRange": "13-21",
+        "note": "DeepRequired uses [P in keyof T]-?: DeepRequired<T[P]> to strip the ? modifier recursively."
+      }
+    ],
+    "expectedOutput": "DeepPartial enables partial nested updates; DeepRequired enforces 100% presence of nested fields."
+  },
+  {
+    "id": "ts-ex-03",
+    "title": "Recursive DeepMutable<T> (Stripping readonly Across Structures)",
+    "category": "Mapped & Utility Types",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs a DeepMutable<T> utility using the -readonly mapped modifier to strip immutability from deeply nested objects, arrays, and as const assertions.",
+    "conceptsCovered": [
+      "DeepMutable",
+      "-readonly Modifier",
+      "as const Inversion",
+      "Tuple Mutability",
+      "Structural Transformation"
+    ],
+    "code": "// Strips 'readonly' from all nested object properties and tuples\ntype DeepMutable<T> = T extends Function\n  ? T\n  : T extends readonly (infer Item)[]\n    ? Item[] // Unwraps ReadonlyArray to mutable Array\n    : T extends object\n      ? { -readonly [K in keyof T]: DeepMutable<T[K]> }\n      : T;\n\n// Freeze an object using 'as const'\nconst frozenState = {\n  mode: 'production',\n  flags: ['auth', 'cache'],\n  meta: {\n    retries: 3,\n    debug: false\n  }\n} as const;\n\n// frozenState.mode = 'dev'; // ERROR: Cannot assign to 'mode' because it is a read-only property.\n\n// Convert frozenState to a completely mutable clone type:\ntype MutableState = DeepMutable<typeof frozenState>;\n\nconst workingCopy: MutableState = {\n  mode: 'production',\n  flags: ['auth', 'cache'],\n  meta: {\n    retries: 3,\n    debug: false\n  }\n};\n\n// All properties are now mutable:\nworkingCopy.mode = 'development'; // OK!\nworkingCopy.flags.push('logging'); // OK!\nworkingCopy.meta.retries = 5; // OK!",
+    "breakdown": [
+      {
+        "lineRange": "2-8",
+        "note": "Uses -readonly modifier to strip immutability from properties and converts readonly arrays to mutable Item[]."
+      },
+      {
+        "lineRange": "10-21",
+        "note": "Takes a readonly literal object created with 'as const' and generates an unrestricted mutable equivalent."
+      }
+    ],
+    "expectedOutput": "Strips readonly markers across all nested levels, permitting runtime reassignments."
+  },
+  {
+    "id": "ts-ex-04",
+    "title": "PickByValue<T, ValueType> and OmitByValue<T, ValueType> via Key Remapping",
+    "category": "Mapped & Utility Types",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Leverages TypeScript 4.1 key remapping (as K extends ...) to filter object properties by value type (e.g. picking only functions, or omitting all boolean flags).",
+    "conceptsCovered": [
+      "Key Remapping (as)",
+      "PickByValue",
+      "OmitByValue",
+      "Conditional Key Filtering",
+      "Utility Composition"
+    ],
+    "code": "// Picks keys whose values are assignable to ValueType\ntype PickByValue<T, ValueType> = {\n  [K in keyof T as T[K] extends ValueType ? K : never]: T[K];\n};\n\n// Omits keys whose values are assignable to ValueType\ntype OmitByValue<T, ValueType> = {\n  [K in keyof T as T[K] extends ValueType ? never : K]: T[K];\n};\n\n// Example Model\ninterface Article {\n  id: string;\n  title: string;\n  viewCount: number;\n  isPublished: boolean;\n  isArchived: boolean;\n  publish: () => Promise<void>;\n  archive: () => void;\n}\n\n// 1. Pick only methods (functions) from the model\ntype ArticleMethods = PickByValue<Article, Function>;\n// Inferred: { publish: () => Promise<void>; archive: () => void; }\n\n// 2. Pick only string properties\ntype StringFields = PickByValue<Article, string>;\n// Inferred: { id: string; title: string; }\n\n// 3. Omit all boolean flags\ntype DataWithoutBooleans = OmitByValue<Article, boolean>;\n// Inferred: { id: string; title: string; viewCount: number; publish: ...; archive: ...; }",
+    "breakdown": [
+      {
+        "lineRange": "2-9",
+        "note": "Uses [K in keyof T as T[K] extends ValueType ? K : never] where returning never excludes that key from the output shape."
+      },
+      {
+        "lineRange": "22-31",
+        "note": "Demonstrates extracting function methods or primitive types from an enterprise data model."
+      }
+    ],
+    "expectedOutput": "Filters object keys based on value types at compile-time with 100% precision."
+  },
+  {
+    "id": "ts-ex-05",
+    "title": "RequireAtLeastOne<T, Keys> and RequireExactlyOne<T, Keys>",
+    "category": "Mapped & Utility Types",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds advanced constraint utilities that enforce that an object has at least one of a set of keys, or mutually exclusive keys (XOR / exactly one).",
+    "conceptsCovered": [
+      "RequireAtLeastOne",
+      "RequireExactlyOne (XOR)",
+      "Mutual Exclusivity",
+      "Union Distribution",
+      "API Payload Constraints"
+    ],
+    "code": "// Enforces that AT LEAST ONE of the specified keys must be present\ntype RequireAtLeastOne<T, Keys extends keyof T = keyof T> = \n  Pick<T, Exclude<keyof T, Keys>> & \n  {\n    [K in Keys]-?: Required<Pick<T, K>> & Partial<Pick<T, Exclude<Keys, K>>>;\n  }[Keys];\n\n// Enforces that EXACTLY ONE of the specified keys is present (Mutually Exclusive / XOR)\ntype RequireExactlyOne<T, Keys extends keyof T = keyof T> = \n  Pick<T, Exclude<keyof T, Keys>> &\n  {\n    [K in Keys]: Required<Pick<T, K>> & Record<Exclude<Keys, K>, never?>;\n  }[Keys];\n\n// Example: User contact preferences\ninterface ContactForm {\n  name: string;\n  email?: string;\n  phone?: string;\n}\n\n// Must provide either email OR phone (or both)\ntype ValidContact = RequireAtLeastOne<ContactForm, 'email' | 'phone'>;\n\nconst c1: ValidContact = { name: 'Alice', email: 'alice@test.com' }; // OK!\nconst c2: ValidContact = { name: 'Bob', phone: '123-456' }; // OK!\nconst c3: ValidContact = { name: 'Charlie', email: 'c@test.com', phone: '123' }; // OK!\n// const c4: ValidContact = { name: 'Dan' }; // COMPILE ERROR: Missing email or phone!\n\n// Must provide EITHER email OR phone, NEVER BOTH!\ntype StrictContact = RequireExactlyOne<ContactForm, 'email' | 'phone'>;\n\nconst s1: StrictContact = { name: 'Alice', email: 'alice@test.com' }; // OK!\n// const s2: StrictContact = { name: 'Both', email: 'a@test.com', phone: '123' }; // COMPILE ERROR!",
+    "breakdown": [
+      {
+        "lineRange": "2-7",
+        "note": "RequireAtLeastOne creates a union where each branch marks one key required and the others optional."
+      },
+      {
+        "lineRange": "10-15",
+        "note": "RequireExactlyOne enforces XOR by marking one key required and setting other candidate keys to never?."
+      }
+    ],
+    "expectedOutput": "Validates complex mutually-exclusive or at-least-one API request payload requirements."
+  },
+  {
+    "id": "ts-ex-06",
+    "title": "Deep Dot-Notation Object Path Key Extractor (Path<T>)",
+    "category": "Mapped & Utility Types",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Constructs a type-level recursive Path<T> utility that extracts all valid nested dot-notation paths ('user.profile.address.city') from complex object trees.",
+    "conceptsCovered": [
+      "Path<T>",
+      "Dot-Notation Paths",
+      "Recursive String Keys",
+      "Template Literal Types",
+      "Form Field Autocompletion"
+    ],
+    "code": "// Recursively generates all valid nested dot-notation paths as string literals\ntype Path<T> = T extends object\n  ? {\n      [K in keyof T & (string | number)]: T[K] extends Array<any>\n        ? `${K}` | `${K}[${number}]`\n        : T[K] extends object\n          ? `${K}` | `${K}.${Path<T[K]>}`\n          : `${K}`;\n    }[keyof T & (string | number)]\n  : never;\n\n// Test Schema\ninterface EnterpriseUser {\n  id: string;\n  personal: {\n    firstName: string;\n    lastName: string;\n    contacts: {\n      email: string;\n      phone: string;\n    };\n  };\n  tags: string[];\n}\n\ntype UserPaths = Path<EnterpriseUser>;\n// Inferred Union:\n// \"id\" | \"personal\" | \"tags\" | \"tags[${number}]\" |\n// \"personal.firstName\" | \"personal.lastName\" | \"personal.contacts\" |\n// \"personal.contacts.email\" | \"personal.contacts.phone\"\n\n// Type-Safe Form Watcher Function:\nfunction watchField<P extends Path<EnterpriseUser>>(path: P) {\n  console.log('Watching field path:', path);\n}\n\n// Complete IDE Autocomplete for all nested paths!\nwatchField('personal.contacts.email'); // Valid\nwatchField('tags[0]'); // Valid\n// watchField('personal.contacts.fax'); // COMPILE ERROR: Argument of type '\"personal.contacts.fax\"' is not assignable!",
+    "breakdown": [
+      {
+        "lineRange": "2-10",
+        "note": "Recursively maps object keys into template literals `${K}.${Path<T[K]>}`, indexing into the union of keys."
+      },
+      {
+        "lineRange": "31-39",
+        "note": "Powers type-safe form field accessors (like React Hook Form or Lodash.get)."
+      }
+    ],
+    "expectedOutput": "Extracts complete dot-notation path strings with full compile-time autocompletion."
+  },
+  {
+    "id": "ts-ex-07",
+    "title": "Safe Dot-Notation Value Resolver (PathValue<T, Path>)",
+    "category": "Mapped & Utility Types",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Given a dot-separated path string ('a.b.c'), resolves the exact return type of that nested property at compile time using template literal decomposition.",
+    "conceptsCovered": [
+      "PathValue<T, P>",
+      "Type-Safe Lodash.get",
+      "String Decomposition",
+      "infer Head / Tail",
+      "Lookup Types"
+    ],
+    "code": "// Resolves the exact property type at the given dot-notation Path\ntype PathValue<T, P extends string> = P extends `${infer Head}.${infer Tail}`\n  ? Head extends keyof T\n    ? PathValue<T[Head], Tail> // Recurse into nested object\n    : never\n  : P extends keyof T\n    ? T[P] // Base case: leaf property reached\n    : never;\n\n// Test Schema\ninterface AppState {\n  auth: {\n    user: {\n      id: number;\n      username: string;\n      roles: string[];\n    };\n    tokens: {\n      accessToken: string;\n      expiresAt: Date;\n    };\n  };\n}\n\n// Test Resolution:\ntype UsernameType = PathValue<AppState, 'auth.user.username'>; // string\ntype RolesType = PathValue<AppState, 'auth.user.roles'>; // string[]\ntype ExpiryType = PathValue<AppState, 'auth.tokens.expiresAt'>; // Date\n\n// Type-Safe deep get implementation:\nfunction deepGet<T, P extends string>(obj: T, path: P): PathValue<T, P> {\n  const parts = path.split('.');\n  let current: any = obj;\n  for (const part of parts) {\n    if (current == null) return undefined as any;\n    current = current[part];\n  }\n  return current;\n}\n\nconst state: AppState = {\n  auth: {\n    user: { id: 1, username: 'alice', roles: ['admin'] },\n    tokens: { accessToken: 'xyz', expiresAt: new Date() }\n  }\n};\n\nconst user = deepGet(state, 'auth.user.username'); // Typed strictly as 'string'!",
+    "breakdown": [
+      {
+        "lineRange": "2-8",
+        "note": "Recursively splits path on '.' with template literal pattern matching and indexes into T[Head]."
+      },
+      {
+        "lineRange": "29-37",
+        "note": "deepGet function returns the exact compile-time type corresponding to the dot-path argument."
+      }
+    ],
+    "expectedOutput": "Resolves exact deeply-nested property types with zero 'any' casts."
+  },
+  {
+    "id": "ts-ex-08",
+    "title": "StrictOmit<T, K extends keyof T> and Safe Object Diffing",
+    "category": "Mapped & Utility Types",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Fixes the standard library Omit<T, K> design flaw (where K can be any arbitrary string) by enforcing that K must be a real keyof T.",
+    "conceptsCovered": [
+      "StrictOmit",
+      "keyof Constraints",
+      "Type Safety Guards",
+      "Object Diffing",
+      "Refactoring Safety"
+    ],
+    "code": "// Standard Omit accepts non-existent keys silently!\n// type Bad = Omit<{ a: 1 }, 'nonExistentKey'>; // Compiles with NO warning!\n\n// StrictOmit enforces that keys to omit MUST exist on T:\ntype StrictOmit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;\n\ninterface DatabaseRecord {\n  id: string;\n  createdAt: Date;\n  updatedAt: Date;\n  title: string;\n  content: string;\n}\n\n// Valid omission of metadata fields\ntype InsertDTO = StrictOmit<DatabaseRecord, 'id' | 'createdAt' | 'updatedAt'>;\n// Inferred: { title: string; content: string; }\n\n// Compiler protection during refactoring:\n// If 'updatedAt' is renamed in DatabaseRecord, the following fails compilation!\n// type BrokenDTO = StrictOmit<DatabaseRecord, 'id' | 'typoKey'>;\n// ERROR: Type '\"typoKey\"' does not satisfy the constraint 'keyof DatabaseRecord'.",
+    "breakdown": [
+      {
+        "lineRange": "5-6",
+        "note": "K extends keyof T guarantees the compiler rejects typos and flags renamed properties during refactoring."
+      },
+      {
+        "lineRange": "16-21",
+        "note": "Creates clean data-transfer objects (DTOs) with guaranteed type safety."
+      }
+    ],
+    "expectedOutput": "Rejects non-existent keys at compile time, eliminating silent refactoring bugs."
+  },
+  {
+    "id": "ts-ex-09",
+    "title": "Converting Union to Intersection (UnionToIntersection<U>) via Contravariance",
+    "category": "Mapped & Utility Types",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements the legendary UnionToIntersection<U> utility using function argument contravariance to turn union types ('A' | 'B') into intersection types ('A' & 'B').",
+    "conceptsCovered": [
+      "UnionToIntersection",
+      "Function Parameter Contravariance",
+      "infer in Contravariant Positions",
+      "Overload Merging",
+      "Type Gymnastics"
+    ],
+    "code": "// Exploits function parameter contravariance:\n// When inferring from multiple candidates in a contravariant position,\n// TypeScript synthesizes an INTERSECTION of the candidate types!\ntype UnionToIntersection<U> = \n  (U extends any ? (k: U) => void : never) extends ((k: infer I) => void) \n    ? I \n    : never;\n\n// Test with object unions:\ntype ActionUnion = \n  | { log: () => void }\n  | { save: () => boolean }\n  | { close: () => Promise<void> };\n\n// Converts union into a unified composite object type:\ntype CombinedService = UnionToIntersection<ActionUnion>;\n// Inferred Type:\n// { log: () => void } & { save: () => boolean } & { close: () => Promise<void> }\n\n// Test implementation satisfying all intersected methods:\nconst service: CombinedService = {\n  log: () => console.log('Logged'),\n  save: () => true,\n  close: async () => console.log('Closed')\n};",
+    "breakdown": [
+      {
+        "lineRange": "4-8",
+        "note": "Step 1: U extends any distributes the union into a union of consumer functions (k: U) => void."
+      },
+      {
+        "lineRange": "5-6",
+        "note": "Step 2: Matching (k: infer I) => void infers I from parameter position, which merges candidate types into an intersection."
+      }
+    ],
+    "expectedOutput": "Transforms union types A | B into intersection types A & B."
+  },
+  {
+    "id": "ts-ex-10",
+    "title": "Converting Union to Tuple (UnionToTuple<U>) using Overload Resolution",
+    "category": "Mapped & Utility Types",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Converts a union ('a' | 'b' | 'c') into a discrete ordered tuple (['a', 'b', 'c']) using function intersection overload resolution and recursive type popping.",
+    "conceptsCovered": [
+      "UnionToTuple",
+      "Overload Resolution",
+      "LastInUnion",
+      "Recursive Accumulation",
+      "Type-Level List Building"
+    ],
+    "code": "type UnionToIntersection<U> = \n  (U extends any ? (k: U) => void : never) extends ((k: infer I) => void) ? I : never;\n\n// Overload resolution chooses the LAST declared signature in an intersection!\ntype LastInUnion<U> = \n  UnionToIntersection<U extends any ? (x: U) => 0 : never> extends (x: infer L) => 0 \n    ? L \n    : never;\n\n// Recursively pops the last element from the union into the tuple\ntype UnionToTuple<U, Last = LastInUnion<U>> = \n  [U] extends [never] \n    ? [] \n    : [...UnionToTuple<Exclude<U, Last>>, Last];\n\n// Test Conversion:\ntype FruitUnion = 'apple' | 'banana' | 'cherry';\ntype FruitTuple = UnionToTuple<FruitUnion>;\n// Inferred: ['apple', 'banana', 'cherry']\n\n// Verify tuple methods:\nconst fruits: FruitTuple = ['apple', 'banana', 'cherry'];\nconsole.log(fruits.length); // 3",
+    "breakdown": [
+      {
+        "lineRange": "5-9",
+        "note": "Extracts the 'last' member of a union by relying on TypeScript's overload resolution ordering."
+      },
+      {
+        "lineRange": "12-16",
+        "note": "Recursively strips the last item with Exclude<U, Last> until the union reaches never."
+      }
+    ],
+    "expectedOutput": "Converts arbitrary union types into concrete tuple arrays with exact lengths."
+  },
+  {
+    "id": "ts-ex-11",
+    "title": "SnakeToCamel<S> and CamelToSnake<S> String Case Converters",
+    "category": "Template Literal Types",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs recursive string literal utilities that transform snake_case database identifiers to camelCase JavaScript properties and vice versa.",
+    "conceptsCovered": [
+      "Template Literal Types",
+      "SnakeToCamel",
+      "CamelToSnake",
+      "Capitalize & Uncapitalize",
+      "Recursive String Parsing"
+    ],
+    "code": "// Convert snake_case to camelCase\ntype SnakeToCamel<S extends string> = S extends `${infer Head}_${infer Tail}`\n  ? `${Head}${Capitalize<SnakeToCamel<Tail>>}`\n  : S;\n\n// Convert camelCase to snake_case\ntype CamelToSnake<S extends string> = S extends `${infer Char}${infer Rest}`\n  ? Char extends Lowercase<Char>\n    ? `${Char}${CamelToSnake<Rest>}`\n    : `_${Lowercase<Char>}${CamelToSnake<Rest>}`\n  : S;\n\n// Test Type Conversions:\ntype A = SnakeToCamel<'user_billing_profile_id'>; // \"userBillingProfileId\"\ntype B = CamelToSnake<'userBillingProfileId'>; // \"_user_billing_profile_id\" (or stripped leading underscore)\n\n// Mapped object key transformer:\ntype CamelizeKeys<T> = {\n  [K in keyof T as K extends string ? SnakeToCamel<K> : K]: T[K];\n};\n\ninterface SqlRow {\n  first_name: string;\n  last_name: string;\n  is_verified: boolean;\n}\n\ntype DomainUser = CamelizeKeys<SqlRow>;\n// Inferred: { firstName: string; lastName: string; isVerified: boolean; }",
+    "breakdown": [
+      {
+        "lineRange": "2-5",
+        "note": "SnakeToCamel matches on '_' delimiter and recursively capitalizes each following word segment."
+      },
+      {
+        "lineRange": "8-13",
+        "note": "CamelToSnake compares each char against its Lowercase version to detect uppercase boundaries."
+      },
+      {
+        "lineRange": "20-22",
+        "note": "CamelizeKeys applies case conversion across all keys of an SQL database row automatically."
+      }
+    ],
+    "expectedOutput": "Translates string literal types between camelCase and snake_case for ORMs and API gateways."
+  },
+  {
+    "id": "ts-ex-12",
+    "title": "KebabCase<S> String Converter with Word Boundary Detection",
+    "category": "Template Literal Types",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Transforms camelCase or PascalCase component names into HTML/CSS kebab-case identifiers ('UserProfileWidget' -> 'user-profile-widget').",
+    "conceptsCovered": [
+      "KebabCase",
+      "PascalCase Parsing",
+      "CSS Class Generators",
+      "Uncapitalize",
+      "Recursive String Splitting"
+    ],
+    "code": "// Helper to uncapitalize first letter then recursively replace capital letters with '-letter'\ntype KebabCase<S extends string> = S extends `${infer First}${infer Rest}`\n  ? Rest extends Uncapitalize<Rest>\n    ? `${Lowercase<First>}${KebabCase<Rest>}`\n    : `${Lowercase<First>}-${KebabCase<Uncapitalize<Rest>>}`\n  : S;\n\n// Test Conversions:\ntype K1 = KebabCase<'UserProfileCard'>; // \"user-profile-card\"\ntype K2 = KebabCase<'datePickerDropdownMenu'>; // \"date-picker-dropdown-menu\"\ntype K3 = KebabCase<'SimpleButton'>; // \"simple-button\"\n\n// Type-Safe Web Component Registration:\nfunction registerCustomElement<Name extends string>(\n  componentName: Name,\n  tagName: KebabCase<Name>\n) {\n  console.log(`Registered <${tagName}> for ${componentName}`);\n}\n\n// tagName is strictly enforced to match the kebab-case transform of the component name!\nregisterCustomElement('UserProfileCard', 'user-profile-card'); // OK!\n// registerCustomElement('UserProfileCard', 'user_profile_card'); // COMPILE ERROR!",
+    "breakdown": [
+      {
+        "lineRange": "2-7",
+        "note": "Inspects adjacent character transitions to detect uppercase boundaries and injects hyphens."
+      },
+      {
+        "lineRange": "15-20",
+        "note": "Guarantees that custom element tag names match the exact kebab-case format of their classes."
+      }
+    ],
+    "expectedOutput": "Automatically validates HTML tag names and CSS classes against PascalCase class names."
+  },
+  {
+    "id": "ts-ex-13",
+    "title": "Trim<S>, TrimLeft<S>, and TrimRight<S> String Trimmers",
+    "category": "Template Literal Types",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs compiler-level whitespace trimmers stripping leading and trailing spaces, tabs, and newlines from string literal types.",
+    "conceptsCovered": [
+      "Trim",
+      "TrimLeft / TrimRight",
+      "Whitespace Union (' ' | '\\t' | '\\n')",
+      "Tail-Recursion in Strings",
+      "String Sanitization"
+    ],
+    "code": "type WhiteSpace = ' ' | '\\t' | '\\n';\n\n// Strips leading whitespace\ntype TrimLeft<S extends string> = S extends `${WhiteSpace}${infer Rest}`\n  ? TrimLeft<Rest>\n  : S;\n\n// Strips trailing whitespace\ntype TrimRight<S extends string> = S extends `${infer Rest}${WhiteSpace}`\n  ? TrimRight<Rest>\n  : S;\n\n// Strips both leading and trailing whitespace\ntype Trim<S extends string> = TrimRight<TrimLeft<S>>;\n\n// Test Trimming:\ntype Clean1 = Trim<'   hello world   '>; // \"hello world\"\ntype Clean2 = Trim<'\\n\\t  system_status  \\n'>; // \"system_status\"\n\n// Compile-Time Non-Empty Input Guard:\ntype DisallowEmptyString<T extends string> = Trim<T> extends ''\n  ? never\n  : T;\n\nfunction setTag<T extends string>(tag: DisallowEmptyString<T>) {\n  return tag;\n}\n\nsetTag('production'); // OK!\n// setTag('   '); // COMPILE ERROR: Argument of type 'string' is not assignable to 'never'!",
+    "breakdown": [
+      {
+        "lineRange": "1-15",
+        "note": "Defines WhiteSpace union and recursively consumes leading and trailing whitespace tokens."
+      },
+      {
+        "lineRange": "22-26",
+        "note": "Combines Trim with conditional types to reject whitespace-only strings at compile time."
+      }
+    ],
+    "expectedOutput": "Strips whitespace and prevents empty strings from passing compile-time type assertions."
+  },
+  {
+    "id": "ts-ex-14",
+    "title": "Split<S, Delimiter> and Join<Tuples, Delimiter>",
+    "category": "Template Literal Types",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds compile-time string Split and Join utilities that convert delimited strings into tuples of literals and tuples into joined strings.",
+    "conceptsCovered": [
+      "Split<S, D>",
+      "Join<T, D>",
+      "Delimiter Parsing",
+      "String to Tuple Conversion",
+      "Tuple to String Conversion"
+    ],
+    "code": "// Splits a string into a tuple of substrings by delimiter\ntype Split<S extends string, Delimiter extends string> = \n  S extends `${infer Head}${Delimiter}${infer Tail}`\n    ? [Head, ...Split<Tail, Delimiter>]\n    : [S];\n\n// Joins a tuple of string literals with a delimiter\ntype Join<T extends (string | number)[], Delimiter extends string> = \n  T extends []\n    ? ''\n    : T extends [infer Single extends string | number]\n      ? `${Single}`\n      : T extends [infer Head extends string | number, ...infer Tail extends (string | number)[]]\n        ? `${Head}${Delimiter}${Join<Tail, Delimiter>}`\n        : string;\n\n// Test Split:\ntype IPParts = Split<'192.168.1.100', '.'>; // [\"192\", \"168\", \"1\", \"100\"]\ntype CSVFields = Split<'id,name,role,email', ','>; // [\"id\", \"name\", \"role\", \"email\"]\n\n// Test Join:\ntype Path = Join<['api', 'v1', 'users', 'auth'], '/'>; // \"api/v1/users/auth\"\ntype SemVer = Join<[1, 24, 0], '.'>; // \"1.24.0\"",
+    "breakdown": [
+      {
+        "lineRange": "2-6",
+        "note": "Split recursively decomposes on `${Head}${Delimiter}${Tail}` and appends to tuple."
+      },
+      {
+        "lineRange": "9-16",
+        "note": "Join recursively iterates tuple elements and concatenates them with delimiter strings."
+      }
+    ],
+    "expectedOutput": "Converts strings to tuples and tuples to strings at the type level."
+  },
+  {
+    "id": "ts-ex-15",
+    "title": "Type-Safe URL Route Parameter Extractor (ExtractRouteParams<Path>)",
+    "category": "Template Literal Types",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a production-grade URL route parameter extractor used in modern web routers (like Express/Fastify/Next.js) to infer typed params objects from URL strings.",
+    "conceptsCovered": [
+      "ExtractRouteParams",
+      "Route Pattern Matching",
+      "Path Tokens (:param)",
+      "Mapped Types",
+      "Type-Safe Web Routing"
+    ],
+    "code": "// Extracts parameter names from route paths like \"/orgs/:orgId/repos/:repoId\"\ntype ExtractRouteParams<Path extends string> = \n  Path extends `${string}/:${infer Param}/${infer Rest}`\n    ? { [K in Param | keyof ExtractRouteParams<`/${Rest}`>]: string }\n    : Path extends `${string}/:${infer Param}`\n      ? { [K in Param]: string }\n      : {};\n\n// Strongly-Typed Route Handler:\nclass TypedRouter {\n  get<Route extends string>(\n    path: Route,\n    handler: (params: ExtractRouteParams<Route>) => void\n  ) {\n    // Runtime registration logic...\n  }\n}\n\nconst router = new TypedRouter();\n\n// Full Autocomplete and Strict Type Checking:\nrouter.get('/teams/:teamId/projects/:projectId', (params) => {\n  // TypeScript guarantees params has EXACTLY { teamId: string, projectId: string }!\n  console.log(params.teamId.toUpperCase());\n  console.log(params.projectId.toLowerCase());\n\n  // params.userId; // COMPILE ERROR: Property 'userId' does not exist!\n});",
+    "breakdown": [
+      {
+        "lineRange": "2-7",
+        "note": "Matches on '/:Param/' recursively, synthesizing an object type containing all extracted keys."
+      },
+      {
+        "lineRange": "10-17",
+        "note": "The get method infers the Route string generic and passes the parsed params object to the callback."
+      }
+    ],
+    "expectedOutput": "Derives { teamId: string; projectId: string } directly from route path strings."
+  },
+  {
+    "id": "ts-ex-16",
+    "title": "Type-Safe URL Query String Parser (ParseQueryString<Query>)",
+    "category": "Template Literal Types",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Parses URL query strings at compile time (?filter=active&sort=desc&page=1) into a strongly typed key-value object type.",
+    "conceptsCovered": [
+      "ParseQueryString",
+      "Query Delimiter (&)",
+      "Key-Value Delimiter (=)",
+      "Intersection Merging",
+      "Compile-Time URL Parsing"
+    ],
+    "code": "type ParseParam<Param extends string> = \n  Param extends `${infer Key}=${infer Value}`\n    ? { [K in Key]: Value }\n    : { [K in Param]: true };\n\ntype MergeParams<A, B> = {\n  [K in keyof A | keyof B]: K extends keyof A\n    ? K extends keyof B\n      ? [A[K], B[K]] // Array merge if duplicate keys appear\n      : A[K]\n    : K extends keyof B\n      ? B[K]\n      : never;\n};\n\ntype ParseQueryString<Q extends string> = \n  Q extends `?${infer Rest}`\n    ? ParseQueryString<Rest>\n    : Q extends `${infer Pair}&${infer Rest}`\n      ? MergeParams<ParseParam<Pair>, ParseQueryString<Rest>>\n      : Q extends ''\n        ? {}\n        : ParseParam<Q>;\n\n// Test Query Parsing:\ntype Parsed1 = ParseQueryString<'?role=admin&active=true&theme=dark'>;\n// Inferred: { role: 'admin'; active: 'true'; theme: 'dark'; }\n\ntype DuplicateKeys = ParseQueryString<'?tag=js&tag=ts'>;\n// Inferred: { tag: ['js', 'ts'] }",
+    "breakdown": [
+      {
+        "lineRange": "1-4",
+        "note": "ParseParam splits a single key=value pair into an object { [Key]: Value }."
+      },
+      {
+        "lineRange": "14-22",
+        "note": "ParseQueryString recursively splits pairs on '&' and merges results."
+      }
+    ],
+    "expectedOutput": "Parses complex query strings into strictly typed object contracts at compile time."
+  },
+  {
+    "id": "ts-ex-17",
+    "title": "String LengthOfString<S> via Tuple Accumulator",
+    "category": "Template Literal Types",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Calculates the exact length of a string literal type at compile time by decomposing characters into a tuple accumulator.",
+    "conceptsCovered": [
+      "LengthOfString",
+      "Character Decomposition",
+      "Tuple Accumulator Pattern",
+      "Tuple['length']",
+      "Type-Level Arithmetic"
+    ],
+    "code": "// Recursively unpacks characters into a tuple until empty, then returns tuple['length']\ntype LengthOfString<S extends string, Acc extends any[] = []> = \n  S extends `${infer Char}${infer Rest}`\n    ? LengthOfString<Rest, [...Acc, Char]>\n    : Acc['length'];\n\n// Test String Lengths:\ntype L1 = LengthOfString<'hello'>; // 5\ntype L2 = LengthOfString<'TypeScript'>; // 10\ntype L3 = LengthOfString<''>; // 0\n\n// Enforcing Max-Length Constraints at Compile Time:\ntype MaxLength<S extends string, Max extends number> = \n  LengthOfString<S> extends Max\n    ? S\n    : `Error: String must be exactly ${Max} characters`;\n\ntype ZipCode = MaxLength<'94105', 5>; // \"94105\"\n// type BadZip = MaxLength<'9410', 5>; // \"Error: String must be exactly 5 characters\"",
+    "breakdown": [
+      {
+        "lineRange": "2-5",
+        "note": "Decomposes string character-by-character into Acc tuple; returns Acc['length'] when empty."
+      },
+      {
+        "lineRange": "12-16",
+        "note": "Uses string length calculation to enforce length constraints on input parameters."
+      }
+    ],
+    "expectedOutput": "Computes exact string character counts at compile time."
+  },
+  {
+    "id": "ts-ex-18",
+    "title": "String Replace<S, From, To> and ReplaceAll<S, From, To>",
+    "category": "Template Literal Types",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Recreates JavaScript's String.prototype.replace and replaceAll methods at the type level using recursive template literal substitution.",
+    "conceptsCovered": [
+      "Replace",
+      "ReplaceAll",
+      "Sub-string Substitution",
+      "Tail Recursion",
+      "Template Literals"
+    ],
+    "code": "// Replace first occurrence of From with To\ntype Replace<S extends string, From extends string, To extends string> = \n  From extends ''\n    ? S\n    : S extends `${infer Head}${From}${infer Tail}`\n      ? `${Head}${To}${Tail}`\n      : S;\n\n// Replace all occurrences of From with To\ntype ReplaceAll<S extends string, From extends string, To extends string> = \n  From extends ''\n    ? S\n    : S extends `${infer Head}${From}${infer Tail}`\n      ? `${Head}${To}${ReplaceAll<Tail, From, To>}`\n      : S;\n\n// Test Replace:\ntype R1 = Replace<'hello world', 'world', 'TypeScript'>; // \"hello TypeScript\"\n\n// Test ReplaceAll:\ntype R2 = ReplaceAll<'item_one_and_item_two', 'item', 'entry'>; // \"entry_one_and_entry_two\"\ntype R3 = ReplaceAll<'100.200.300.400', '.', '-'>; // \"100-200-300-400\"",
+    "breakdown": [
+      {
+        "lineRange": "2-7",
+        "note": "Replace finds the first match and reconstructs `${Head}${To}${Tail}`."
+      },
+      {
+        "lineRange": "10-15",
+        "note": "ReplaceAll recursively invokes itself on Tail to replace all subsequent occurrences."
+      }
+    ],
+    "expectedOutput": "Substitutes sub-strings within literal string types at compile time."
+  },
+  {
+    "id": "ts-ex-19",
+    "title": "SQL Query String Validator (Table & Column Assertion)",
+    "category": "Template Literal Types",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Constructs a type-safe SQL query helper that verifies at compile time that SELECT queries only target valid table names and columns from the database schema.",
+    "conceptsCovered": [
+      "Type-Safe SQL",
+      "Schema Verification",
+      "Template Literal Assertions",
+      "String Decomposition",
+      "Compile-Time SQL Safety"
+    ],
+    "code": "interface DatabaseSchema {\n  users: { id: number; username: string; email: string };\n  orders: { order_id: string; total_amount: number; user_id: number };\n}\n\n// Validates: SELECT <Column> FROM <Table>\ntype ValidSqlQuery<Q extends string> = \n  Q extends `SELECT ${infer Col} FROM ${infer Table}`\n    ? Table extends keyof DatabaseSchema\n      ? Col extends '*'\n        ? Q\n        : Col extends keyof DatabaseSchema[Table]\n          ? Q\n          : `Error: Invalid column '${Col}' for table '${Table}'`\n      : `Error: Table '${Table}' does not exist in schema`\n    : `Error: Query must be in format 'SELECT <col> FROM <table>'`;\n\nfunction executeQuery<Q extends string>(query: ValidSqlQuery<Q>) {\n  console.log('Executing verified SQL:', query);\n}\n\n// Valid queries compile cleanly:\nexecuteQuery('SELECT username FROM users'); // OK!\nexecuteQuery('SELECT * FROM orders'); // OK!\n\n// Typo in table name caught at compile time!\n// executeQuery('SELECT username FROM customers');\n// Error: Table 'customers' does not exist in schema\n\n// Typo in column name caught at compile time!\n// executeQuery('SELECT password_hash FROM users');\n// Error: Invalid column 'password_hash' for table 'users'",
+    "breakdown": [
+      {
+        "lineRange": "7-17",
+        "note": "Decomposes SQL query into Col and Table, verifying against DatabaseSchema interface."
+      },
+      {
+        "lineRange": "19-21",
+        "note": "Function parameter type ValidSqlQuery<Q> returns error strings if invalid, blocking compile."
+      }
+    ],
+    "expectedOutput": "Prevents invalid SQL table and column names from compiling."
+  },
+  {
+    "id": "ts-ex-20",
+    "title": "CSS Style Unit Formatter (px, rem, em, % template verification)",
+    "category": "Template Literal Types",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Enforces that CSS property values conform strictly to valid CSS dimension units ('16px', '1.5rem', '100%') rather than raw numbers or invalid unit strings.",
+    "conceptsCovered": [
+      "CSS Unit Formatter",
+      "Union of Units",
+      "Template Literals",
+      "Compile-Time Formatting",
+      "Design System Typings"
+    ],
+    "code": "type CSSUnit = 'px' | 'rem' | 'em' | '%' | 'vh' | 'vw';\n\n// Enforces valid unit suffix or '0' or 'auto'\ntype CSSDimension = \n  | '0'\n  | 'auto'\n  | 'inherit'\n  | `${number}${CSSUnit}`;\n\ninterface BoxStyle {\n  width: CSSDimension;\n  height: CSSDimension;\n  margin?: CSSDimension;\n  padding?: CSSDimension;\n}\n\nconst safeBox: BoxStyle = {\n  width: '100%',\n  height: '250px',\n  margin: '1.5rem',\n  padding: '0'\n};\n\n// Compiler prevents missing units or invalid measurements:\n// const badBox: BoxStyle = {\n//   width: '500', // COMPILE ERROR: Missing unit! (Must be '500px' or similar)\n//   height: '200inches' // COMPILE ERROR: 'inches' is not a valid CSSUnit!\n// };",
+    "breakdown": [
+      {
+        "lineRange": "1-9",
+        "note": "CSSDimension template literal `${number}${CSSUnit}` allows any numeric prefix ending in valid CSS units."
+      },
+      {
+        "lineRange": "11-16",
+        "note": "BoxStyle interface requires dimensions to conform, preventing missing unit bugs in design tokens."
+      }
+    ],
+    "expectedOutput": "Restricts CSS style strings to valid dimension units at compile time."
+  },
+  {
+    "id": "ts-ex-21",
+    "title": "Tail-Call Optimized ReverseTuple<T>",
+    "category": "Tuples & Arrays",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Reverses a tuple array type at compile time using tail-recursive accumulator pattern to prevent compiler recursion depth limits (TS2589).",
+    "conceptsCovered": [
+      "ReverseTuple",
+      "Variadic Tuples",
+      "Tail-Call Optimization",
+      "Tuple Accumulator",
+      "TS2589 Prevention"
+    ],
+    "code": "// Tail-recursive reverse using accumulator\ntype ReverseTuple<T extends any[], Acc extends any[] = []> = \n  T extends [infer Head, ...infer Tail]\n    ? ReverseTuple<Tail, [Head, ...Acc]>\n    : Acc;\n\n// Test Reverse:\ntype Original = [string, number, boolean, Date];\ntype Reversed = ReverseTuple<Original>;\n// Inferred: [Date, boolean, number, string]\n\nconst data: Reversed = [new Date(), true, 42, 'hello']; // 100% Type-Safe!",
+    "breakdown": [
+      {
+        "lineRange": "2-5",
+        "note": "Head is prepended to Acc in tail position: [Head, ...Acc], guaranteeing O(N) recursion."
+      },
+      {
+        "lineRange": "8-9",
+        "note": "Reverses tuples of arbitrary types preserving exact element positions."
+      }
+    ],
+    "expectedOutput": "Reverses tuple types preserving exact element types and tuple length."
+  },
+  {
+    "id": "ts-ex-22",
+    "title": "Recursive FlattenTuple<T> (Multi-Dimensional Array Unwrapping)",
+    "category": "Tuples & Arrays",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Flattens arbitrarily nested multi-dimensional tuples [1, [2, [3, 4]], 5] into a flat single-dimensional tuple [1, 2, 3, 4, 5].",
+    "conceptsCovered": [
+      "FlattenTuple",
+      "Multi-Dimensional Arrays",
+      "Recursive Unwrapping",
+      "Variadic Spread",
+      "Tuple Normalization"
+    ],
+    "code": "type FlattenTuple<T extends any[]> = \n  T extends [infer Head, ...infer Tail]\n    ? Head extends any[]\n      ? [...FlattenTuple<Head>, ...FlattenTuple<Tail>]\n      : [Head, ...FlattenTuple<Tail>]\n    : [];\n\n// Test Flattening:\ntype Nested = [1, [2, 3], [[4, [5, 6]]], 7];\ntype Flat = FlattenTuple<Nested>;\n// Inferred: [1, 2, 3, 4, 5, 6, 7]\n\nconst result: Flat = [1, 2, 3, 4, 5, 6, 7];",
+    "breakdown": [
+      {
+        "lineRange": "1-6",
+        "note": "Inspects Head: if it is an array, recursively flattens Head and Tail and spreads both."
+      },
+      {
+        "lineRange": "9-11",
+        "note": "Flattens arbitrary nested tuple structures into a single linear tuple."
+      }
+    ],
+    "expectedOutput": "Flattens nested multi-dimensional array types into flat tuple arrays."
+  },
+  {
+    "id": "ts-ex-23",
+    "title": "Tuple Zip<T, U> Combining Pairs into Tuple of Pairs",
+    "category": "Tuples & Arrays",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Combines two tuples of equal or unequal length into pairs [[T0, U0], [T1, U1]] matching Python's zip() function at the type level.",
+    "conceptsCovered": [
+      "Tuple Zip",
+      "Pair Tuple Construction",
+      "Parallel Decomposition",
+      "Shortest Length Termination",
+      "Type-Level Algorithms"
+    ],
+    "code": "type Zip<T extends any[], U extends any[]> = \n  T extends [infer THead, ...infer TTail]\n    ? U extends [infer UHead, ...infer UTail]\n      ? [[THead, UHead], ...Zip<TTail, UTail>]\n      : []\n    : [];\n\n// Test Zip:\ntype Names = ['Alice', 'Bob', 'Charlie'];\ntype Ages = [28, 34, 42];\n\ntype Pairs = Zip<Names, Ages>;\n// Inferred: [[\"Alice\", 28], [\"Bob\", 34], [\"Charlie\", 42]]\n\nconst pairedUsers: Pairs = [\n  ['Alice', 28],\n  ['Bob', 34],\n  ['Charlie', 42]\n];",
+    "breakdown": [
+      {
+        "lineRange": "1-6",
+        "note": "Decomposes both T and U in parallel, assembling [THead, UHead] until either tuple is exhausted."
+      },
+      {
+        "lineRange": "9-12",
+        "note": "Demonstrates zip behavior pairing string names and number ages."
+      }
+    ],
+    "expectedOutput": "Combines two tuple arrays into ordered coordinate pairs at compile time."
+  },
+  {
+    "id": "ts-ex-24",
+    "title": "Tuple Slice<T, Start, End> with Index Arithmetic",
+    "category": "Tuples & Arrays",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements array slicing at compile time, extracting a subset of a tuple between Start index and End index using tuple length counters.",
+    "conceptsCovered": [
+      "Tuple Slice",
+      "Index Arithmetic",
+      "Counter Tuples",
+      "Type-Level Subsets",
+      "Variadic Tuples"
+    ],
+    "code": "// Helper to drop the first N elements from a tuple\ntype Drop<T extends any[], N extends number, Counter extends any[] = []> = \n  Counter['length'] extends N\n    ? T\n    : T extends [any, ...infer Rest]\n      ? Drop<Rest, N, [...Counter, any]>\n      : [];\n\n// Helper to take the first N elements from a tuple\ntype Take<T extends any[], N extends number, Counter extends any[] = []> = \n  Counter['length'] extends N\n    ? []\n    : T extends [infer Head, ...infer Tail]\n      ? [Head, ...Take<Tail, N, [...Counter, any]>]\n      : [];\n\n// Slice combines Drop and Take:\ntype Slice<T extends any[], Start extends number, End extends number> = \n  Take<Drop<T, Start>, End>; // Simplified positive index slice\n\ntype Items = ['a', 'b', 'c', 'd', 'e', 'f'];\ntype Sub = Slice<Items, 2, 2>; // Drops 2 ('a', 'b'), takes 2 -> ['c', 'd']",
+    "breakdown": [
+      {
+        "lineRange": "2-7",
+        "note": "Drop uses Counter['length'] to discard elements until Start index is reached."
+      },
+      {
+        "lineRange": "10-15",
+        "note": "Take accumulates elements until N items are collected."
+      }
+    ],
+    "expectedOutput": "Extracts contiguous sub-slices of tuple types at compile time."
+  },
+  {
+    "id": "ts-ex-25",
+    "title": "NonEmptyArray<T> Primitive Guard",
+    "category": "Tuples & Arrays",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Constructs a NonEmptyArray<T> type [T, ...T[]] enforcing that an array parameter must contain at least one element, preventing empty array runtime bugs.",
+    "conceptsCovered": [
+      "NonEmptyArray<T>",
+      "Tuple Spread",
+      "Empty Array Defense",
+      "Math.max Guards",
+      "API Constraints"
+    ],
+    "code": "// Requires at least one element of type T\ntype NonEmptyArray<T> = [T, ...T[]];\n\n// Math utility that is unsafe with empty arrays:\nfunction calculateAverage(numbers: NonEmptyArray<number>): number {\n  const sum = numbers.reduce((acc, curr) => acc + curr, 0);\n  return sum / numbers.length; // NEVER divides by 0 because length is >= 1!\n}\n\n// Valid invocations:\ncalculateAverage([10]); // OK!\ncalculateAverage([10, 20, 30]); // OK!\n\n// Compiler prevents empty array bug:\n// calculateAverage([]); // COMPILE ERROR: Source has 0 element(s) but target requires 1!",
+    "breakdown": [
+      {
+        "lineRange": "2-2",
+        "note": "Defines [T, ...T[]] which forces the first element to exist and allows arbitrary remaining elements."
+      },
+      {
+        "lineRange": "5-8",
+        "note": "calculateAverage is mathematically protected against division by zero (0 / 0 === NaN)."
+      }
+    ],
+    "expectedOutput": "Rejects empty arrays [] at compile time, guaranteeing at least 1 element."
+  },
+  {
+    "id": "ts-ex-26",
+    "title": "TupleToUnion<T> and LastOfTuple<T>",
+    "category": "Tuples & Arrays",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Demonstrates indexed access to convert tuples into unions (T[number]) and extracting the last element of a tuple.",
+    "conceptsCovered": [
+      "TupleToUnion",
+      "T[number]",
+      "LastOfTuple",
+      "Variadic Tuples",
+      "Indexed Access"
+    ],
+    "code": "type TupleToUnion<T extends readonly any[]> = T[number];\n\ntype LastOfTuple<T extends any[]> = T extends [...any[], infer Last] ? Last : never;\n\nconst roles = ['admin', 'manager', 'editor', 'viewer'] as const;\n\n// Convert tuple to union of string literals:\ntype Role = TupleToUnion<typeof roles>;\n// Inferred: 'admin' | 'manager' | 'editor' | 'viewer'\n\n// Extract last element:\ntype Coordinates = [x: number, y: number, z: number];\ntype ZCoord = LastOfTuple<Coordinates>; // number",
+    "breakdown": [
+      {
+        "lineRange": "1-1",
+        "note": "T[number] indexes across all array indices, collapsing the tuple into a union of its elements."
+      },
+      {
+        "lineRange": "3-3",
+        "note": "T extends [...any[], infer Last] pattern-matches and extracts the final item."
+      }
+    ],
+    "expectedOutput": "Converts tuple values to unions and extracts terminal tuple elements."
+  },
+  {
+    "id": "ts-ex-27",
+    "title": "Type-Safe Array.includes Replacement (Includes<T, U>)",
+    "category": "Tuples & Arrays",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a compile-time Includes<Tuple, Target> type that checks if a type exists within a tuple, accounting for exact equality checks (not just assignability).",
+    "conceptsCovered": [
+      "Includes<T, U>",
+      "Exact Equal<X, Y>",
+      "Recursive Tuple Inspection",
+      "Array.includes Typing",
+      "Soundness Guard"
+    ],
+    "code": "// Exact type equality helper:\ntype IsEqual<X, Y> = \n  (<T>() => T extends X ? 1 : 2) extends (<T>() => T extends Y ? 1 : 2) ? true : false;\n\n// Recursively checks if Target is present in Tuple\ntype Includes<Tuple extends readonly any[], Target> = \n  Tuple extends readonly [infer First, ...infer Rest]\n    ? IsEqual<First, Target> extends true\n      ? true\n      : Includes<Rest, Target>\n    : false;\n\n// Test Includes:\ntype T1 = Includes<['apple', 'banana', 'cherry'], 'banana'>; // true\ntype T2 = Includes<['apple', 'banana', 'cherry'], 'orange'>; // false\n\n// Distinguishes between 'boolean' and 'true':\ntype T3 = Includes<[boolean, string], true>; // false! (true is not exact equal to boolean)",
+    "breakdown": [
+      {
+        "lineRange": "2-3",
+        "note": "IsEqual relies on generic function conditional assignability to test for exact type equality."
+      },
+      {
+        "lineRange": "6-11",
+        "note": "Includes iterates tuple elements, returning true on exact match or recursing onto Rest."
+      }
+    ],
+    "expectedOutput": "Determines if a type is contained in a tuple with exact equality checking."
+  },
+  {
+    "id": "ts-ex-28",
+    "title": "Fixed-Length Array Generator (LengthArray<T, N>)",
+    "category": "Tuples & Arrays",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a type generator that constructs a tuple of a specific fixed length N containing elements of type T (e.g. LengthArray<string, 4> -> [string, string, string, string]).",
+    "conceptsCovered": [
+      "LengthArray<T, N>",
+      "Fixed-Length Tuples",
+      "Accumulator Recursion",
+      "Coordinate Arrays",
+      "Type-Level Constructors"
+    ],
+    "code": "// Recursively appends T until Acc['length'] reaches N\ntype LengthArray<T, N extends number, Acc extends T[] = []> = \n  Acc['length'] extends N\n    ? Acc\n    : LengthArray<T, N, [...Acc, T]>;\n\n// Fixed coordinates:\ntype Point3D = LengthArray<number, 3>; // [number, number, number]\ntype HexBytes = LengthArray<number, 16>; // 16-element byte array\n\nconst point: Point3D = [10, 20, 30]; // Valid!\n// const badPoint: Point3D = [10, 20]; // ERROR: Source has 2 elements but target requires 3!",
+    "breakdown": [
+      {
+        "lineRange": "2-5",
+        "note": "Recursively appends T to Acc until Acc['length'] matches target number N."
+      },
+      {
+        "lineRange": "8-9",
+        "note": "Generates strict dimensional tuples (3D points, 16-byte hashes) without manual repetition."
+      }
+    ],
+    "expectedOutput": "Generates tuples with exact compiler-enforced element counts."
+  },
+  {
+    "id": "ts-ex-29",
+    "title": "Permutations of Union (Permutation<T>)",
+    "category": "Tuples & Arrays",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Computes all possible permutations of a union ('a' | 'b' | 'c') into a union of tuples (['a', 'b', 'c'] | ['a', 'c', 'b'] | ...).",
+    "conceptsCovered": [
+      "Permutation",
+      "Union Distribution",
+      "Combinatorics",
+      "[T] extends [never]",
+      "CLI Command Ordering"
+    ],
+    "code": "type Permutation<T, K = T> = \n  [T] extends [never]\n    ? []\n    : K extends K\n      ? [K, ...Permutation<Exclude<T, K>>]\n      : never;\n\n// Test Permutations:\ntype Flags = 'a' | 'b' | 'c';\ntype FlagPermutations = Permutation<Flags>;\n// Inferred Union of all 6 permutations:\n// ['a', 'b', 'c'] | ['a', 'c', 'b'] |\n// ['b', 'a', 'c'] | ['b', 'c', 'a'] |\n// ['c', 'a', 'b'] | ['c', 'b', 'a']\n\nconst validSequence: FlagPermutations = ['b', 'c', 'a']; // Valid!",
+    "breakdown": [
+      {
+        "lineRange": "1-6",
+        "note": "K extends K distributes over the union, picking K as head and recursively permuting Exclude<T, K>."
+      },
+      {
+        "lineRange": "9-15",
+        "note": "Generates all factorial N! permutations of union elements."
+      }
+    ],
+    "expectedOutput": "Produces all combinatorial permutations of a union as ordered tuple sequences."
+  },
+  {
+    "id": "ts-ex-30",
+    "title": "Tuple Push<T, X>, Pop<T>, Shift<T>, and Unshift<T, X>",
+    "category": "Tuples & Arrays",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements array mutation equivalents (Push, Pop, Shift, Unshift) at compile time using variadic tuple destructuring.",
+    "conceptsCovered": [
+      "Tuple Push / Pop",
+      "Tuple Shift / Unshift",
+      "Variadic Tuples",
+      "Tuple Manipulation",
+      "Immutable Updates"
+    ],
+    "code": "// Push element X to end of tuple\ntype Push<T extends any[], X> = [...T, X];\n\n// Unshift element X to beginning of tuple\ntype Unshift<T extends any[], X> = [X, ...T];\n\n// Pop element from end of tuple\ntype Pop<T extends any[]> = T extends [...infer Rest, any] ? Rest : [];\n\n// Shift element from beginning of tuple\ntype Shift<T extends any[]> = T extends [any, ...infer Rest] ? Rest : [];\n\ntype Initial = [1, 2, 3];\n\ntype AfterPush = Push<Initial, 4>; // [1, 2, 3, 4]\ntype AfterUnshift = Unshift<Initial, 0>; // [0, 1, 2, 3]\ntype AfterPop = Pop<Initial>; // [1, 2]\ntype AfterShift = Shift<Initial>; // [2, 3]",
+    "breakdown": [
+      {
+        "lineRange": "2-11",
+        "note": "Uses tuple spread [...T, X] and pattern matching [...infer Rest, any] to emulate array operations."
+      },
+      {
+        "lineRange": "15-18",
+        "note": "Provides functional immutable tuple transformations."
+      }
+    ],
+    "expectedOutput": "Executes push, pop, shift, and unshift mutations at the type level."
+  },
+  {
+    "id": "ts-ex-31",
+    "title": "Strongly-Typed Currying Function Type (Curry<F>)",
+    "category": "Functional Programming",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a Curry<F> utility type that recursively transforms multi-argument functions into single-argument chained curried functions with full argument and return type preservation.",
+    "conceptsCovered": [
+      "Curry<F>",
+      "Higher-Order Functions",
+      "Variadic Tuple Splitting",
+      "Partial Application",
+      "Functional TypeScript"
+    ],
+    "code": "// Recursively transforms a multi-argument function into a curried function\ntype Curry<F> = F extends (...args: infer Args) => infer Return\n  ? Args extends [infer First, ...infer Rest]\n    ? Rest extends []\n      ? (arg: First) => Return\n      : (arg: First) => Curry<(...args: Rest) => Return>\n    : () => Return\n  : never;\n\n// Implementation of curry runtime helper\nfunction curry<F extends (...args: any[]) => any>(fn: F): Curry<F> {\n  return function curried(...args: any[]): any {\n    if (args.length >= fn.length) {\n      return fn(...args);\n    }\n    return (...nextArgs: any[]) => curried(...args, ...nextArgs);\n  } as Curry<F>;\n}\n\n// Multi-argument function:\nconst add3 = (a: number, b: string, c: boolean) => `${a}-${b}-${c}`;\n\nconst curriedAdd = curry(add3);\n\n// Full type safety across every curried invocation step:\nconst step1 = curriedAdd(10); // (arg: string) => (arg: boolean) => string\nconst step2 = step1('test');  // (arg: boolean) => string\nconst finalResult = step2(true); // string\n\nconsole.log(finalResult); // \"10-test-true\"",
+    "breakdown": [
+      {
+        "lineRange": "2-8",
+        "note": "Curry decomposes Args into [First, ...Rest], returning (arg: First) => Curry<Rest>."
+      },
+      {
+        "lineRange": "11-18",
+        "note": "Runtime curry wrapper checks args.length against fn.length, returning partially applied functions."
+      }
+    ],
+    "expectedOutput": "Curries multi-argument functions with full type inference at every execution step."
+  },
+  {
+    "id": "ts-ex-32",
+    "title": "Strongly-Typed Event Emitter (TypedEventEmitter<Events>)",
+    "category": "Enterprise Generics",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds an event emitter interface where event names and listener argument payloads are strictly checked against an event mapping schema.",
+    "conceptsCovered": [
+      "TypedEventEmitter",
+      "Event Mapping Schema",
+      "keyof Events",
+      "Strongly-Typed Callbacks",
+      "Publish/Subscribe"
+    ],
+    "code": "interface EventMap {\n  'user:login': { userId: string; timestamp: Date };\n  'order:placed': { orderId: string; amount: number; items: string[] };\n  'app:shutdown': void;\n}\n\nclass TypedEventEmitter<TEvents extends Record<string, any>> {\n  private listeners: Map<keyof TEvents, Set<Function>> = new Map();\n\n  on<K extends keyof TEvents>(\n    event: K,\n    listener: (payload: TEvents[K]) => void\n  ): () => void {\n    if (!this.listeners.has(event)) {\n      this.listeners.set(event, new Set());\n    }\n    this.listeners.get(event)!.add(listener);\n\n    // Return unsubscribe function\n    return () => this.listeners.get(event)?.delete(listener);\n  }\n\n  emit<K extends keyof TEvents>(event: K, payload: TEvents[K]): void {\n    this.listeners.get(event)?.forEach(fn => fn(payload));\n  }\n}\n\nconst emitter = new TypedEventEmitter<EventMap>();\n\n// Type-Safe subscription: payload has exact type { userId: string, timestamp: Date }\nconst unsubscribe = emitter.on('user:login', (data) => {\n  console.log(`User ${data.userId} logged in at ${data.timestamp.toISOString()}`);\n});\n\n// Type-Safe emit: payload must match { orderId: string, amount: number, items: string[] }\nemitter.emit('order:placed', {\n  orderId: 'ord_100',\n  amount: 250,\n  items: ['laptop', 'mouse']\n});\n\n// Compiler prevents typos:\n// emitter.emit('user:logout', {}); // COMPILE ERROR: 'user:logout' does not exist in EventMap!",
+    "breakdown": [
+      {
+        "lineRange": "7-27",
+        "note": "K extends keyof TEvents links the event name directly to its corresponding payload schema TEvents[K]."
+      },
+      {
+        "lineRange": "31-43",
+        "note": "Provides autocompletion for event names and strongly types listener payload arguments."
+      }
+    ],
+    "expectedOutput": "Ensures 100% type safety for pub/sub events with zero string typos or wrong payloads."
+  },
+  {
+    "id": "ts-ex-33",
+    "title": "Strongly-Typed Finite State Machine (FSM) Transitions",
+    "category": "Enterprise Generics",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a Finite State Machine transition map type enforcing valid state transitions (e.g. 'idle' can transition to 'loading', but not directly to 'success').",
+    "conceptsCovered": [
+      "State Machines (FSM)",
+      "Transition Validation",
+      "Lookup Types",
+      "Discriminated States",
+      "Invalid State Prevention"
+    ],
+    "code": "// Define state transitions contract: { [CurrentState]: AllowedNextStates }\ntype StateTransitions = {\n  idle: 'loading';\n  loading: 'success' | 'error';\n  success: 'idle';\n  error: 'idle' | 'loading';\n};\n\ntype State = keyof StateTransitions;\n\nclass StateMachine<TTransitions extends Record<string, string>> {\n  private currentState: keyof TTransitions;\n\n  constructor(initialState: keyof TTransitions) {\n    this.currentState = initialState;\n  }\n\n  getState(): keyof TTransitions {\n    return this.currentState;\n  }\n\n  // Next state MUST be an allowed transition for the current state!\n  transition<Next extends TTransitions[typeof this.currentState]>(nextState: Next): void {\n    console.log(`Transitioned from ${String(this.currentState)} -> ${String(nextState)}`);\n    this.currentState = nextState as any;\n  }\n}\n\nconst fsm = new StateMachine<StateTransitions>('idle');\n\nfsm.transition('loading'); // OK! idle -> loading is valid\nfsm.transition('success'); // OK! loading -> success is valid\nfsm.transition('idle');    // OK! success -> idle is valid\n\n// Compiler rejects illegal transitions!\n// fsm.transition('success'); // COMPILE ERROR: idle cannot transition directly to success!",
+    "breakdown": [
+      {
+        "lineRange": "2-7",
+        "note": "StateTransitions maps each state to a union of allowable next states."
+      },
+      {
+        "lineRange": "21-25",
+        "note": "Generic transition method constrains nextState to TTransitions[CurrentState]."
+      }
+    ],
+    "expectedOutput": "Enforces legal state machine transitions at compile time, eliminating invalid runtime states."
+  },
+  {
+    "id": "ts-ex-34",
+    "title": "Type-Safe Pipe and Compose (pipe(f1, f2, f3))",
+    "category": "Functional Programming",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements strongly-typed pipe and compose functions chaining arbitrary transformation functions while guaranteeing output-to-input type matching.",
+    "conceptsCovered": [
+      "pipe / compose",
+      "Function Chaining",
+      "Overload Signatures",
+      "Sequential Type Propagation",
+      "Point-Free Programming"
+    ],
+    "code": "// Strongly typed pipe function with 4-stage overloads\nfunction pipe<A>(val: A): A;\nfunction pipe<A, B>(val: A, fn1: (arg: A) => B): B;\nfunction pipe<A, B, C>(val: A, fn1: (arg: A) => B, fn2: (arg: B) => C): C;\nfunction pipe<A, B, C, D>(val: A, fn1: (arg: A) => B, fn2: (arg: B) => C, fn3: (arg: C) => D): D;\nfunction pipe(initialValue: any, ...fns: Function[]): any {\n  return fns.reduce((acc, fn) => fn(acc), initialValue);\n}\n\n// Transformation functions\nconst double = (n: number) => n * 2;\nconst numToString = (n: number) => `Result: ${n}`;\nconst toUpper = (s: string) => s.toUpperCase();\n\n// Chained execution:\nconst result = pipe(\n  5,            // number\n  double,       // 5 -> 10 (number)\n  numToString,  // 10 -> \"Result: 10\" (string)\n  toUpper       // \"Result: 10\" -> \"RESULT: 10\" (string)\n);\n\nconsole.log(result); // \"RESULT: 10\"\n\n// Type mismatch in chain caught at compile time!\n// pipe(5, toUpper); // COMPILE ERROR: Argument of type 'number' is not assignable to 'string'",
+    "breakdown": [
+      {
+        "lineRange": "2-7",
+        "note": "Uses TypeScript function overloads to enforce that fn(N)'s return matches fn(N+1)'s input."
+      },
+      {
+        "lineRange": "16-24",
+        "note": "Executes pipeline with automatic type inference through all transformation stages."
+      }
+    ],
+    "expectedOutput": "Chains functions with compile-time type verification across all pipeline steps."
+  },
+  {
+    "id": "ts-ex-35",
+    "title": "Strongly-Typed Builder Pattern with Fluent Method Chaining",
+    "category": "Enterprise Generics",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a type-safe query builder that tracks configured parameters at compile time and prevents calling .execute() until all mandatory fields are configured.",
+    "conceptsCovered": [
+      "Builder Pattern",
+      "Type-Level State Tracking",
+      "Phantom Types",
+      "Fluent Interface",
+      "Compile-Time Build Safety"
+    ],
+    "code": "interface RequestConfig {\n  url: string;\n  method: 'GET' | 'POST';\n  headers?: Record<string, string>;\n  body?: string;\n}\n\n// Builder tracking which required properties have been configured\nclass RequestBuilder<Configured extends Partial<RequestConfig> = {}> {\n  private config: Partial<RequestConfig> = {};\n\n  setUrl(url: string): RequestBuilder<Configured & { url: string }> {\n    this.config.url = url;\n    return this as any;\n  }\n\n  setMethod(method: 'GET' | 'POST'): RequestBuilder<Configured & { method: 'GET' | 'POST' }> {\n    this.config.method = method;\n    return this as any;\n  }\n\n  setHeaders(headers: Record<string, string>): RequestBuilder<Configured & { headers: Record<string, string> }> {\n    this.config.headers = headers;\n    return this as any;\n  }\n\n  // send() is ONLY callable when both 'url' and 'method' have been configured!\n  send(this: RequestBuilder<{ url: string; method: 'GET' | 'POST' }>): RequestConfig {\n    return this.config as RequestConfig;\n  }\n}\n\n// Usage:\nconst validRequest = new RequestBuilder()\n  .setUrl('https://api.example.com/users')\n  .setMethod('GET')\n  .send(); // OK! Both url and method configured.\n\n// Incomplete builder invocation:\n// const invalid = new RequestBuilder()\n//   .setUrl('https://api.example.com')\n//   .send(); // COMPILE ERROR: The 'this' context is not assignable! Missing 'method'!",
+    "breakdown": [
+      {
+        "lineRange": "9-27",
+        "note": "Each setter method returns RequestBuilder<Configured & { field: Type }>, accumulating state."
+      },
+      {
+        "lineRange": "29-32",
+        "note": "The 'this' parameter type constraint on send() enforces that required fields must be present."
+      }
+    ],
+    "expectedOutput": "Blocks calling .send() or .build() until all mandatory properties are configured."
+  },
+  {
+    "id": "ts-ex-36",
+    "title": "Nominal Typing with Brand Types (UserId, OrderId, CurrencyAmount)",
+    "category": "Type System Theory",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Creates nominal branded types for IDs and money amounts, preventing accidental cross-assignment of primitive strings or numbers.",
+    "conceptsCovered": [
+      "Brand Types",
+      "Nominal Typing",
+      "unique symbol",
+      "Domain-Driven Design",
+      "Primitive Obsession Defense"
+    ],
+    "code": "declare const __brand: unique symbol;\ntype Brand<T, TBrand extends string> = T & { readonly [__brand]: TBrand };\n\n// Domain Types\ntype UserId = Brand<string, 'UserId'>;\ntype OrderId = Brand<string, 'OrderId'>;\ntype USDDollars = Brand<number, 'USD'>;\ntype EuroCents = Brand<number, 'EUR_CENTS'>;\n\n// Factory constructor helpers\nconst createUserId = (id: string): UserId => id as UserId;\nconst createOrderId = (id: string): OrderId => id as OrderId;\nconst usd = (amount: number): USDDollars => amount as USDDollars;\n\nfunction chargeUser(userId: UserId, orderId: OrderId, amount: USDDollars) {\n  console.log(`Charging user ${userId} for order ${orderId}: $${amount}`);\n}\n\nconst user = createUserId('usr_101');\nconst order = createOrderId('ord_999');\nconst price = usd(49.99);\n\n// Valid invocation:\nchargeUser(user, order, price);\n\n// ACCIDENTAL SWAP CAUGHT AT COMPILE TIME!\n// chargeUser(order, user, price);\n// ERROR: Argument of type 'OrderId' is not assignable to parameter of type 'UserId'.\n\n// CURRENCY MIX-UP CAUGHT AT COMPILE TIME!\nconst eur = 50 as EuroCents;\n// chargeUser(user, order, eur);\n// ERROR: Argument of type 'EuroCents' is not assignable to parameter of type 'USDDollars'.",
+    "breakdown": [
+      {
+        "lineRange": "1-8",
+        "note": "Brand<T, TBrand> uses an un-instantiable unique symbol to forge nominal identity onto primitives."
+      },
+      {
+        "lineRange": "24-34",
+        "note": "Compiler prevents swapping parameters of the same primitive type (e.g. order ID for user ID)."
+      }
+    ],
+    "expectedOutput": "Prevents accidental parameter mixing of structurally identical strings and numbers."
+  },
+  {
+    "id": "ts-ex-37",
+    "title": "Exhaustive Pattern Matching (exhaustiveCheck(val: never))",
+    "category": "Type Narrowing",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Uses the never type and exhaustiveCheck function in default switch branches to guarantee all discriminated union variants are handled.",
+    "conceptsCovered": [
+      "Exhaustive Checking",
+      "never Type",
+      "Discriminated Unions",
+      "Compile-Time Switch Validation",
+      "Refactoring Protection"
+    ],
+    "code": "type PaymentMethod = \n  | { type: 'credit_card'; cardNumber: string }\n  | { type: 'paypal'; email: string }\n  | { type: 'crypto'; walletAddress: string };\n\n// Exhaustiveness helper\nfunction assertUnreachable(x: never): never {\n  throw new Error(`Unhandled union variant: ${JSON.stringify(x)}`);\n}\n\nfunction processPayment(payment: PaymentMethod): string {\n  switch (payment.type) {\n    case 'credit_card':\n      return `Charging Card: ${payment.cardNumber}`;\n    case 'paypal':\n      return `Redirecting to PayPal: ${payment.email}`;\n    case 'crypto':\n      return `Sending crypto invoice to: ${payment.walletAddress}`;\n    default:\n      // If a new payment type (e.g. 'apple_pay') is added to PaymentMethod,\n      // TypeScript throws a compile-time error HERE because 'x' is not 'never'!\n      return assertUnreachable(payment);\n  }\n}",
+    "breakdown": [
+      {
+        "lineRange": "7-9",
+        "note": "assertUnreachable expects type never; throws runtime exception if somehow executed."
+      },
+      {
+        "lineRange": "20-23",
+        "note": "If all union variants are handled, payment in default branch narrows to never; unhandled cases cause compile errors."
+      }
+    ],
+    "expectedOutput": "Compiler enforces 100% switch case completeness whenever union variants are added."
+  },
+  {
+    "id": "ts-ex-38",
+    "title": "Type-Safe Redux Action Creator & Reducer Map",
+    "category": "Functional Programming",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a type-safe action creator and reducer map pattern where reducer functions automatically narrow action payload types based on action.type.",
+    "conceptsCovered": [
+      "Discriminated Union Reducers",
+      "Action Creators",
+      "Type Narrowing",
+      "Reducer Map",
+      "State Updates"
+    ],
+    "code": "// Action definitions\ntype AppAction = \n  | { type: 'COUNTER_INCREMENT'; payload: { step: number } }\n  | { type: 'COUNTER_RESET' }\n  | { type: 'SET_USER'; payload: { name: string; email: string } };\n\ninterface AppState {\n  count: number;\n  user: { name: string; email: string } | null;\n}\n\nconst initialState: AppState = { count: 0, user: null };\n\nfunction appReducer(state: AppState = initialState, action: AppAction): AppState {\n  switch (action.type) {\n    case 'COUNTER_INCREMENT':\n      // action.payload is narrowed to { step: number }\n      return { ...state, count: state.count + action.payload.step };\n    \n    case 'COUNTER_RESET':\n      // action has no payload\n      return { ...state, count: 0 };\n    \n    case 'SET_USER':\n      // action.payload is narrowed to { name: string; email: string }\n      return { ...state, user: action.payload };\n    \n    default:\n      return state;\n  }\n}\n\n// Type-Safe Action Creator helper\nfunction createAction<T extends AppAction['type']>(\n  type: T,\n  ...args: Extract<AppAction, { type: T }> extends { payload: infer P } ? [payload: P] : []\n) {\n  return { type, ...(args[0] !== undefined ? { payload: args[0] } : {}) };\n}",
+    "breakdown": [
+      {
+        "lineRange": "2-5",
+        "note": "Discriminated union AppAction defines strict payloads per action type."
+      },
+      {
+        "lineRange": "14-27",
+        "note": "Switch statement automatically narrows action.payload inside each case block."
+      }
+    ],
+    "expectedOutput": "Narrows Redux action payloads in reducers with zero manual type assertions."
+  },
+  {
+    "id": "ts-ex-39",
+    "title": "satisfies Operator vs Type Annotation vs as const",
+    "category": "Type Inference & Modern TS",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Contrasts the TypeScript 4.9 satisfies operator with traditional type annotations and as const assertions to explain type preservation without widening.",
+    "conceptsCovered": [
+      "satisfies Operator",
+      "Type Annotation Widening",
+      "as const Literal Retention",
+      "Validation Without Widening",
+      "TypeScript 4.9+"
+    ],
+    "code": "type Colors = 'red' | 'green' | 'blue';\ntype ColorRGB = [r: number, g: number, b: number];\n\n// APPROACH 1: Type Annotation (Widening problem!)\nconst paletteAnnotation: Record<Colors, string | ColorRGB> = {\n  red: [255, 0, 0],\n  green: '#00ff00',\n  blue: [0, 0, 255]\n};\n// paletteAnnotation.green.toLowerCase(); // COMPILE ERROR! green is typed as 'string | ColorRGB'!\n\n// APPROACH 2: satisfies Operator (Validation + Precision!)\nconst paletteSatisfies = {\n  red: [255, 0, 0],\n  green: '#00ff00',\n  blue: [0, 0, 255]\n} satisfies Record<Colors, string | ColorRGB>;\n\n// Exact types preserved while still validating conformity!\npaletteSatisfies.green.toLowerCase(); // OK! Compiler knows green is string!\npaletteSatisfies.red.map(n => n * 2); // OK! Compiler knows red is ColorRGB tuple!\n\n// Catches typos in keys while preserving property types:\n// const typo = { purp: '#800080' } satisfies Record<Colors, string | ColorRGB>;\n// ERROR: Object literal may only specify known properties, and 'purp' does not exist in 'Colors'.",
+    "breakdown": [
+      {
+        "lineRange": "5-10",
+        "note": "Type annotations widen properties to the union type string | ColorRGB, losing specific autocomplete."
+      },
+      {
+        "lineRange": "14-24",
+        "note": "satisfies verifies that the object conforms to the contract while preserving exact literal types."
+      }
+    ],
+    "expectedOutput": "satisfies validates structural conformity without widening specific property types."
+  },
+  {
+    "id": "ts-ex-40",
+    "title": "<const T> Type Parameters for Automatic Readonly Literals",
+    "category": "Type Inference & Modern TS",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Uses TypeScript 5.0 const type parameters to automatically infer exact readonly tuple and object literals without requiring call-site as const assertions.",
+    "conceptsCovered": [
+      "const Type Parameters",
+      "TypeScript 5.0",
+      "Literal Inference",
+      "Readonly Tuples",
+      "Cleaner Call-Sites"
+    ],
+    "code": "// BEFORE TS 5.0: Call-site had to append 'as const'\nfunction oldFormat<T extends readonly string[]>(items: T): T {\n  return items;\n}\nconst a = oldFormat(['admin', 'editor']); // Inferred as string[]!\nconst b = oldFormat(['admin', 'editor'] as const); // Required 'as const' to get literal tuple\n\n// TS 5.0: <const T> automatically infers literal readonly structures!\nfunction newFormat<const T extends readonly string[]>(items: T): T {\n  return items;\n}\n\n// Inferred directly as readonly ['admin', 'editor'] without 'as const'!\nconst clean = newFormat(['admin', 'editor']);\n\n// Useful for configuration builders:\nfunction buildRoutes<const TRoutes extends readonly { path: string; method: string }[]>(routes: TRoutes) {\n  return routes;\n}\n\nconst config = buildRoutes([\n  { path: '/users', method: 'GET' },\n  { path: '/orders', method: 'POST' }\n]);\n// config is inferred with exact string literals: path: '/users', method: 'GET'!",
+    "breakdown": [
+      {
+        "lineRange": "9-12",
+        "note": "Prefixing generic parameter with const (<const T>) instructs compiler to infer narrowest literals."
+      },
+      {
+        "lineRange": "21-27",
+        "note": "Configuration objects retain exact literal types without requiring developers to write 'as const'."
+      }
+    ],
+    "expectedOutput": "Infers exact string and tuple literals automatically in generic function arguments."
+  },
+  {
+    "id": "ts-ex-41",
+    "title": "NoInfer<T> to Restrict Generic Inference Sites",
+    "category": "Type Inference & Modern TS",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Uses TypeScript 5.4 NoInfer<T> utility to block the compiler from using secondary function arguments as candidates for generic type inference.",
+    "conceptsCovered": [
+      "NoInfer<T>",
+      "TypeScript 5.4",
+      "Inference Candidates",
+      "Default Values",
+      "State Machines"
+    ],
+    "code": "// Scenario: selectColors accepts an array of allowed colors and an initial default color.\n// We want T to be inferred EXCLUSIVELY from allowedColors, NOT from defaultColor!\n\n// WITHOUT NoInfer:\nfunction createSelectorBad<C extends string>(allowed: C[], defaultColor: C) {\n  return { allowed, defaultColor };\n}\n// BUG: TypeScript infers C as 'red' | 'blue' | 'yellow' (yellow gets added to allowed union!)\nconst bad = createSelectorBad(['red', 'blue'], 'yellow'); // Compiles without error!\n\n// WITH NoInfer<T> (TS 5.4+):\nfunction createSelector<C extends string>(allowed: C[], defaultColor: NoInfer<C>) {\n  return { allowed, defaultColor };\n}\n\nconst good = createSelector(['red', 'blue'], 'red'); // OK!\n\n// Now TypeScript flags 'yellow' as invalid because C was inferred solely from the first argument!\n// const caught = createSelector(['red', 'blue'], 'yellow');\n// COMPILE ERROR: Argument of type '\"yellow\"' is not assignable to parameter of type '\"red\" | \"blue\"'!",
+    "breakdown": [
+      {
+        "lineRange": "5-9",
+        "note": "Without NoInfer, TypeScript widens generic C to include values from all argument sites."
+      },
+      {
+        "lineRange": "12-15",
+        "note": "NoInfer<C> prevents defaultColor from contributing to type inference for C."
+      }
+    ],
+    "expectedOutput": "Restricts generic inference to target arguments, preventing unwanted union widening."
+  },
+  {
+    "id": "ts-ex-42",
+    "title": "User-Defined Type Guards (isUser(data: unknown): data is User)",
+    "category": "Type Narrowing & Guards",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Builds a custom User-Defined Type Guard function with the 'value is Type' predicate to safely validate untrusted API data without any type assertions.",
+    "conceptsCovered": [
+      "User-Defined Type Guards",
+      "data is Type Predicate",
+      "Type Narrowing",
+      "Safe Runtime Validation",
+      "unknown vs any"
+    ],
+    "code": "interface User {\n  id: string;\n  name: string;\n  email: string;\n  isAdmin?: boolean;\n}\n\n// Type Guard asserting unknown data matches User interface\nfunction isUser(data: unknown): data is User {\n  if (typeof data !== 'object' || data === null) {\n    return false;\n  }\n\n  const candidate = data as Record<string, unknown>;\n\n  return (\n    typeof candidate.id === 'string' &&\n    typeof candidate.name === 'string' &&\n    typeof candidate.email === 'string' &&\n    (candidate.isAdmin === undefined || typeof candidate.isAdmin === 'boolean')\n  );\n}\n\n// Usage in API handler processing untrusted JSON\nfunction handleIncomingPayload(rawPayload: unknown) {\n  if (isUser(rawPayload)) {\n    // Within this block, rawPayload is narrowed 100% safely to User!\n    console.log(`Verified User: ${rawPayload.name} <${rawPayload.email}>`);\n  } else {\n    console.error('Payload does not conform to User schema');\n  }\n}",
+    "breakdown": [
+      {
+        "lineRange": "8-20",
+        "note": "The return type 'data is User' instructs the compiler to narrow data in truthy branches."
+      },
+      {
+        "lineRange": "24-28",
+        "note": "Inside the if (isUser(rawPayload)) block, rawPayload provides full autocomplete as User."
+      }
+    ],
+    "expectedOutput": "Narrows untrusted unknown data safely into strong types using boolean runtime checks."
+  },
+  {
+    "id": "ts-ex-43",
+    "title": "Assertion Functions (asserts condition and asserts value is Type)",
+    "category": "Type Narrowing & Guards",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Uses TypeScript assertion functions (asserts condition and asserts value is Type) to throw errors when invariants fail, narrowing types for the remainder of the function scope.",
+    "conceptsCovered": [
+      "Assertion Functions",
+      "asserts condition",
+      "asserts val is T",
+      "Scope-Wide Narrowing",
+      "Invariant Enforcement"
+    ],
+    "code": "// 1. General assertion checking a truthy condition\nfunction assert(condition: unknown, message: string): asserts condition {\n  if (!condition) {\n    throw new Error(`Assertion failed: ${message}`);\n  }\n}\n\n// 2. Type-narrowing assertion\nfunction assertIsString(val: unknown): asserts val is string {\n  if (typeof val !== 'string') {\n    throw new TypeError(`Expected string, received ${typeof val}`);\n  }\n}\n\nfunction processUserData(input: unknown) {\n  // Before assertion: input is 'unknown'\n  assert(input !== null && input !== undefined, 'Input must not be nullish');\n  \n  // Narrows input:\n  assertIsString(input);\n\n  // For the entire remainder of this scope, input is guaranteed to be 'string'!\n  console.log('Normalized string:', input.trim().toUpperCase());\n}",
+    "breakdown": [
+      {
+        "lineRange": "2-6",
+        "note": "asserts condition narrows truthiness for the remainder of the containing lexical block."
+      },
+      {
+        "lineRange": "9-13",
+        "note": "asserts val is string narrows the variable's type without requiring wrapping in an if-block."
+      }
+    ],
+    "expectedOutput": "Eliminates nested if-statements by asserting type validity across the rest of the function scope."
+  },
+  {
+    "id": "ts-ex-44",
+    "title": "Express Request Module Augmentation (req.user, req.tenantId)",
+    "category": "Module Augmentation",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Uses module augmentation to extend Express.Request with custom application properties (user, tenantId, correlationId), providing full type safety in route controllers.",
+    "conceptsCovered": [
+      "declare module 'express'",
+      "Module Augmentation",
+      "Declaration Merging",
+      "Ambient Typings",
+      "Express Request Extensions"
+    ],
+    "code": "// File: src/types/express.d.ts\nimport { Request } from 'express';\n\nexport interface AuthenticatedUser {\n  id: string;\n  email: string;\n  roles: string[];\n}\n\n// Augment the express-serve-static-core Request interface\ndeclare module 'express-serve-static-core' {\n  interface Request {\n    user?: AuthenticatedUser;\n    tenantId: string;\n    correlationId: string;\n  }\n}\n\n// File: src/controllers/userController.ts\nimport express from 'express';\nconst app = express();\n\napp.get('/api/profile', (req, res) => {\n  // Full autocomplete and type-safety for augmented properties!\n  const tenant = req.tenantId; // string\n  const user = req.user; // AuthenticatedUser | undefined\n\n  if (!user) {\n    return res.status(401).send('Unauthorized');\n  }\n\n  res.json({ tenant, userEmail: user.email });\n});",
+    "breakdown": [
+      {
+        "lineRange": "10-16",
+        "note": "declare module 'express-serve-static-core' merges custom fields into the Express Request interface."
+      },
+      {
+        "lineRange": "23-28",
+        "note": "Route handlers access req.user and req.tenantId without type errors or 'as any' casts."
+      }
+    ],
+    "expectedOutput": "Provides compile-time autocomplete for custom middleware properties on Express req."
+  },
+  {
+    "id": "ts-ex-45",
+    "title": "Schema Validation to TypeScript Inference (DIY Zod-like Validator)",
+    "category": "Type Inference & Modern TS",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a lightweight schema validator from scratch that infers exact TypeScript types directly from runtime schema definitions (like Zod z.infer).",
+    "conceptsCovered": [
+      "Schema Validation",
+      "Type Inference from Schema",
+      "InferType<T>",
+      "Single Source of Truth",
+      "Zod-like Architecture"
+    ],
+    "code": "// Schema Builders\ntype SchemaType<T> = {\n  _type: T;\n  validate: (val: unknown) => val is T;\n};\n\nconst z = {\n  string: (): SchemaType<string> => ({\n    _type: '' as string,\n    validate: (val: unknown): val is string => typeof val === 'string'\n  }),\n  number: (): SchemaType<number> => ({\n    _type: 0 as number,\n    validate: (val: unknown): val is number => typeof val === 'number'\n  }),\n  object: <T extends Record<string, SchemaType<any>>>(shape: T): SchemaType<{ [K in keyof T]: T[K]['_type'] }> => ({\n    _type: {} as any,\n    validate: (val: unknown): val is { [K in keyof T]: T[K]['_type'] } => {\n      if (typeof val !== 'object' || val === null) return false;\n      const obj = val as Record<string, unknown>;\n      return Object.entries(shape).every(([key, schema]) => schema.validate(obj[key]));\n    }\n  })\n};\n\n// Type Inference Helper: Extracts compile-time type from runtime schema\ntype InferType<T extends SchemaType<any>> = T['_type'];\n\n// 1. Define runtime schema\nconst UserSchema = z.object({\n  id: z.string(),\n  age: z.number()\n});\n\n// 2. Automatically derive TypeScript type!\ntype InferredUser = InferType<typeof UserSchema>;\n// Inferred: { id: string; age: number; }\n\nconst valid: InferredUser = { id: 'u_1', age: 30 }; // 100% Type-Safe!",
+    "breakdown": [
+      {
+        "lineRange": "2-5",
+        "note": "SchemaType carries both runtime validator function and phantom compile-time _type marker."
+      },
+      {
+        "lineRange": "24-25",
+        "note": "InferType<T> extracts the phantom type, eliminating redundant manual interface writing."
+      }
+    ],
+    "expectedOutput": "Derives TypeScript types directly from runtime validation schemas with zero type drift."
+  },
+  {
+    "id": "ts-ex-46",
+    "title": "Strongly-Typed Dependency Injection Container Token Registry",
+    "category": "Enterprise Generics",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a type-safe Dependency Injection (DI) Container where service tokens are bound to specific service interfaces, eliminating type casts during service resolution.",
+    "conceptsCovered": [
+      "Dependency Injection",
+      "Token Registry",
+      "Type-Safe Service Locator",
+      "Symbol Tokens",
+      "Awilix / Inversify Typings"
+    ],
+    "code": "// Service Token carrying phantom service type\ninterface ServiceToken<T> {\n  readonly description: string;\n  readonly _serviceType: T;\n}\n\nfunction createToken<T>(description: string): ServiceToken<T> {\n  return { description } as any;\n}\n\n// Service Interfaces\ninterface DatabaseService {\n  query(sql: string): Promise<any[]>;\n}\ninterface MailerService {\n  sendMail(to: string, body: string): Promise<void>;\n}\n\n// Declare Tokens\nconst DB_TOKEN = createToken<DatabaseService>('DatabaseService');\nconst MAILER_TOKEN = createToken<MailerService>('MailerService');\n\nclass Container {\n  private services = new Map<ServiceToken<any>, any>();\n\n  register<T>(token: ServiceToken<T>, instance: T): void {\n    this.services.set(token, instance);\n  }\n\n  resolve<T>(token: ServiceToken<T>): T {\n    const service = this.services.get(token);\n    if (!service) throw new Error(`Service ${token.description} not registered`);\n    return service;\n  }\n}\n\nconst container = new Container();\n\ncontainer.register(DB_TOKEN, {\n  query: async (sql) => ['row_1', 'row_2']\n});\n\n// container.resolve(DB_TOKEN) returns strictly typed DatabaseService!\nconst db = container.resolve(DB_TOKEN);\ndb.query('SELECT * FROM users'); // Autocomplete works! Zero type casting!",
+    "breakdown": [
+      {
+        "lineRange": "2-5",
+        "note": "ServiceToken<T> binds the target interface to the token via phantom type _serviceType."
+      },
+      {
+        "lineRange": "28-35",
+        "note": "resolve(token) returns T automatically based on the token passed to it."
+      }
+    ],
+    "expectedOutput": "Resolves services from DI containers with 100% type safety and zero manual type casts."
+  },
+  {
+    "id": "ts-ex-47",
+    "title": "TC39 Stage 3 Method Decorator with Type Validation",
+    "category": "Modern TypeScript",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements modern TC39 Stage 3 standard method decorators in TypeScript 5.0 (without legacy experimentalDecorators) to log method execution time.",
+    "conceptsCovered": [
+      "TC39 Stage 3 Decorators",
+      "TypeScript 5.0 Decorators",
+      "ClassMethodDecoratorContext",
+      "Non-Experimental Decorators",
+      "Method Wrapping"
+    ],
+    "code": "// Modern TS 5.0 TC39 Stage 3 Method Decorator\nfunction LogExecutionTime<This, Args extends any[], Return>(\n  target: (this: This, ...args: Args) => Return,\n  context: ClassMethodDecoratorContext<This, (this: This, ...args: Args) => Return>\n) {\n  const methodName = String(context.name);\n\n  // Return replacement method\n  return function (this: This, ...args: Args): Return {\n    const start = performance.now();\n    console.log(`[Calling] ${methodName}...`);\n    \n    const result = target.call(this, ...args);\n    \n    const elapsed = performance.now() - start;\n    console.log(`[Completed] ${methodName} took ${elapsed.toFixed(2)}ms`);\n    return result;\n  };\n}\n\nclass InvoiceService {\n  @LogExecutionTime\n  generateInvoice(invoiceId: string, amount: number): string {\n    return `Invoice ${invoiceId} generated for $${amount}`;\n  }\n}\n\nconst service = new InvoiceService();\nservice.generateInvoice('inv_001', 500);",
+    "breakdown": [
+      {
+        "lineRange": "2-5",
+        "note": "Uses ClassMethodDecoratorContext from standard TS 5.0 library to type the decorated method."
+      },
+      {
+        "lineRange": "9-17",
+        "note": "Intercepts method invocation, calculates execution time, and preserves exact return type."
+      }
+    ],
+    "expectedOutput": "Wraps class methods using modern ECMAScript standard decorators without experimental flags."
+  },
+  {
+    "id": "ts-ex-48",
+    "title": "Explicit Resource Management (using & Symbol.dispose)",
+    "category": "Modern TypeScript",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Demonstrates TypeScript 5.2 Explicit Resource Management using the 'using' keyword and Symbol.dispose / Symbol.asyncDispose to automate resource cleanup.",
+    "conceptsCovered": [
+      "using Keyword",
+      "Symbol.dispose",
+      "TypeScript 5.2",
+      "Deterministic Teardown",
+      "RAII in JavaScript"
+    ],
+    "code": "// Disposable Database Client implementing Symbol.dispose\nclass ScopedDbClient implements Disposable {\n  constructor(private id: string) {\n    console.log(`[Open] Database connection ${id} acquired`);\n  }\n\n  query(sql: string) {\n    return `Results for ${sql}`;\n  }\n\n  // Invoked automatically when the 'using' block exits!\n  [Symbol.dispose]() {\n    console.log(`[Close] Database connection ${this.id} released back to pool cleanly`);\n  }\n}\n\nfunction processTransaction() {\n  // 'using' binds resource lifetime strictly to this function block!\n  using client = new ScopedDbClient('conn_42');\n\n  console.log(client.query('SELECT * FROM accounts'));\n\n  // When function returns or throws, client[Symbol.dispose]() is GUARANTEED to execute!\n}\n\nprocessTransaction();\n// Output:\n// [Open] Database connection conn_42 acquired\n// Results for SELECT * FROM accounts\n// [Close] Database connection conn_42 released back to pool cleanly",
+    "breakdown": [
+      {
+        "lineRange": "2-15",
+        "note": "Implements Disposable interface with [Symbol.dispose]() method for deterministic cleanup."
+      },
+      {
+        "lineRange": "17-23",
+        "note": "using keyword ensures connection release occurs when block scope terminates, avoiding finally blocks."
+      }
+    ],
+    "expectedOutput": "Automates resource cleanup (file handles, database clients) on block scope exit."
+  },
+  {
+    "id": "ts-ex-49",
+    "title": "Discriminated Union Message Bus with Narrowing",
+    "category": "Type Narrowing & Guards",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements a type-safe message dispatcher where message handlers receive accurately narrowed payload shapes based on a common discriminant key.",
+    "conceptsCovered": [
+      "Discriminated Unions",
+      "Common Discriminant",
+      "Type Narrowing in Handlers",
+      "Message Bus",
+      "Tagged Unions"
+    ],
+    "code": "type Message = \n  | { kind: 'TEXT'; content: string; author: string }\n  | { kind: 'IMAGE'; url: string; width: number; height: number }\n  | { kind: 'AUDIO'; durationSec: number; bitrate: number };\n\ntype MessageHandler<K extends Message['kind']> = \n  (msg: Extract<Message, { kind: K }>) => void;\n\nclass MessageBus {\n  private handlers: { [K in Message['kind']]?: MessageHandler<K> } = {};\n\n  register<K extends Message['kind']>(kind: K, handler: MessageHandler<K>) {\n    this.handlers[kind] = handler as any;\n  }\n\n  dispatch(msg: Message) {\n    const handler = this.handlers[msg.kind];\n    if (handler) {\n      handler(msg as any);\n    }\n  }\n}\n\nconst bus = new MessageBus();\n\n// Handler receives EXACT narrowed type for 'IMAGE'!\nbus.register('IMAGE', (img) => {\n  console.log(`Rendering image ${img.url} (${img.width}x${img.height})`);\n});\n\n// Handler receives EXACT narrowed type for 'TEXT'!\nbus.register('TEXT', (txt) => {\n  console.log(`Message from ${txt.author}: ${txt.content}`);\n});",
+    "breakdown": [
+      {
+        "lineRange": "1-4",
+        "note": "Message defines tagged union with common discriminant 'kind'."
+      },
+      {
+        "lineRange": "6-7",
+        "note": "MessageHandler uses Extract<Message, { kind: K }> to pick the single matching union member."
+      }
+    ],
+    "expectedOutput": "Narrows message payloads in event handlers with zero type casting."
+  },
+  {
+    "id": "ts-ex-50",
+    "title": "Dynamic Deep Object Key Renamer via Mapped Type 'as'",
+    "category": "Mapped & Utility Types",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a PrefixKeys<T, Prefix> utility that prepends a prefix string to all object keys at compile time using mapped type key remapping.",
+    "conceptsCovered": [
+      "PrefixKeys<T, P>",
+      "Key Remapping via as",
+      "Template Literal Remapping",
+      "Deep Object Transformation",
+      "Dynamic Key Renaming"
+    ],
+    "code": "// Prepends a prefix to all object property keys\ntype PrefixKeys<T, Prefix extends string> = {\n  [K in keyof T as `${Prefix}${Capitalize<string & K>}`]: T[K];\n};\n\ninterface UserEvents {\n  click: (x: number, y: number) => void;\n  hover: () => void;\n  focus: () => void;\n}\n\n// Generates { onClick: ..., onHover: ..., onFocus: ... }\ntype ComponentProps = PrefixKeys<UserEvents, 'on'>;\n\nconst props: ComponentProps = {\n  onClick: (x, y) => console.log('Clicked at', x, y),\n  onHover: () => console.log('Hovered'),\n  onFocus: () => console.log('Focused')\n};\n\n// Also works for database column prefixing:\ninterface OrderColumns {\n  id: string;\n  amount: number;\n}\ntype JoinedColumns = PrefixKeys<OrderColumns, 'order_'>;\n// Inferred: { order_Id: string; order_Amount: number; }",
+    "breakdown": [
+      {
+        "lineRange": "2-4",
+        "note": "[K in keyof T as `${Prefix}${Capitalize<string & K>}`] transforms each key into 'prefixKeyName'."
+      },
+      {
+        "lineRange": "12-13",
+        "note": "Generates event handler props (onClick, onHover) directly from raw event names."
+      }
+    ],
+    "expectedOutput": "Transforms object property keys dynamically with prefixes or suffixes."
+  },
+  {
+    "id": "ts-ex-51",
+    "title": "Strongly-Typed RPC / WebSocket Message Protocol Dispatcher",
+    "category": "Enterprise Generics",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Defines an RPC contract mapping method names to request and response types, building a typed callRPC client that enforces strict parameter and return typings.",
+    "conceptsCovered": [
+      "RPC Protocol Typing",
+      "Request/Response Contract",
+      "Promise Return Inference",
+      "Type-Safe Client Calls",
+      "WebSocket Messaging"
+    ],
+    "code": "interface RpcContract {\n  'user.get': {\n    request: { userId: string };\n    response: { id: string; name: string };\n  };\n  'order.create': {\n    request: { items: string[]; total: number };\n    response: { orderId: string; status: 'pending' | 'confirmed' };\n  };\n}\n\nclass TypedRpcClient {\n  async call<Method extends keyof RpcContract>(\n    method: Method,\n    params: RpcContract[Method]['request']\n  ): Promise<RpcContract[Method]['response']> {\n    console.log(`Dispatching RPC [${method}]:`, params);\n    // Simulating network fetch / WebSocket RPC call:\n    return {} as any;\n  }\n}\n\nconst client = new TypedRpcClient();\n\nasync function demo() {\n  // Parameters must match { userId: string }; return type is { id, name }\n  const user = await client.call('user.get', { userId: 'usr_42' });\n  console.log(user.name); // Fully typed!\n\n  // Parameters must match { items, total }; return type is { orderId, status }\n  const order = await client.call('order.create', { items: ['book'], total: 20 });\n  console.log(order.orderId, order.status);\n\n  // Compiler catches errors:\n  // client.call('user.get', { wrongParam: 123 }); // COMPILE ERROR!\n  // client.call('unknown.method', {}); // COMPILE ERROR!\n}",
+    "breakdown": [
+      {
+        "lineRange": "1-10",
+        "note": "RpcContract defines request and response interfaces per RPC method name."
+      },
+      {
+        "lineRange": "13-17",
+        "note": "call() method infers exact request params and returns Promise of matching response type."
+      }
+    ],
+    "expectedOutput": "Provides full end-to-end type safety for RPC and WebSocket communication protocols."
+  },
+  {
+    "id": "ts-ex-52",
+    "title": "Strongly-Typed Environment Variable Loader with Type Narrowing",
+    "category": "Enterprise Generics",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a safe environment variable parser that validates process.env at startup and exports a frozen, non-nullish typed configuration object.",
+    "conceptsCovered": [
+      "Environment Variables",
+      "process.env Validation",
+      "NonNullable Config",
+      "Fail-Fast Startup",
+      "Type Narrowing"
+    ],
+    "code": "interface EnvConfig {\n  PORT: number;\n  NODE_ENV: 'development' | 'production' | 'test';\n  DATABASE_URL: string;\n  ENABLE_METRICS: boolean;\n}\n\nfunction loadEnv(): EnvConfig {\n  const getEnv = (key: string): string => {\n    const val = process.env[key];\n    if (!val) {\n      throw new Error(`FATAL: Missing mandatory environment variable: ${key}`);\n    }\n    return val;\n  };\n\n  const nodeEnv = process.env.NODE_ENV || 'development';\n  if (!['development', 'production', 'test'].includes(nodeEnv)) {\n    throw new Error(`Invalid NODE_ENV: ${nodeEnv}`);\n  }\n\n  return Object.freeze({\n    PORT: Number(process.env.PORT) || 3000,\n    NODE_ENV: nodeEnv as EnvConfig['NODE_ENV'],\n    DATABASE_URL: getEnv('DATABASE_URL'),\n    ENABLE_METRICS: process.env.ENABLE_METRICS === 'true'\n  });\n}\n\n// Export singleton typed config\n// const config = loadEnv();\n// config.PORT is strictly 'number'; config.NODE_ENV is strictly 'development' | 'production' | 'test'!",
+    "breakdown": [
+      {
+        "lineRange": "1-6",
+        "note": "EnvConfig declares all expected environment variables with exact primitive and union types."
+      },
+      {
+        "lineRange": "8-29",
+        "note": "loadEnv validates variables at process startup and returns a frozen typed configuration object."
+      }
+    ],
+    "expectedOutput": "Eliminates string | undefined process.env checks across the entire codebase."
+  }
+]
