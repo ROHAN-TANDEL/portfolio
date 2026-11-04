@@ -1,0 +1,1313 @@
+[
+  {
+    "id": "angular-001",
+    "category": "angular",
+    "concept": "Angular Framework",
+    "priority": "must-know",
+    "question": "What is Angular and how does it differ from AngularJS?",
+    "answer": "Angular is a TypeScript-based front-end framework for building web, mobile, and desktop applications. AngularJS was the first version (1.x) using JavaScript, while Angular (2+) is a complete rewrite using TypeScript with a component-based architecture.",
+    "code": "// Angular (modern) - TypeScript component\n@Component({\n  selector: 'app-root',\n  template: '<h1>{{title}}</h1>'\n})\nexport class AppComponent {\n  title = 'Angular App';\n}",
+    "explanation": "Angular is a full-fledged MVC framework with dependency injection, routing, and forms. AngularJS used controllers and scope, while Angular uses components, modules, and a more reactive approach.",
+    "recallHint": "Angular = TypeScript, component-based, modern. AngularJS = JavaScript, controller-based, legacy.",
+    "practice": [
+      "Explain the key differences between Angular and AngularJS.",
+      "Describe why Angular was rewritten."
+    ]
+  },
+  {
+    "id": "angular-002",
+    "category": "angular",
+    "concept": "Building Blocks",
+    "priority": "must-know",
+    "question": "What are the main building blocks of an Angular application?",
+    "answer": "The main building blocks are: Components (UI building blocks), Modules (organize code), Templates (HTML views), Directives (extend HTML), Services (business logic), Dependency Injection (provide services), and Routing (navigation).",
+    "code": "// Component + Module + Service\n@Component({ selector: 'app-user' })\nexport class UserComponent {}\n\n@NgModule({\n  declarations: [UserComponent],\n  providers: [UserService]\n})\nexport class UserModule {}",
+    "explanation": "Angular applications are built from these interconnected pieces. Components are the main building blocks, modules organize them, and services provide shared functionality.",
+    "recallHint": "Components, Modules, Templates, Directives, Services, DI, Routing.",
+    "practice": [
+      "List the main building blocks.",
+      "Explain how they work together.",
+      "Describe the role of each building block."
+    ]
+  },
+  {
+    "id": "angular-003",
+    "category": "angular",
+    "concept": "Components",
+    "priority": "must-know",
+    "question": "What is a component in Angular?",
+    "answer": "A component is a class that controls a view (HTML template) and contains logic for that view. It's the fundamental building block of Angular applications and is defined using the @Component decorator.",
+    "code": "@Component({\n  selector: 'app-user',\n  template: `\n    <h2>{{user.name}}</h2>\n    <p>{{user.email}}</p>\n  `,\n  styles: ['h2 { color: blue; }']\n})\nexport class UserComponent {\n  user = { name: 'John', email: 'john@example.com' };\n}",
+    "explanation": "Components are reusable UI pieces with their own logic, template, and styles. They communicate through @Input() and @Output(). Every Angular app has at least one root component.",
+    "recallHint": "Component = Class + Template + Styles, @Component decorator.",
+    "practice": [
+      "Create a simple component.",
+      "Explain the role of a component.",
+      "Describe component communication."
+    ]
+  },
+  {
+    "id": "angular-004",
+    "category": "angular",
+    "concept": "Modules",
+    "priority": "must-know",
+    "question": "What is a module (NgModule) and what are standalone components?",
+    "answer": "An NgModule is a class decorated with @NgModule that organizes components, directives, pipes, and services. Standalone components (introduced in v14) can be used without being declared in an NgModule, reducing boilerplate.",
+    "code": "// Traditional module\n@NgModule({\n  declarations: [UserComponent, UserListComponent],\n  imports: [CommonModule],\n  providers: [UserService],\n  exports: [UserComponent]\n})\nexport class UserModule {}\n\n// Standalone component (no module needed)\n@Component({\n  selector: 'app-user',\n  standalone: true,\n  imports: [CommonModule],\n  template: '...'\n})\nexport class UserComponent {}",
+    "explanation": "Modules organize code into cohesive blocks. Standalone components simplify the architecture by removing the need for NgModules for each component, making code more modular.",
+    "recallHint": "NgModule = container for related code. Standalone = component without module.",
+    "practice": [
+      "Explain NgModule vs standalone components.",
+      "Describe when to use each approach.",
+      "Create a standalone component."
+    ]
+  },
+  {
+    "id": "angular-005",
+    "category": "angular",
+    "concept": "Directives",
+    "priority": "must-know",
+    "question": "What are directives in Angular and what's the difference between components and directives?",
+    "answer": "Directives extend HTML with custom behavior. Components are directives with a template. Directives can be: structural (*ngIf, *ngFor) that change DOM structure, or attribute (ngClass, ngStyle) that change element appearance/behavior.",
+    "code": "// Structural directive\n<div *ngIf=\"isVisible\">Content</div>\n\n// Attribute directive\n<div [ngClass]=\"{'active': isActive}\">Content</div>\n\n// Custom attribute directive\n@Directive({\n  selector: '[appHighlight]'\n})\nexport class HighlightDirective {}\n\n// Custom structural directive\n@Directive({\n  selector: '[appIf]'\n})\nexport class IfDirective {}",
+    "explanation": "Components are the most common directives with templates. Attribute directives modify behavior/appearance. Structural directives change DOM structure using the asterisk (*) syntax.",
+    "recallHint": "Component = directive with template. Structural = *ngIf/*ngFor. Attribute = ngClass/ngStyle.",
+    "practice": [
+      "Explain the types of directives.",
+      "Create a custom attribute directive.",
+      "Explain the difference between components and directives."
+    ]
+  },
+  {
+    "id": "angular-006",
+    "category": "angular",
+    "concept": "Pipes",
+    "priority": "must-know",
+    "question": "What are pipes in Angular?",
+    "answer": "Pipes transform data in templates. Built-in pipes include DatePipe, CurrencyPipe, UpperCasePipe, and AsyncPipe. Custom pipes can be created using @Pipe decorator.",
+    "code": "// Built-in pipes\n<p>{{ date | date:'fullDate' }}</p>\n<p>{{ price | currency:'USD' }}</p>\n<p>{{ text | uppercase }}</p>\n\n// Custom pipe\n@Pipe({\n  name: 'shorten',\n  pure: true\n})\nexport class ShortenPipe implements PipeTransform {\n  transform(value: string, limit: number = 10): string {\n    return value.length > limit ? value.substring(0, limit) + '...' : value;\n  }\n}\n\n// Usage\n<p>{{ longText | shorten:20 }}</p>",
+    "explanation": "Pipes are pure functions by default (re-run only when input changes). Impure pipes run on every change detection cycle and can cause performance issues. Use pipes for simple transformations only.",
+    "recallHint": "Transform data in templates, pure vs impure, built-in and custom.",
+    "practice": [
+      "Create a custom pipe.",
+      "Explain pure vs impure pipes.",
+      "Describe when to use pipes vs component methods."
+    ]
+  },
+  {
+    "id": "angular-007",
+    "category": "angular",
+    "concept": "Services",
+    "priority": "must-know",
+    "question": "What is a service and why use it instead of putting logic in components?",
+    "answer": "A service is a class that contains business logic, data fetching, and utility functions. Services promote code reusability, maintainability, and separation of concerns by keeping components lean.",
+    "code": "@Injectable({ providedIn: 'root' })\nexport class UserService {\n  private users = new BehaviorSubject<User[]>([]);\n  \n  getUsers(): Observable<User[]> {\n    return this.http.get<User[]>('/api/users');\n  }\n  \n  getUser(id: number): Observable<User> {\n    return this.http.get<User>(`/api/users/${id}`);\n  }\n  \n  createUser(user: User): Observable<User> {\n    return this.http.post<User>('/api/users', user);\n  }\n}\n\n// Component using service\n@Component({...})\nexport class UserComponent {\n  constructor(private userService: UserService) {}\n  \n  loadUsers() {\n    this.userService.getUsers().subscribe(users => {\n      this.users = users;\n    });\n  }\n}",
+    "explanation": "Services are the recommended place for business logic. Components should only handle UI logic (rendering, events). This makes code testable, reusable, and maintainable.",
+    "recallHint": "Services = business logic, data fetching, shared state. Components = UI logic only.",
+    "practice": [
+      "Create a service for API calls.",
+      "Explain why business logic belongs in services.",
+      "Describe service testing."
+    ]
+  },
+  {
+    "id": "angular-008",
+    "category": "angular",
+    "concept": "Dependency Injection",
+    "priority": "must-know",
+    "question": "What is dependency injection and how does it work in Angular?",
+    "answer": "Dependency Injection (DI) is a design pattern where dependencies are provided to a class rather than created inside it. Angular's DI system manages service instances, providing them where needed through constructors.",
+    "code": "// Service\n@Injectable({ providedIn: 'root' })\nexport class LoggerService {\n  log(message: string) { console.log(message); }\n}\n\n// Component with DI\n@Component({...})\nexport class AppComponent {\n  constructor(private logger: LoggerService) {\n    this.logger.log('Component initialized');\n  }\n}\n\n// Providers configuration\n@NgModule({\n  providers: [\n    LoggerService,\n    { provide: API_URL, useValue: 'https://api.example.com' }\n  ]\n})",
+    "explanation": "Angular's DI system is hierarchical. Services can be provided at the root (singleton), module, or component level. The injector resolves dependencies by looking up the hierarchy.",
+    "recallHint": "Inject dependencies via constructor, hierarchical injectors, providedIn.",
+    "practice": [
+      "Explain dependency injection.",
+      "Describe hierarchical DI.",
+      "Explain the difference between root and component-level providers."
+    ]
+  },
+  {
+    "id": "angular-009",
+    "category": "angular",
+    "concept": "Angular CLI",
+    "priority": "must-know",
+    "question": "What is the Angular CLI and what is the difference between ng serve and ng build?",
+    "answer": "Angular CLI is a command-line interface for Angular development. ng serve builds and serves the app with live reload (development). ng build builds the app for production with optimization (minification, tree-shaking).",
+    "code": "# Development build with live reload\nng serve\nng serve --port 4200\n\n# Production build\nng build\nng build --prod\nng build --configuration=production\n\n# Generate components/services\nng generate component user\nng generate service user\nng generate module admin --routing\n\n# Run tests\nng test\nng e2e",
+    "explanation": "The CLI handles the complex build process. Development builds are faster, production builds are optimized. The CLI also generates code, runs tests, and manages configuration.",
+    "recallHint": "ng serve = dev + live reload, ng build = production optimized.",
+    "practice": [
+      "Explain the CLI commands.",
+      "Describe development vs production builds.",
+      "Generate a component using the CLI."
+    ]
+  },
+  {
+    "id": "angular-010",
+    "category": "angular",
+    "concept": "Application Bootstrap",
+    "priority": "must-know",
+    "question": "How does an Angular application start and what is the role of main.ts?",
+    "answer": "main.ts is the entry point. It bootstraps the root module (or standalone component) using platformBrowserDynamic(). The application starts by loading the root component and its dependencies.",
+    "code": "// main.ts - traditional module-based\nimport { platformBrowserDynamic } from '@angular/platform-browser-dynamic';\nimport { AppModule } from './app/app.module';\n\nplatformBrowserDynamic().bootstrapModule(AppModule)\n  .catch(err => console.error(err));\n\n// main.ts - standalone\nimport { bootstrapApplication } from '@angular/platform-browser';\nimport { AppComponent } from './app/app.component';\n\nbootstrapApplication(AppComponent)\n  .catch(err => console.error(err));",
+    "explanation": "platformBrowserDynamic creates a platform with dynamic compilation. The bootstrap process: 1) Loads module/component, 2) Creates root component, 3) Renders the root template in index.html's <app-root>.",
+    "recallHint": "main.ts bootstraps the app, platformBrowserDynamic, root component.",
+    "practice": [
+      "Explain the bootstrap process.",
+      "Describe the difference between module and standalone bootstrap.",
+      "Explain the role of index.html."
+    ]
+  },
+  {
+    "id": "angular-011",
+    "category": "angular",
+    "concept": "Component Lifecycle",
+    "priority": "must-know",
+    "question": "What are Angular lifecycle hooks and what is the difference between constructor and ngOnInit()?",
+    "answer": "Lifecycle hooks are methods called at specific stages of a component's life. ngOnInit() is called after inputs are initialized and is preferred for initialization logic. The constructor runs before inputs are set.",
+    "code": "export class UserComponent implements OnInit, OnChanges, OnDestroy {\n  @Input() userId: number;\n  \n  constructor() {\n    // Runs first, before inputs are set\n    console.log('Constructor');\n  }\n  \n  ngOnInit() {\n    // Runs after inputs are initialized\n    console.log('ngOnInit - userId:', this.userId);\n    this.loadUser(this.userId);\n  }\n  \n  ngOnChanges(changes: SimpleChanges) {\n    // Runs when inputs change\n    console.log('ngOnChanges', changes);\n  }\n  \n  ngOnDestroy() {\n    // Runs before component is destroyed\n    console.log('Cleanup subscriptions');\n    this.subscription.unsubscribe();\n  }\n}",
+    "explanation": "Use constructor for dependency injection only. Use ngOnInit for initialization logic. ngOnChanges runs when @Input() values change. ngOnDestroy for cleanup.",
+    "recallHint": "constructor = DI only, ngOnInit = initialization, ngOnDestroy = cleanup.",
+    "practice": [
+      "Explain lifecycle hooks.",
+      "Describe the difference between constructor and ngOnInit.",
+      "Explain why API calls shouldn't be in the constructor."
+    ]
+  },
+  {
+    "id": "angular-012",
+    "category": "angular",
+    "concept": "ViewChild vs ContentChild",
+    "priority": "must-know",
+    "question": "What is the difference between ViewChild and ContentChild?",
+    "answer": "ViewChild queries elements in the component's own template (view). ContentChild queries elements projected into the component via <ng-content>. ViewChildren and ContentChildren get multiple elements.",
+    "code": "// Parent component\n@Component({\n  selector: 'app-parent',\n  template: `\n    <app-child>\n      <p #projected>Projected content</p>\n    </app-child>\n  `\n})\nexport class ParentComponent {}\n\n// Child component\n@Component({\n  selector: 'app-child',\n  template: `\n    <input #inputRef>\n    <ng-content></ng-content>\n  `\n})\nexport class ChildComponent implements AfterViewInit {\n  @ViewChild('inputRef') inputRef: ElementRef; // Own template\n  @ContentChild('projected') projectedRef: ElementRef; // Projected content\n  \n  @ViewChildren('item') items: QueryList<ElementRef>;\n  @ContentChildren('content') contentItems: QueryList<ElementRef>;\n  \n  ngAfterViewInit() {\n    console.log('ViewChild:', this.inputRef);\n    console.log('ContentChild:', this.projectedRef);\n  }\n}",
+    "explanation": "ViewChild accesses elements in the component's own view. ContentChild accesses elements projected from the parent. ContentChild is only available after ngAfterContentInit.",
+    "recallHint": "ViewChild = own template, ContentChild = projected content (ng-content).",
+    "practice": [
+      "Explain the difference between ViewChild and ContentChild.",
+      "Describe when to use each.",
+      "Explain ViewChildren and ContentChildren."
+    ]
+  },
+  {
+    "id": "angular-013",
+    "category": "angular",
+    "concept": "Data Binding",
+    "priority": "must-know",
+    "question": "What are the different types of data binding in Angular?",
+    "answer": "Angular has four data binding types: Interpolation ({{}}), Property Binding ([property]), Event Binding ((event)), and Two-way Binding ([(ngModel)]). Each serves a different purpose.",
+    "code": "// Component\n@Component({\n  template: `\n    <!-- Interpolation: display data -->\n    <h1>{{ title }}</h1>\n    \n    <!-- Property binding: bind to DOM property -->\n    <input [value]=\"username\">\n    <img [src]=\"imageUrl\">\n    <button [disabled]=\"isDisabled\">Save</button>\n    \n    <!-- Event binding: handle events -->\n    <button (click)=\"onSave()\">Save</button>\n    <input (input)=\"onInput($event)\">\n    \n    <!-- Two-way binding: sync both ways -->\n    <input [(ngModel)]=\"username\">\n  `\n})\nexport class AppComponent {\n  title = 'App';\n  username = 'John';\n  isDisabled = false;\n  \n  onSave() { /* ... */ }\n  onInput(event: Event) { /* ... */ }\n}",
+    "explanation": "Interpolation displays values (one-way from component to view). Property binding sets DOM properties. Event binding sends data from view to component. Two-way binding combines property + event binding.",
+    "recallHint": "{{}} = display, [] = property, () = event, [()] = two-way.",
+    "practice": [
+      "Explain each binding type.",
+      "Describe the difference between interpolation and property binding.",
+      "Implement two-way binding with ngModel."
+    ]
+  },
+  {
+    "id": "angular-014",
+    "category": "angular",
+    "concept": "ngIf vs ngFor",
+    "priority": "must-know",
+    "question": "What is the difference between *ngIf and CSS hiding, and what is trackBy in *ngFor?",
+    "answer": "*ngIf removes/adds elements from the DOM, CSS hiding just hides them. trackBy in *ngFor improves rendering performance by identifying which items changed, preventing full re-rendering of lists.",
+    "code": "// *ngIf - removes DOM element\n<div *ngIf=\"isVisible\">Visible</div>\n\n// CSS hiding - element remains in DOM\n<div [hidden]=\"!isVisible\">Hidden</div>\n\n// *ngFor with trackBy\n<div *ngFor=\"let user of users; trackBy: trackByUserId\">\n  {{user.name}}\n</div>\n\ntrackByUserId(index: number, user: User): number {\n  return user.id;\n}\n\n// Without trackBy - re-renders all items\n<div *ngFor=\"let user of users\">\n  {{user.name}}\n</div>",
+    "explanation": "*ngIf is more efficient for conditional rendering as it removes unused DOM. CSS hiding is better for performance on/off toggling. trackBy prevents unnecessary DOM re-creation when list changes.",
+    "recallHint": "*ngIf = DOM removal, hidden = CSS hide, trackBy = performance.",
+    "practice": [
+      "Explain the difference between *ngIf and hidden.",
+      "Describe trackBy usage.",
+      "Explain why trackBy improves performance."
+    ]
+  },
+  {
+    "id": "angular-015",
+    "category": "angular",
+    "concept": "Custom Directives",
+    "priority": "must-know",
+    "question": "How do you create a custom directive and when would you use one?",
+    "answer": "Create custom directives using @Directive decorator. Use attribute directives to modify element behavior/appearance, and structural directives to change DOM structure. They're useful for reusable UI behavior.",
+    "code": "// Attribute directive - highlight text\n@Directive({\n  selector: '[appHighlight]'\n})\nexport class HighlightDirective implements OnInit {\n  @Input() appHighlight = '';\n  @Input() highlightColor = 'yellow';\n  \n  constructor(private el: ElementRef) {}\n  \n  ngOnInit() {\n    this.el.nativeElement.style.backgroundColor = this.highlightColor;\n  }\n}\n\n// Usage\n<p appHighlight=\"search\" highlightColor=\"lightblue\">Highlighted text</p>\n\n// Structural directive - custom if\n@Directive({\n  selector: '[appIf]'\n})\nexport class IfDirective {\n  constructor(\n    private templateRef: TemplateRef<any>,\n    private viewContainer: ViewContainerRef\n  ) {}\n  \n  @Input() set appIf(condition: boolean) {\n    if (condition) {\n      this.viewContainer.createEmbeddedView(this.templateRef);\n    } else {\n      this.viewContainer.clear();\n    }\n  }\n}",
+    "explanation": "Custom directives are used for reusable behavior that doesn't need a template. Attribute directives are common for styling, validation, and event handling. Structural directives need TemplateRef and ViewContainerRef.",
+    "recallHint": "@Directive decorator, attribute modifies, structural changes DOM.",
+    "practice": [
+      "Create a custom attribute directive.",
+      "Create a custom structural directive.",
+      "Explain when to use directives vs components."
+    ]
+  },
+  {
+    "id": "angular-016",
+    "category": "angular",
+    "concept": "RxJS Observables",
+    "priority": "must-know",
+    "question": "What is an Observable and how does it differ from a Promise?",
+    "answer": "An Observable is a push-based data stream that can emit multiple values over time. A Promise emits a single value and is eager. Observables are lazy (executed on subscription), Promises are immediate.",
+    "code": "// Promise\nconst promise = new Promise((resolve) => {\n  console.log('Promise executes immediately');\n  resolve('Single value');\n});\npromise.then(value => console.log(value));\n\n// Observable\nconst observable = new Observable(subscriber => {\n  console.log('Observable executes on subscribe');\n  subscriber.next('Value 1');\n  subscriber.next('Value 2');\n  subscriber.complete();\n});\nobservable.subscribe(value => console.log(value));\n\n// Comparison\n// Promise: 1 value, eager, cannot cancel\n// Observable: Multiple values, lazy, cancellable, operators available",
+    "explanation": "Observables are the foundation of Angular's reactive programming. They handle async operations like HTTP requests, user input, and event streams. They support operators for transforming data.",
+    "recallHint": "Observable = multiple values, lazy, cancellable. Promise = single value, eager.",
+    "practice": [
+      "Explain the difference between Observables and Promises.",
+      "Create an Observable with custom logic.",
+      "Describe when to use each."
+    ]
+  },
+  {
+    "id": "angular-017",
+    "category": "angular",
+    "concept": "RxJS Operators - map, filter, tap",
+    "priority": "must-know",
+    "question": "What are map(), filter(), and tap() operators in RxJS?",
+    "answer": "map() transforms emitted values, filter() filters values based on a condition, tap() performs side effects without modifying values. They're used inside pipe() to create observable pipelines.",
+    "code": "// map - transform values\nthis.users$.pipe(\n  map(users => users.filter(user => user.active)),\n  map(users => users.map(user => ({ ...user, fullName: `${user.firstName} ${user.lastName}` })))\n);\n\n// filter - conditionally pass values\nthis.searchTerm$.pipe(\n  filter(term => term.length >= 3),\n  debounceTime(300)\n);\n\n// tap - side effects (logging, debugging)\nthis.http.get('/api/users').pipe(\n  tap(users => console.log('Users loaded:', users)),\n  tap(users => this.loadingService.hide()),\n  tap({\n    next: users => this.cache.set('users', users),\n    error: err => console.error('Error:', err)\n  })\n);",
+    "explanation": "map transforms data shape, filter removes unwanted values, tap allows side effects without affecting the stream. These are the most commonly used operators in Angular applications.",
+    "recallHint": "map = transform, filter = condition, tap = side effect.",
+    "practice": [
+      "Explain each operator.",
+      "Create a pipeline with map, filter, and tap.",
+      "Describe the order of operators in a pipe."
+    ]
+  },
+  {
+    "id": "angular-018",
+    "category": "angular",
+    "concept": "RxJS - switchMap vs mergeMap",
+    "priority": "must-know",
+    "question": "What is the difference between switchMap and mergeMap?",
+    "answer": "switchMap cancels previous inner observable when a new value arrives. mergeMap (flatMap) allows multiple inner observables to run concurrently. Use switchMap for search scenarios, mergeMap for parallel operations.",
+    "code": "// switchMap - cancels previous (search scenario)\nthis.searchInput.valueChanges.pipe(\n  debounceTime(300),\n  distinctUntilChanged(),\n  switchMap(term => this.searchService.search(term)) // Cancels previous request\n).subscribe(results => this.results = results);\n\n// mergeMap - allows concurrent operations\nthis.getUserIds().pipe(\n  mergeMap(userIds => forkJoin(userIds.map(id => this.getUser(id)))) // Fetch all concurrently\n).subscribe(users => this.users = users);\n\n// concatMap - sequential order\nthis.saveRequests.pipe(\n  concatMap(request => this.api.save(request)) // Executes in order\n);\n\n// exhaustMap - ignore while inner is running\nthis.clickEvents.pipe(\n  exhaustMap(() => this.api.save()) // Ignore rapid clicks\n);",
+    "explanation": "switchMap cancels previous inner observables (good for search). mergeMap runs concurrently (good for parallel operations). concatMap runs sequentially. exhaustMap ignores new requests while processing.",
+    "recallHint": "switchMap = cancel previous, mergeMap = concurrent, concatMap = sequential.",
+    "practice": [
+      "Explain the difference between switchMap and mergeMap.",
+      "Describe when to use each.",
+      "Explain concatMap and exhaustMap."
+    ]
+  },
+  {
+    "id": "angular-019",
+    "category": "angular",
+    "concept": "RxJS - Subjects",
+    "priority": "must-know",
+    "question": "What is the difference between Subject and BehaviorSubject?",
+    "answer": "Subject is a multicast Observable that doesn't have an initial value. BehaviorSubject has a current value and requires an initial value. New subscribers to BehaviorSubject immediately get the latest value.",
+    "code": "// Subject - no initial value\nconst subject = new Subject<string>();\nsubject.next('First'); // Value emitted\nsubject.subscribe(value => console.log('Sub1:', value));\nsubject.next('Second'); // Sub1 receives 'Second'\n// Subscriber misses 'First'\n\n// BehaviorSubject - has initial value\nconst behaviorSubject = new BehaviorSubject<string>('Initial');\nbehaviorSubject.subscribe(value => console.log('Sub1:', value)); // Gets 'Initial'\nbehaviorSubject.next('Updated');\nbehaviorSubject.subscribe(value => console.log('Sub2:', value)); // Gets 'Updated' (latest)\n\n// ReplaySubject - replay history\nconst replaySubject = new ReplaySubject<string>(2); // Replay last 2\nreplaySubject.next('1');\nreplaySubject.next('2');\nreplaySubject.subscribe(value => console.log(value)); // Gets 1, 2\n\n// Use case - state management\n@Injectable()\nexport class UserService {\n  private userSubject = new BehaviorSubject<User | null>(null);\n  user$ = this.userSubject.asObservable();\n  \n  setUser(user: User) {\n    this.userSubject.next(user);\n  }\n}",
+    "explanation": "BehaviorSubject is ideal for state management as subscribers always get the current value. Subject is used for events. ReplaySubject replays a number of past values.",
+    "recallHint": "Subject = no initial, BehaviorSubject = current value, ReplaySubject = replay history.",
+    "practice": [
+      "Explain the difference between Subject and BehaviorSubject.",
+      "Describe when to use each.",
+      "Implement state management with BehaviorSubject."
+    ]
+  },
+  {
+    "id": "angular-020",
+    "category": "angular",
+    "concept": "RxJS - forkJoin vs combineLatest",
+    "priority": "must-know",
+    "question": "What is the difference between forkJoin() and combineLatest()?",
+    "answer": "forkJoin() emits the last value from each observable, only when all complete. combineLatest() emits when any observable emits, with the latest values from all. Use forkJoin for parallel HTTP requests, combineLatest for reactive forms.",
+    "code": "// forkJoin - waits for all to complete\nconst requests = [\n  this.http.get('/api/users'),\n  this.http.get('/api/posts'),\n  this.http.get('/api/comments')\n];\nforkJoin(requests).subscribe(([users, posts, comments]) => {\n  // All complete, receives arrays\n  console.log('All complete:', { users, posts, comments });\n});\n\n// combineLatest - emits on any change\ncombineLatest([\n  this.form.controls['name'].valueChanges,\n  this.form.controls['email'].valueChanges\n]).subscribe(([name, email]) => {\n  // Emits when either changes\n  console.log('Name:', name, 'Email:', email);\n});\n\n// combineLatest with validation\ncombineLatest([\n  this.password.valueChanges,\n  this.confirmPassword.valueChanges\n]).pipe(\n  map(([password, confirm]) => password === confirm)\n).subscribe(match => this.passwordMatch = match);",
+    "explanation": "forkJoin is perfect for parallel API calls where you need all results. combineLatest is great for reactive forms and scenarios where you need to react to any value change.",
+    "recallHint": "forkJoin = all complete, combineLatest = any emits.",
+    "practice": [
+      "Explain the difference between forkJoin and combineLatest.",
+      "Describe when to use each.",
+      "Implement parallel API calls with forkJoin."
+    ]
+  },
+  {
+    "id": "angular-021",
+    "category": "angular",
+    "concept": "RxJS - Subscription Management",
+    "priority": "must-know",
+    "question": "How do you prevent memory leaks from subscriptions and what is the async pipe?",
+    "answer": "Unsubscribe in ngOnDestroy() using Subscription, takeUntil, or the async pipe. The async pipe automatically subscribes and unsubscribes, reducing boilerplate and preventing leaks.",
+    "code": "// Method 1: Manual unsubscribe\nsubscription: Subscription;\n\nngOnInit() {\n  this.subscription = this.userService.getUsers().subscribe(users => {\n    this.users = users;\n  });\n}\n\nngOnDestroy() {\n  this.subscription.unsubscribe();\n}\n\n// Method 2: takeUntil pattern\ndestroy$ = new Subject<void>();\n\nngOnInit() {\n  this.userService.getUsers().pipe(\n    takeUntil(this.destroy$)\n  ).subscribe(users => this.users = users);\n}\n\nngOnDestroy() {\n  this.destroy$.next();\n  this.destroy$.complete();\n}\n\n// Method 3: Async pipe (no manual subscription)\n@Component({\n  template: `\n    <div *ngFor=\"let user of users$ | async\">\n      {{user.name}}\n    </div>\n  `\n})\nexport class UserComponent {\n  users$ = this.userService.getUsers(); // No subscribe needed\n  \n  constructor(private userService: UserService) {}\n}\n\n// Method 4: async pipe with shareReplay (caching)\nusers$ = this.userService.getUsers().pipe(\n  shareReplay(1)\n); // Shared across multiple templates, single API call",
+    "explanation": "The async pipe is the preferred way to handle observables in templates. For manual subscriptions, always unsubscribe. takeUntil is cleaner than managing multiple subscriptions.",
+    "recallHint": "async pipe = automatic, manual = unsubscribe in ngOnDestroy.",
+    "practice": [
+      "Explain subscription management.",
+      "Describe the async pipe benefits.",
+      "Implement takeUntil pattern."
+    ]
+  },
+  {
+    "id": "angular-022",
+    "category": "angular",
+    "concept": "Angular Signals",
+    "priority": "must-know",
+    "question": "What are Angular Signals and how do they compare to Observables?",
+    "answer": "Signals are reactive primitives that hold values and notify consumers when values change. Unlike Observables, Signals are synchronous and use push-pull reactive system. They integrate with change detection for better performance.",
+    "code": "// Signal fundamentals\nimport { signal, computed, effect, Signal } from '@angular/core';\n\n// Basic signal\nconst count = signal(0);\nconsole.log(count()); // 0\ncount.set(5); // Set new value\ncount.update(val => val + 1); // Update based on current\n\n// Computed signal\nconst double = computed(() => count() * 2);\nconsole.log(double()); // 12 (when count = 6)\n\n// Effect - runs when dependencies change\nconst logEffect = effect(() => {\n  console.log('Count changed to:', count());\n});\n\n// In component\n@Component({\n  template: `\n    <div>Count: {{ count() }}</div>\n    <div>Double: {{ double() }}</div>\n    <button (click)=\"increment()\">Increment</button>\n  `\n})\nexport class CounterComponent {\n  count = signal(0);\n  double = computed(() => this.count() * 2);\n  \n  increment() {\n    this.count.update(v => v + 1);\n  }\n}\n\n// Convert Observable to Signal (Angular 18+)\nusers = toSignal(this.userService.getUsers(), { initialValue: [] });\n\n// Convert Signal to Observable\nuserCount$ = toObservable(this.count);",
+    "explanation": "Signals are the new reactive primitive in Angular. They're simpler than Observables for state management, synchronous, and improve change detection performance. Use for component state, computed derived state.",
+    "recallHint": "signal() = state, computed() = derived, effect() = side effects, synchronous.",
+    "practice": [
+      "Explain Signals and their purpose.",
+      "Describe the difference between Signals and Observables.",
+      "Implement a counter with Signals."
+    ]
+  },
+  {
+    "id": "angular-023",
+    "category": "angular",
+    "concept": "Reactive Forms",
+    "priority": "must-know",
+    "question": "What are Reactive Forms and how do they compare to Template-driven Forms?",
+    "answer": "Reactive Forms are model-driven forms built with FormControl, FormGroup, and FormArray. They're more scalable, testable, and provide more control than template-driven forms. Preferred for complex applications.",
+    "code": "// Reactive form setup\nimport { FormGroup, FormControl, Validators, FormBuilder } from '@angular/forms';\n\n@Component({...})\nexport class UserFormComponent {\n  // Manual creation\n  userForm = new FormGroup({\n    name: new FormControl('', [Validators.required, Validators.minLength(3)]),\n    email: new FormControl('', [Validators.required, Validators.email]),\n    age: new FormControl(null, [Validators.min(18), Validators.max(120)])\n  });\n  \n  // Using FormBuilder\n  constructor(private fb: FormBuilder) {\n    this.userForm = this.fb.group({\n      name: ['', [Validators.required, Validators.minLength(3)]],\n      email: ['', [Validators.required, Validators.email]],\n      address: this.fb.group({\n        street: [''],\n        city: [''],\n        zip: [''],\n        country: [''],\n      }),\n      hobbies: this.fb.array([])\n    });\n  }\n  \n  // Template\n  // <form [formGroup]=\"userForm\">\n  //   <input formControlName=\"name\">\n  //   <div *ngIf=\"userForm.get('name').invalid && userForm.get('name').touched\">\n  //     Name is required\n  //   </div>\n  // </form>\n  \n  submit() {\n    console.log(this.userForm.value);\n    console.log(this.userForm.valid);\n    // Reset form\n    this.userForm.reset();\n    // Patch values\n    this.userForm.patchValue({ name: 'John' });\n  }\n}",
+    "explanation": "Reactive Forms provide: 1) Immutable data, 2) Easy testing, 3) Dynamic forms, 4) Custom validators, 5) Better performance. Use setValue() for complete objects, patchValue() for partial updates.",
+    "recallHint": "Reactive = model-driven, scalable, testable. Template-driven = simpler, less control.",
+    "practice": [
+      "Explain Reactive vs Template-driven forms.",
+      "Create a reactive form with validation.",
+      "Explain setValue vs patchValue."
+    ]
+  },
+  {
+    "id": "angular-024",
+    "category": "angular",
+    "concept": "Form Validators",
+    "priority": "must-know",
+    "question": "How do you create custom and asynchronous validators in Angular?",
+    "answer": "Custom validators are functions that return null (valid) or an error object (invalid). Async validators return a Promise or Observable for validation that requires server calls.",
+    "code": "// Synchronous custom validator\nimport { AbstractControl, ValidationErrors } from '@angular/forms';\n\nexport function forbiddenNameValidator(forbiddenName: RegExp): ValidatorFn {\n  return (control: AbstractControl): ValidationErrors | null => {\n    const forbidden = forbiddenName.test(control.value);\n    return forbidden ? { forbiddenName: { value: control.value } } : null;\n  };\n}\n\n// Usage in form\nname: ['', [Validators.required, forbiddenNameValidator(/admin/i)]],\n\n// Custom validator with parameters\nexport function passwordMatchValidator(group: FormGroup) {\n  const password = group.get('password')?.value;\n  const confirmPassword = group.get('confirmPassword')?.value;\n  return password === confirmPassword ? null : { passwordMismatch: true };\n}\n\n// FormGroup with cross-field validation\nthis.userForm = this.fb.group({\n  password: ['', [Validators.minLength(6)]],\n  confirmPassword: ['']\n}, { validators: passwordMatchValidator });\n\n// Async validator (checks if username exists)\nusernameAsyncValidator(control: AbstractControl): Observable<ValidationErrors | null> {\n  return this.userService.checkUsername(control.value).pipe(\n    map(exists => exists ? { usernameTaken: true } : null),\n    catchError(() => of(null))\n  );\n}\n\n// Usage in form\nusername: ['', {\n  validators: [Validators.required],\n  asyncValidators: [this.usernameAsyncValidator.bind(this)],\n  updateOn: 'blur' // Validate on blur instead of every change\n}],",
+    "explanation": "Custom validators extend Angular's validation capabilities. Sync validators are instant, async validators are for server checks. Use updateOn to control when validation runs.",
+    "recallHint": "Sync = immediate, Async = server call, cross-field validation in FormGroup.",
+    "practice": [
+      "Create a custom validator.",
+      "Create an async validator.",
+      "Implement cross-field validation."
+    ]
+  },
+  {
+    "id": "angular-025",
+    "category": "angular",
+    "concept": "HTTP Interceptors",
+    "priority": "must-know",
+    "question": "What are HTTP interceptors and how do you use them?",
+    "answer": "Interceptors are middleware for HTTP requests/responses. They can modify requests (add JWT), handle errors, log activity, show loaders, and transform responses.",
+    "code": "@Injectable()\nexport class AuthInterceptor implements HttpInterceptor {\n  intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {\n    // Clone and modify request\n    const authReq = req.clone({\n      setHeaders: {\n        Authorization: `Bearer ${this.authService.getToken()}`\n      }\n    });\n    \n    return next.handle(authReq);\n  }\n}\n\n// Loading interceptor\n@Injectable()\nexport class LoadingInterceptor implements HttpInterceptor {\n  private activeRequests = 0;\n  \n  intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {\n    this.loadingService.show();\n    this.activeRequests++;\n    \n    return next.handle(req).pipe(\n      finalize(() => {\n        this.activeRequests--;\n        if (this.activeRequests === 0) {\n          this.loadingService.hide();\n        }\n      })\n    );\n  }\n}\n\n// Error interceptor with retry\n@Injectable()\nexport class ErrorInterceptor implements HttpInterceptor {\n  intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {\n    return next.handle(req).pipe(\n      retryWhen(errors => errors.pipe(\n        mergeMap((error, index) => {\n          if (index < 3 && error.status === 500) {\n            return of(error).pipe(delay(1000 * Math.pow(2, index))); // Exponential backoff\n          }\n          return throwError(error);\n        })\n      )),\n      catchError(error => {\n        if (error.status === 401) {\n          this.authService.logout();\n        }\n        return throwError(error);\n      })\n    );\n  }\n}\n\n// Register interceptors\n@NgModule({\n  providers: [\n    { provide: HTTP_INTERCEPTORS, useClass: AuthInterceptor, multi: true },\n    { provide: HTTP_INTERCEPTORS, useClass: LoadingInterceptor, multi: true },\n    { provide: HTTP_INTERCEPTORS, useClass: ErrorInterceptor, multi: true }\n  ]\n})",
+    "explanation": "Interceptors run in registration order. They're powerful for cross-cutting concerns. Always call next.handle() to continue the chain. Use clone() to modify requests.",
+    "recallHint": "Interceptors = HTTP middleware, modify requests, handle errors, add tokens.",
+    "practice": [
+      "Create an auth interceptor.",
+      "Create an error interceptor.",
+      "Create a loading interceptor."
+    ]
+  },
+  {
+    "id": "angular-026",
+    "category": "angular",
+    "concept": "Angular Routing",
+    "priority": "must-know",
+    "question": "What is Angular Router and how do you configure routes with guards?",
+    "answer": "The Angular Router enables navigation between views. Routes are configured with paths and components. Guards (CanActivate, CanDeactivate, CanMatch) control access to routes.",
+    "code": "// routes.ts\nconst routes: Routes = [\n  { path: '', redirectTo: '/dashboard', pathMatch: 'full' },\n  { path: 'login', component: LoginComponent },\n  { \n    path: 'dashboard',\n    component: DashboardComponent,\n    canActivate: [AuthGuard],\n    data: { roles: ['admin', 'user'] }\n  },\n  { \n    path: 'users',\n    loadChildren: () => import('./users/users.module').then(m => m.UsersModule),\n    canMatch: [CanMatchGuard]\n  },\n  { path: 'settings', component: SettingsComponent, canDeactivate: [UnsavedChangesGuard] },\n  { path: '**', component: NotFoundComponent }\n];\n\n// Auth Guard\n@Injectable({ providedIn: 'root' })\nexport class AuthGuard implements CanActivate {\n  constructor(private auth: AuthService, private router: Router) {}\n  \n  canActivate(route: ActivatedRouteSnapshot, state: RouterStateSnapshot) {\n    if (this.auth.isLoggedIn()) {\n      return true;\n    }\n    this.router.navigate(['/login'], { queryParams: { returnUrl: state.url } });\n    return false;\n  }\n}\n\n// CanDeactivate Guard\n@Injectable({ providedIn: 'root' })\nexport class UnsavedChangesGuard implements CanDeactivate<any> {\n  canDeactivate(component: any): boolean {\n    if (component.hasUnsavedChanges) {\n      return confirm('You have unsaved changes. Do you want to leave?');\n    }\n    return true;\n  }\n}\n\n// Navigation\nthis.router.navigate(['/dashboard', userId]);\nthis.router.navigate(['/users'], { queryParams: { page: 1 } });",
+    "explanation": "Router configuration includes: path, component, children (nested routes), loadChildren (lazy loading), guards, resolvers, and data. RouterLink in templates enables declarative navigation.",
+    "recallHint": "Routes = path + component, Guards = access control, Resolvers = data loading.",
+    "practice": [
+      "Configure routes with guards.",
+      "Explain lazy loading.",
+      "Implement navigation with parameters."
+    ]
+  },
+  {
+    "id": "angular-027",
+    "category": "angular",
+    "concept": "Lazy Loading",
+    "priority": "must-know",
+    "question": "What is lazy loading and why is it useful?",
+    "answer": "Lazy loading loads feature modules only when the route is requested. It reduces initial bundle size, improves load time, and speeds up the initial application startup.",
+    "code": "// Routes with lazy loading\nconst routes: Routes = [\n  {\n    path: 'users',\n    loadChildren: () => import('./features/users/users.module').then(m => m.UsersModule)\n  },\n  {\n    path: 'dashboard',\n    loadComponent: () => import('./features/dashboard/dashboard.component').then(c => c.DashboardComponent)\n  },\n  {\n    path: 'admin',\n    loadChildren: () => import('./features/admin/admin.routes'),\n    canLoad: [AdminGuard] // Prevent loading if unauthorized\n  }\n];\n\n// Feature module\n@NgModule({\n  declarations: [UserComponent, UserListComponent],\n  imports: [CommonModule, UsersRoutingModule]\n})\nexport class UsersModule {}\n\n// With preloading\nimport { PreloadAllModules } from '@angular/router';\n\n@NgModule({\n  imports: [\n    RouterModule.forRoot(routes, {\n      preloadingStrategy: PreloadAllModules // Load after app loads\n    })\n  ]\n})",
+    "explanation": "Lazy loading is essential for large applications. It reduces initial bundle size, speeds up first paint, and improves perceived performance. Use loadChildren for modules, loadComponent for standalone components.",
+    "recallHint": "Load only when needed, reduces initial bundle, speeds up startup.",
+    "practice": [
+      "Implement lazy loading for a module.",
+      "Explain the benefits of lazy loading.",
+      "Implement preloading strategy."
+    ]
+  },
+  {
+    "id": "angular-028",
+    "category": "angular",
+    "concept": "Change Detection",
+    "priority": "must-know",
+    "question": "What is change detection and how does OnPush work?",
+    "answer": "Change detection is Angular's mechanism for detecting when data changes and updating the DOM. OnPush is a change detection strategy that only checks a component when its inputs change or events fire within it, improving performance.",
+    "code": "@Component({\n  selector: 'app-user',\n  changeDetection: ChangeDetectionStrategy.OnPush,\n  template: `\n    <div>{{ user.name }}</div>\n    <div>{{ user.email }}</div>\n  `\n})\nexport class UserComponent {\n  @Input() user: User; // Only checks when reference changes\n  \n  // With OnPush, mutating an object doesn't trigger update\n  updateName() {\n    this.user.name = 'New Name'; // Won't trigger change detection\n  }\n  \n  updateUser() {\n    this.user = { ...this.user, name: 'New Name' }; // Will trigger (new reference)\n  }\n  \n  // To manually trigger\n  constructor(private cdr: ChangeDetectorRef) {}\n  \n  refresh() {\n    this.cdr.markForCheck(); // Marks component for check\n  }\n}",
+    "explanation": "Default strategy checks everything (all components) on each event. OnPush only checks when inputs change (reference changes), event occurs, or manually triggered. Use immutable data with OnPush.",
+    "recallHint": "Default = check everything, OnPush = check only when inputs change.",
+    "practice": [
+      "Explain change detection strategies.",
+      "Describe OnPush benefits.",
+      "Explain why mutation causes issues with OnPush."
+    ]
+  },
+  {
+    "id": "angular-029",
+    "category": "angular",
+    "concept": "ChangeDetectorRef",
+    "priority": "must-know",
+    "question": "What is ChangeDetectorRef and when would you use markForCheck() or detectChanges()?",
+    "answer": "ChangeDetectorRef provides methods to manually control change detection. markForCheck() marks a component and its ancestors for checking on the next cycle. detectChanges() immediately runs change detection.",
+    "code": "@Component({\n  changeDetection: ChangeDetectionStrategy.OnPush\n})\nexport class UserComponent {\n  constructor(private cdr: ChangeDetectorRef) {}\n  \n  // markForCheck - schedule check\n  loadData() {\n    this.dataService.getData().subscribe(data => {\n      this.data = data;\n      this.cdr.markForCheck(); // Marks component for checking\n    });\n  }\n  \n  // detectChanges - immediate check\n  updateUI() {\n    this.data = newData;\n    this.cdr.detectChanges(); // Immediately run change detection\n  }\n  \n  // detach/reattach - control detection entirely\n  stopChecking() {\n    this.cdr.detach(); // Stop checking\n  }\n  \n  resumeChecking() {\n    this.cdr.reattach(); // Resume checking\n    this.cdr.detectChanges(); // Update view\n  }\n}",
+    "explanation": "markForCheck() is preferred for OnPush components - it schedules a check without running it immediately. detectChanges() forces immediate checking. Use detach() for performance-critical sections.",
+    "recallHint": "markForCheck = schedule check, detectChanges = immediate check.",
+    "practice": [
+      "Explain ChangeDetectorRef methods.",
+      "Describe when to use markForCheck vs detectChanges.",
+      "Explain detach/reattach use cases."
+    ]
+  },
+  {
+    "id": "angular-030",
+    "category": "angular",
+    "concept": "State Management - NgRx",
+    "priority": "important",
+    "question": "What is NgRx and when should you use it?",
+    "answer": "NgRx is a state management library based on Redux pattern. It uses Actions, Reducers, Selectors, and Effects. Use for large applications with complex state, multiple data sources, or team collaboration.",
+    "code": "// Action\nexport const loadUsers = createAction('[User] Load Users');\nexport const loadUsersSuccess = createAction('[User] Load Users Success', props<{ users: User[] }>());\n\n// Reducer\nconst initialState: UserState = { users: [], loading: false, error: null };\n\nconst userReducer = createReducer(\n  initialState,\n  on(loadUsers, state => ({ ...state, loading: true })),\n  on(loadUsersSuccess, (state, { users }) => ({\n    ...state,\n    users,\n    loading: false\n  })),\n  on(loadUsersFailure, (state, { error }) => ({\n    ...state,\n    error,\n    loading: false\n  }))\n);\n\n// Selector\nexport const selectUsers = (state: AppState) => state.users;\nexport const selectActiveUsers = createSelector(\n  selectUsers,\n  (users) => users.filter(user => user.active)\n);\n\n// Effect\n@Injectable()\nexport class UserEffects {\n  loadUsers$ = createEffect(() => this.actions$.pipe(\n    ofType(loadUsers),\n    switchMap(() => this.userService.getUsers().pipe(\n      map(users => loadUsersSuccess({ users })),\n      catchError(error => of(loadUsersFailure({ error })))\n    ))\n  ));\n}\n\n// Component\n@Component({...})\nexport class UserComponent {\n  users$ = this.store.select(selectActiveUsers);\n  loading$ = this.store.select(selectLoading);\n  \n  constructor(private store: Store) {}\n  \n  ngOnInit() {\n    this.store.dispatch(loadUsers());\n  }\n}",
+    "explanation": "NgRx provides: 1) Single source of truth, 2) Predictable state updates, 3) Time-travel debugging, 4) Easier testing. It's overkill for small apps but valuable for complex enterprise applications.",
+    "recallHint": "Actions → Reducers → Store → Selectors, Effects for side effects.",
+    "practice": [
+      "Explain NgRx architecture.",
+      "Describe when to use NgRx.",
+      "Implement a simple NgRx feature."
+    ]
+  },
+  {
+    "id": "angular-031",
+    "category": "angular",
+    "concept": "Performance Optimization",
+    "priority": "important",
+    "question": "How do you improve Angular application performance?",
+    "answer": "Improve performance by: 1) OnPush change detection, 2) Lazy loading, 3) trackBy in ngFor, 4) Virtual scroll for large lists, 5) Unsubscribing from observables, 6) Reducing bundle size, 7) Using async pipe, 8) Memoization.",
+    "code": "// 1. OnPush strategy\n@Component({\n  changeDetection: ChangeDetectionStrategy.OnPush\n})\n\n// 2. trackBy\n<div *ngFor=\"let item of items; trackBy: trackById\">{{item.name}}</div>\n\n// 3. Virtual scroll\n<cdk-virtual-scroll-viewport itemSize=\"50\" class=\"viewport\">\n  <div *cdkVirtualFor=\"let item of items\">{{item.name}}</div>\n</cdk-virtual-scroll-viewport>\n\n// 4. Pure pipe (cached)\n@Pipe({ name: 'filter', pure: true })\n\n// 5. Lazy loading\nloadChildren: () => import('./admin/admin.module').then(m => m.AdminModule)\n\n// 6. OnDestroy cleanup\nngOnDestroy() {\n  this.destroy$.next();\n  this.destroy$.complete();\n}\n\n// 7. Track event listeners\nhost: {\n  '(mousemove)': 'onMouseMove()'\n}\n\n// 8. Memoization with computed signals\ncomputed(() => expensiveCalculation(this.data()));",
+    "explanation": "Performance optimization is critical for large applications. Focus on change detection efficiency, rendering large lists, bundle size reduction, and proper cleanup of subscriptions.",
+    "recallHint": "OnPush, trackBy, lazy loading, unsubscribe, virtual scroll.",
+    "practice": [
+      "List performance optimization techniques.",
+      "Explain how to debug performance issues.",
+      "Implement virtual scrolling."
+    ]
+  },
+  {
+    "id": "angular-032",
+    "category": "angular",
+    "concept": "Testing",
+    "priority": "important",
+    "question": "How do you test Angular components, services, and HTTP requests?",
+    "answer": "Use TestBed for testing components/services. Use HttpClientTestingModule and HttpTestingController for HTTP testing. Use Jasmine/Jest for assertions.",
+    "code": "// Component test\nimport { TestBed, ComponentFixture } from '@angular/core/testing';\nimport { UserComponent } from './user.component';\n\ndescribe('UserComponent', () => {\n  let component: UserComponent;\n  let fixture: ComponentFixture<UserComponent>;\n  \n  beforeEach(async () => {\n    await TestBed.configureTestingModule({\n      declarations: [UserComponent],\n      imports: [HttpClientTestingModule]\n    }).compileComponents();\n  });\n  \n  beforeEach(() => {\n    fixture = TestBed.createComponent(UserComponent);\n    component = fixture.componentInstance;\n  });\n  \n  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n  \n  it('should display user name', () => {\n    component.user = { name: 'John' };\n    fixture.detectChanges();\n    const element = fixture.nativeElement.querySelector('.user-name');\n    expect(element.textContent).toContain('John');\n  });\n});\n\n// Service test\n@Injectable()\nexport class UserService {\n  constructor(private http: HttpClient) {}\n  \n  getUser(id: number) {\n    return this.http.get<User>(`/api/users/${id}`);\n  }\n}\n\ndescribe('UserService', () => {\n  let service: UserService;\n  let httpMock: HttpTestingController;\n  \n  beforeEach(() => {\n    TestBed.configureTestingModule({\n      imports: [HttpClientTestingModule],\n      providers: [UserService]\n    });\n    service = TestBed.inject(UserService);\n    httpMock = TestBed.inject(HttpTestingController);\n  });\n  \n  it('should fetch user', () => {\n    const mockUser = { id: 1, name: 'John' };\n    \n    service.getUser(1).subscribe(user => {\n      expect(user).toEqual(mockUser);\n    });\n    \n    const req = httpMock.expectOne('/api/users/1');\n    expect(req.request.method).toBe('GET');\n    req.flush(mockUser);\n    \n    httpMock.verify();\n  });\n});",
+    "explanation": "Testing ensures code quality and prevents regressions. Use TestBed for component integration, standalone service tests for pure logic, and HttpClientTestingModule for HTTP mocking.",
+    "recallHint": "TestBed for components, HttpTestingController for HTTP, Jasmine assertions.",
+    "practice": [
+      "Test a component with inputs/outputs.",
+      "Test a service with HTTP calls.",
+      "Test a form with validation."
+    ]
+  },
+  {
+    "id": "angular-033",
+    "category": "angular",
+    "concept": "Security - XSS Protection",
+    "priority": "must-know",
+    "question": "How does Angular protect against XSS attacks and what is DomSanitizer?",
+    "answer": "Angular automatically sanitizes HTML, styles, and URLs by default. DomSanitizer allows bypassing this sanitization when absolutely necessary, but should be used with extreme caution.",
+    "code": "// Angular sanitizes by default\n@Component({\n  template: `\n    <!-- Safe: text is escaped -->\n    <div>{{ userInput }}</div>\n    \n    <!-- Safe: HTML is sanitized -->\n    <div [innerHTML]=\"userInputHtml\"></div>\n  `\n})\n\n// Using DomSanitizer (DANGEROUS - use sparingly)\nimport { DomSanitizer, SafeHtml } from '@angular/platform-browser';\n\n@Component({...})\nexport class Component {\n  constructor(private sanitizer: DomSanitizer) {}\n  \n  getSafeHtml(): SafeHtml {\n    return this.sanitizer.sanitize(SecurityContext.HTML, this.userInput);\n  }\n  \n  // Bypass security (ONLY if you trust the source)\n  getTrustedHtml(): SafeHtml {\n    return this.sanitizer.bypassSecurityTrustHtml(this.trustedHtml);\n  }\n}\n\n// JWT storage - use HttpOnly cookies for production\n// Don't store tokens in localStorage for sensitive data",
+    "explanation": "Angular's sanitization prevents XSS. Never bypass sanitization with user input. For JWT storage, use HttpOnly cookies instead of localStorage for better security.",
+    "recallHint": "Angular sanitizes by default, DomSanitizer bypasses (dangerous).",
+    "practice": [
+      "Explain XSS protection in Angular.",
+      "Describe DomSanitizer usage.",
+      "Explain JWT storage best practices."
+    ]
+  },
+  {
+    "id": "angular-034",
+    "category": "angular",
+    "concept": "Application Architecture",
+    "priority": "important",
+    "question": "How would you structure a large Angular application?",
+    "answer": "Structure by features: core/ (singletons, guards, interceptors), shared/ (reusable components, directives, pipes), features/ (each feature module), layouts/ (page layouts), and assets/.",
+    "code": "// Folder structure\nsrc/\n├── app/\n│   ├── core/\n│   │   ├── guards/\n│   │   ├── interceptors/\n│   │   ├── services/\n│   │   └── core.module.ts\n│   ├── shared/\n│   │   ├── components/\n│   │   ├── directives/\n│   │   ├── pipes/\n│   │   └── shared.module.ts\n│   ├── features/\n│   │   ├── users/\n│   │   │   ├── components/\n│   │   │   ├── services/\n│   │   │   ├── models/\n│   │   │   ├── users.routes.ts\n│   │   │   └── users.module.ts\n│   │   ├── dashboard/\n│   │   └── settings/\n│   ├── layouts/\n│   │   ├── main-layout/\n│   │   └── auth-layout/\n│   ├── app.routes.ts\n│   └── app.component.ts\n├── assets/\n├── environments/\n└── styles/",
+    "explanation": "A well-structured app is scalable and maintainable. Core has singletons, Shared has reusables, Features are lazy-loaded, Layouts handle page structure. Use standalone components for newer projects.",
+    "recallHint": "Core = singletons, Shared = reusables, Features = lazy-loaded.",
+    "practice": [
+      "Design a folder structure for a large app.",
+      "Explain what goes in core vs shared.",
+      "Describe feature module architecture."
+    ]
+  },
+  {
+    "id": "angular-035",
+    "category": "angular",
+    "concept": "Resolvers",
+    "priority": "important",
+    "question": "When would you use a resolver in Angular routing?",
+    "answer": "Resolvers fetch data before navigating to a route, ensuring data is available when the component renders. Use for required data that the component needs immediately.",
+    "code": "// Resolver\n@Injectable({ providedIn: 'root' })\nexport class UserResolver implements Resolve<User> {\n  constructor(private userService: UserService) {}\n  \n  resolve(route: ActivatedRouteSnapshot): Observable<User> {\n    const id = route.paramMap.get('id');\n    return this.userService.getUser(id);\n  }\n}\n\n// Routes\nconst routes: Routes = [\n  {\n    path: 'user/:id',\n    component: UserComponent,\n    resolve: { user: UserResolver }\n  }\n];\n\n// Component\n@Component({...})\nexport class UserComponent {\n  user: User;\n  \n  constructor(private route: ActivatedRoute) {\n    this.route.data.subscribe(data => {\n      this.user = data['user']; // Data from resolver\n    });\n  }\n}\n\n// Resolver with error handling\n@Injectable()\nexport class UserResolver implements Resolve<User> {\n  resolve(route: ActivatedRouteSnapshot): Observable<User> {\n    return this.userService.getUser(route.paramMap.get('id')).pipe(\n      catchError(error => {\n        this.router.navigate(['/error']);\n        return of(null);\n      })\n    );\n  }\n}",
+    "explanation": "Resolvers improve UX by showing data immediately when the route loads. Use when the component can't render without data. Handle errors in resolvers to prevent hanging.",
+    "recallHint": "Fetch data before route loads, component receives resolved data.",
+    "practice": [
+      "Create a resolver for a user route.",
+      "Explain when to use resolvers.",
+      "Handle resolver errors."
+    ]
+  },
+  {
+    "id": "angular-036",
+    "category": "angular",
+    "concept": "Route Guards - Deactivate",
+    "priority": "important",
+    "question": "How do you prevent users from leaving a form with unsaved changes using CanDeactivate?",
+    "answer": "Implement CanDeactivate guard that checks if the component has unsaved changes. Return true to allow navigation, false to prevent it, or show a confirmation dialog.",
+    "code": "// CanDeactivate Guard\n@Injectable({ providedIn: 'root' })\nexport class UnsavedChangesGuard implements CanDeactivate<FormComponent> {\n  canDeactivate(\n    component: FormComponent\n  ): Observable<boolean> | Promise<boolean> | boolean {\n    // Check if form has unsaved changes\n    if (component.form && component.form.dirty) {\n      // Show confirmation dialog\n      return confirm('You have unsaved changes. Are you sure you want to leave?');\n    }\n    return true;\n  }\n}\n\n// Component interface\nexport interface CanComponentDeactivate {\n  canDeactivate: () => Observable<boolean> | Promise<boolean> | boolean;\n}\n\n// Component\n@Component({...})\nexport class UserFormComponent implements CanComponentDeactivate {\n  userForm = new FormGroup({...});\n  \n  canDeactivate(): boolean {\n    return !this.userForm.dirty;\n  }\n}\n\n// Routes\nconst routes: Routes = [\n  {\n    path: 'users/create',\n    component: UserFormComponent,\n    canDeactivate: [UnsavedChangesGuard]\n  }\n];",
+    "explanation": "CanDeactivate guards prevent accidental data loss. They're essential for forms with unsaved changes. The guard can show a confirmation dialog before navigating away.",
+    "recallHint": "Prevent navigation when form is dirty, show confirmation dialog.",
+    "practice": [
+      "Implement a CanDeactivate guard.",
+      "Explain the component interface pattern.",
+      "Show a confirmation dialog."
+    ]
+  },
+  {
+    "id": "angular-037",
+    "category": "angular",
+    "concept": "Dynamic Forms",
+    "priority": "important",
+    "question": "How would you build a dynamic form using FormArray?",
+    "answer": "Use FormArray to handle dynamic form controls. Create methods to add, remove, and move controls. FormArray provides array-like control over form controls.",
+    "code": "@Component({...})\nexport class DynamicFormComponent {\n  form: FormGroup;\n  \n  constructor(private fb: FormBuilder) {\n    this.form = this.fb.group({\n      items: this.fb.array([])\n    });\n  }\n  \n  get items(): FormArray {\n    return this.form.get('items') as FormArray;\n  }\n  \n  addItem() {\n    this.items.push(\n      this.fb.group({\n        name: ['', Validators.required],\n        quantity: [1, [Validators.min(1), Validators.max(100)]],\n        price: [0, Validators.min(0)]\n      })\n    );\n  }\n  \n  removeItem(index: number) {\n    this.items.removeAt(index);\n  }\n  \n  clearItems() {\n    this.items.clear();\n  }\n  \n  moveItem(index: number, direction: number) {\n    const control = this.items.at(index);\n    this.items.removeAt(index);\n    this.items.insert(index + direction, control);\n  }\n  \n  get total() {\n    let total = 0;\n    this.items.controls.forEach(control => {\n      const price = control.get('price')?.value || 0;\n      const quantity = control.get('quantity')?.value || 0;\n      total += price * quantity;\n    });\n    return total;\n  }\n}\n\n// Template\n<form [formGroup]=\"form\">\n  <div formArrayName=\"items\">\n    <div *ngFor=\"let item of items.controls; let i = index\" [formGroupName]=\"i\">\n      <input formControlName=\"name\" placeholder=\"Item name\">\n      <input formControlName=\"quantity\" type=\"number\">\n      <input formControlName=\"price\" type=\"number\">\n      <button (click)=\"removeItem(i)\">Remove</button>\n      <button (click)=\"moveItem(i, -1)\" [disabled]=\"i === 0\">↑</button>\n      <button (click)=\"moveItem(i, 1)\" [disabled]=\"i === items.length - 1\">↓</button>\n    </div>\n  </div>\n  <button (click)=\"addItem()\">Add Item</button>\n  <div>Total: {{ total }}</div>\n</form>",
+    "explanation": "FormArray is perfect for dynamic lists like order items, multiple contacts, or dynamic fields. It provides methods for adding, removing, and moving controls.",
+    "recallHint": "FormArray for dynamic controls, addItem, removeItem, moveItem.",
+    "practice": [
+      "Build a dynamic form with FormArray.",
+      "Implement add/remove functionality.",
+      "Calculate totals from form values."
+    ]
+  },
+  {
+    "id": "angular-038",
+    "category": "angular",
+    "concept": "HttpClient - Error Handling",
+    "priority": "must-know",
+    "question": "How do you handle HTTP errors in Angular?",
+    "answer": "Handle HTTP errors using catchError operator in a service or interceptor. Retry failed requests, display user-friendly messages, and handle specific status codes (401, 404, 500).",
+    "code": "// Service with error handling\n@Injectable({ providedIn: 'root' })\nexport class UserService {\n  getUsers(): Observable<User[]> {\n    return this.http.get<User[]>('/api/users').pipe(\n      catchError(error => {\n        // Log error\n        console.error('Error fetching users:', error);\n        \n        // Display user-friendly message\n        this.notificationService.showError('Failed to load users');\n        \n        // Rethrow or return fallback\n        return throwError(() => this.handleError(error));\n      })\n    );\n  }\n  \n  private handleError(error: HttpErrorResponse): Error {\n    let message = 'An error occurred';\n    \n    if (error.error instanceof ErrorEvent) {\n      // Client-side error\n      message = `Client error: ${error.error.message}`;\n    } else {\n      // Server-side error\n      switch (error.status) {\n        case 400: message = 'Bad request'; break;\n        case 401: message = 'Unauthorized - please login'; break;\n        case 403: message = 'Forbidden - insufficient permissions'; break;\n        case 404: message = 'Resource not found'; break;\n        case 500: message = 'Server error - please try later'; break;\n        default: message = `Error ${error.status}: ${error.message}`;\n      }\n    }\n    \n    return new Error(message);\n  }\n  \n  // Retry failed requests\n  getUsersWithRetry(): Observable<User[]> {\n    return this.http.get<User[]>('/api/users').pipe(\n      retry(3), // Retry 3 times\n      catchError(error => {\n        console.error('Failed after 3 retries:', error);\n        return throwError(error);\n      })\n    );\n  }\n}",
+    "explanation": "Handle errors gracefully: 1) Log errors for debugging, 2) Show user-friendly messages, 3) Handle specific status codes, 4) Retry on transient errors, 5) Use global error interceptor.",
+    "recallHint": "catchError, status codes, user-friendly messages, retry.",
+    "practice": [
+      "Implement error handling in a service.",
+      "Create an error interceptor.",
+      "Handle 401 with token refresh."
+    ]
+  },
+  {
+    "id": "angular-039",
+    "category": "angular",
+    "concept": "Component Communication Patterns",
+    "priority": "must-know",
+    "question": "How do sibling components communicate in Angular?",
+    "answer": "Sibling components communicate through a shared service with a Subject/BehaviorSubject. Parent-child via @Input/@Output. Unrelated components use services or state management.",
+    "code": "// Shared service for sibling communication\n@Injectable({ providedIn: 'root' })\nexport class SharedService {\n  private messageSubject = new BehaviorSubject<string>('');\n  public message$ = this.messageSubject.asObservable();\n  \n  sendMessage(message: string) {\n    this.messageSubject.next(message);\n  }\n}\n\n// Sibling A (sender)\n@Component({...})\nexport class ComponentA {\n  constructor(private sharedService: SharedService) {}\n  \n  sendMessage() {\n    this.sharedService.sendMessage('Message from Component A');\n  }\n}\n\n// Sibling B (receiver)\n@Component({...})\nexport class ComponentB implements OnInit {\n  message: string;\n  \n  constructor(private sharedService: SharedService) {}\n  \n  ngOnInit() {\n    this.sharedService.message$.subscribe(message => {\n      this.message = message;\n    });\n  }\n}\n\n// Parent-child communication\n@Component({...})\nexport class ParentComponent {\n  @ViewChild(ChildComponent) child: ChildComponent;\n  \n  updateChild() {\n    this.child.updateFromParent('Updated by parent');\n  }\n}",
+    "explanation": "Services with Subjects are the most common way for siblings to communicate. Parent-child uses @Input/@Output. For complex apps, use state management (NgRx, Signals).",
+    "recallHint": "Siblings = shared service, Parent-child = @Input/@Output.",
+    "practice": [
+      "Implement sibling communication with a service.",
+      "Implement parent-child with @Input/@Output.",
+      "Explain when to use each pattern."
+    ]
+  },
+  {
+    "id": "angular-040",
+    "category": "angular",
+    "concept": "Signals vs Observables",
+    "priority": "important",
+    "question": "When would you use Signals instead of Observables in Angular?",
+    "answer": "Use Signals for component state, computed values, and simple reactivity. Use Observables for async data streams (HTTP, events, timers). Signals are synchronous, Observables are asynchronous.",
+    "code": "// Signals - component state\n@Component({...})\nexport class CounterComponent {\n  // Simple state\n  count = signal(0);\n  \n  // Computed state\n  double = computed(() => this.count() * 2);\n  \n  // Effect for side effects\n  private logEffect = effect(() => {\n    console.log('Count:', this.count());\n  });\n  \n  increment() {\n    this.count.update(v => v + 1);\n  }\n}\n\n// Observables - async streams\n@Injectable({ providedIn: 'root' })\nexport class SearchService {\n  // Async stream from user input\n  searchResults$ = this.searchInput.pipe(\n    debounceTime(300),\n    switchMap(term => this.http.get(`/api/search?q=${term}`))\n  );\n  \n  // HTTP request\n  fetchData(): Observable<Data> {\n    return this.http.get<Data>('/api/data');\n  }\n}\n\n// Convert between them\n@Component({...})\nexport class HybridComponent {\n  // Observable to Signal\n  user$ = this.userService.getUser();\n  user = toSignal(this.user$, { initialValue: null });\n  \n  // Signal to Observable\n  count = signal(0);\n  count$ = toObservable(this.count);\n}",
+    "explanation": "Signals are simpler for synchronous state. Observables handle async streams better. Use both together with toSignal/toObservable for maximum flexibility.",
+    "recallHint": "Signals = sync state, Observables = async streams.",
+    "practice": [
+      "Explain when to use Signals vs Observables.",
+      "Convert Observable to Signal.",
+      "Convert Signal to Observable."
+    ]
+  },
+  {
+    "id": "angular-041",
+    "category": "angular",
+    "concept": "Scenario - Search with SwitchMap",
+    "priority": "must-know",
+    "question": "Explain this search code: debounceTime, distinctUntilChanged, switchMap. Why is switchMap appropriate?",
+    "answer": "debounceTime(300) waits for typing pauses, distinctUntilChanged ignores repeated values, switchMap cancels previous search requests when a new search term is typed. switchMap prevents out-of-order responses.",
+    "code": "// Search scenario\nthis.searchControl.valueChanges\n  .pipe(\n    debounceTime(300),           // Wait for pause in typing\n    distinctUntilChanged(),      // Ignore if value hasn't changed\n    switchMap(value => this.searchUsers(value)) // Cancel previous request\n  )\n  .subscribe(users => {\n    this.users = users;\n  });\n\n// Problem: Without switchMap, out-of-order responses\n// User types: a, ab, abc\n// Requests: search('a'), search('ab'), search('abc')\n// If search('abc') completes before search('ab'), results are wrong\n\n// Solution: switchMap cancels previous requests\n// search('a') is cancelled when 'ab' is typed\n// Only latest response (search('abc')) is shown\n\n// Alternative without switchMap (WRONG)\nthis.searchControl.valueChanges\n  .pipe(\n    debounceTime(300),\n    distinctUntilChanged()\n  )\n  .subscribe(value => {\n    this.searchUsers(value).subscribe(users => {\n      this.users = users; // Race condition\n    });\n  });",
+    "explanation": "switchMap is perfect for search because it cancels pending requests. This prevents race conditions, saves bandwidth, and ensures the latest results are shown.",
+    "recallHint": "debounce = pause typing, distinct = ignore duplicates, switchMap = cancel previous.",
+    "practice": [
+      "Explain each operator in the code.",
+      "Describe why switchMap prevents race conditions.",
+      "Explain what happens without switchMap."
+    ]
+  },
+  {
+    "id": "angular-042",
+    "category": "angular",
+    "concept": "Scenario - OnPush Not Updating",
+    "priority": "must-know",
+    "question": "Your child component receives an updated object from the parent but the UI doesn't update. You're using OnPush. Why?",
+    "answer": "OnPush change detection only checks when the input reference changes. Mutating an object doesn't change the reference, so Angular doesn't detect the change. Solution: create a new object reference.",
+    "code": "// Parent component\n@Component({\n  template: `\n    <app-user [user]=\"user\" (update)=\"onUpdate($event)\"></app-user>\n  `\n})\nexport class ParentComponent {\n  user = { name: 'John', age: 30 };\n  \n  // WRONG - mutation doesn't trigger OnPush\n  updateUser() {\n    this.user.age = 31; // No reference change, child won't update\n  }\n  \n  // RIGHT - new object reference\n  updateUserCorrect() {\n    this.user = { ...this.user, age: 31 }; // New reference\n  }\n}\n\n// Child component with OnPush\n@Component({\n  selector: 'app-user',\n  changeDetection: ChangeDetectionStrategy.OnPush,\n  template: `\n    <div>{{ user.name }}</div>\n    <div>{{ user.age }}</div>\n  `\n})\nexport class UserComponent {\n  @Input() user: User;\n  \n  // To force update\n  constructor(private cdr: ChangeDetectorRef) {}\n  \n  // Method 1: Manual markForCheck\n  refresh() {\n    this.cdr.markForCheck();\n  }\n}\n\n// Alternative: Use Signals (automatically update)\n@Component({...})\nexport class ParentComponent {\n  user = signal({ name: 'John', age: 30 });\n  \n  updateUser() {\n    this.user.update(u => ({ ...u, age: 31 })); // Signal handles reactivity\n  }\n}",
+    "explanation": "OnPush relies on reference changes. Use immutable data patterns (spread operator, Object.assign) or Signals. For non-immutable changes, use ChangeDetectorRef.markForCheck().",
+    "recallHint": "OnPush = reference change needed, mutation doesn't trigger update.",
+    "practice": [
+      "Explain why OnPush doesn't update with mutation.",
+      "Fix the issue with immutable updates.",
+      "Use ChangeDetectorRef to force update."
+    ]
+  },
+  {
+    "id": "angular-043",
+    "category": "angular",
+    "concept": "Scenario - Race Condition",
+    "priority": "must-know",
+    "question": "A user types a, then ab, then abc. The a API response arrives last and overwrites the abc results. How would you fix it?",
+    "answer": "Use switchMap to cancel previous requests, or use an identifier to ignore outdated responses. switchMap is the proper RxJS solution for this race condition.",
+    "code": "// PROBLEM: Race condition\n// User types: a, ab, abc\n// Requests fire: search('a'), search('ab'), search('abc')\n// If search('a') responds last, it overwrites 'abc' results\n\n// WRONG - race condition\nsearch(value: string) {\n  this.searchService.search(value).subscribe(results => {\n    this.results = results; // Could be stale data\n  });\n}\n\n// SOLUTION 1: switchMap (cancel previous)\nthis.searchControl.valueChanges.pipe(\n  debounceTime(300),\n  distinctUntilChanged(),\n  switchMap(value => this.searchService.search(value))\n).subscribe(results => {\n  this.results = results; // Only latest request\n});\n\n// SOLUTION 2: takeUntil with search term\nconst searchTerm = new BehaviorSubject<string>('');\nthis.searchTerm.pipe(\n  switchMap(term => this.searchService.search(term).pipe(\n    takeUntil(this.searchTerm.pipe(\n      skip(1),\n      filter(newTerm => newTerm !== term)\n    ))\n  ))\n).subscribe(results => {\n  this.results = results;\n});\n\n// SOLUTION 3: Active request tracking\nprivate activeRequest = 0;\n\nsearch(value: string) {\n  const requestId = ++this.activeRequest;\n  this.searchService.search(value).subscribe(results => {\n    if (requestId === this.activeRequest) {\n      this.results = results; // Only process if still active\n    }\n  });\n}",
+    "explanation": "Race conditions occur when responses arrive out of order. switchMap automatically cancels previous requests, preventing this issue. It's the RxJS solution for search scenarios.",
+    "recallHint": "switchMap cancels previous, prevents stale results.",
+    "practice": [
+      "Explain the race condition.",
+      "Fix with switchMap.",
+      "Implement alternative solutions."
+    ]
+  },
+  {
+    "id": "angular-044",
+    "category": "angular",
+    "concept": "Scenario - Repeated API Calls",
+    "priority": "must-know",
+    "question": "The API is being called 5 times when the user types in the search box. What could be happening?",
+    "answer": "Without debounceTime, every keystroke triggers a request. Also check for multiple subscriptions (async pipe + manual subscribe, or multiple subscribers to a cold observable).",
+    "code": "// PROBLEM: Multiple API calls\n// User types: 'a', 'ab', 'abc', 'abcd', 'abcde'\n// API called 5 times - too many!\n\n// SOLUTION 1: debounceTime\nthis.searchControl.valueChanges.pipe(\n  debounceTime(300), // Wait for typing pause\n  distinctUntilChanged(),\n  switchMap(value => this.searchService.search(value))\n).subscribe(results => this.results = results);\n\n// SOLUTION 2: shareReplay (for multiple subscribers)\n// Without shareReplay, each subscriber creates a new request\nclass UserService {\n  private users$ = this.http.get('/api/users').pipe(\n    shareReplay(1) // Cache and share\n  );\n  \n  getUsers() {\n    return this.users$; // Single request for all subscribers\n  }\n}\n\n// SOLUTION 3: Check for duplicate subscriptions\n// WRONG - two subscriptions = two API calls\nthis.users$ = this.userService.getUsers();\nthis.users$.subscribe(users => this.users = users);\nthis.users$.subscribe(users => this.filteredUsers = users);\n\n// RIGHT - single subscription\nthis.userService.getUsers().subscribe(users => {\n  this.users = users;\n  this.filteredUsers = users;\n});\n\n// RIGHT - async pipe with shareReplay\nthis.users$ = this.userService.getUsers().pipe(shareReplay(1));",
+    "explanation": "Multiple causes: 1) No debounce, 2) Multiple subscriptions to cold observables, 3) Manual subscribe + async pipe. Use debounceTime, shareReplay, and avoid duplicate subscriptions.",
+    "recallHint": "debounceTime for typing, shareReplay for caching.",
+    "practice": [
+      "Explain why multiple API calls happen.",
+      "Fix with debounceTime.",
+      "Fix with shareReplay."
+    ]
+  },
+  {
+    "id": "angular-045",
+    "category": "angular",
+    "concept": "Scenario - Routing Cache",
+    "priority": "important",
+    "question": "You navigate away from a page and come back, and your API is called again. How would you cache the result?",
+    "answer": "Cache API results in a service using shareReplay(1), or cache in the route using a resolver with caching. Also consider using Angular's RouteReuseStrategy.",
+    "code": "// SOLUTION 1: Service cache with shareReplay\n@Injectable({ providedIn: 'root' })\nexport class UserService {\n  private users$: Observable<User[]>;\n  \n  getUsers(): Observable<User[]> {\n    if (!this.users$) {\n      this.users$ = this.http.get<User[]>('/api/users').pipe(\n        shareReplay(1) // Cache and share\n      );\n    }\n    return this.users$;\n  }\n  \n  // Clear cache when needed\n  clearCache() {\n    this.users$ = null;\n  }\n}\n\n// SOLUTION 2: Route resolver with caching\n@Injectable()\nexport class CachedUserResolver implements Resolve<User[]> {\n  private cachedUsers: User[];\n  \n  resolve(route: ActivatedRouteSnapshot): Observable<User[]> {\n    if (this.cachedUsers) {\n      return of(this.cachedUsers); // Return cached\n    }\n    return this.userService.getUsers().pipe(\n      tap(users => this.cachedUsers = users)\n    );\n  }\n}\n\n// SOLUTION 3: RouteReuseStrategy (keep component alive)\n@NgModule({\n  providers: [\n    {\n      provide: RouteReuseStrategy,\n      useClass: CustomReuseStrategy\n    }\n  ]\n})\n\n// SOLUTION 4: Angular Signals cache\n@Injectable({ providedIn: 'root' })\nexport class UserService {\n  private usersState = signal<User[]>([]);\n  private loaded = false;\n  \n  getUsers(): Signal<User[]> {\n    if (!this.loaded) {\n      this.http.get<User[]>('/api/users').subscribe(users => {\n        this.usersState.set(users);\n        this.loaded = true;\n      });\n    }\n    return this.usersState.asReadonly();\n  }\n}",
+    "explanation": "Caching prevents unnecessary API calls. shareReplay(1) caches the latest value for all subscribers. For component state, use component-level caching with Signals.",
+    "recallHint": "shareReplay for caching, resolver with cache, RouteReuseStrategy.",
+    "practice": [
+      "Implement API caching with shareReplay.",
+      "Cache with a resolver.",
+      "Implement a cache clear mechanism."
+    ]
+  },
+  {
+    "id": "angular-046",
+    "category": "angular",
+    "concept": "Scenario - Memory Leak",
+    "priority": "important",
+    "question": "Your Angular page becomes progressively slower as the user navigates around the application. How would you investigate it?",
+    "answer": "Memory leaks are likely due to subscriptions not being unsubscribed, event listeners not removed, or DOM references held. Use Angular DevTools, take heap snapshots, and check for subscription cleanup.",
+    "code": "// COMMON LEAK: No unsubscribe\n@Component({...})\nexport class UserComponent {\n  constructor(private service: UserService) {\n    // LEAK: subscribes but never unsubscribes\n    this.service.getUsers().subscribe(users => {\n      this.users = users;\n    });\n  }\n}\n\n// FIX: Use takeUntil or unsubscribe\n@Component({...})\nexport class UserComponent implements OnDestroy {\n  private destroy$ = new Subject<void>();\n  \n  constructor(private service: UserService) {\n    this.service.getUsers()\n      .pipe(takeUntil(this.destroy$))\n      .subscribe(users => this.users = users);\n  }\n  \n  ngOnDestroy() {\n    this.destroy$.next();\n    this.destroy$.complete();\n  }\n}\n\n// COMMON LEAK: Event listeners on window/document\n@Component({...})\nexport class ScrollComponent implements OnDestroy {\n  constructor() {\n    window.addEventListener('scroll', this.onScroll);\n  }\n  \n  onScroll = () => {\n    console.log('Scrolled');\n  };\n  \n  ngOnDestroy() {\n    window.removeEventListener('scroll', this.onScroll);\n  }\n}\n\n// COMMON LEAK: Component reference in service\n@Injectable()\nexport class Service {\n  componentRefs: any[] = []; // Holds references\n  \n  register(component: any) {\n    this.componentRefs.push(component); // LEAK\n  }\n}\n\n// INVESTIGATION\n// 1. Angular DevTools → Profiler → Record performance\n// 2. Chrome DevTools → Memory → Take heap snapshot\n// 3. Compare snapshots to find retained objects\n// 4. Check for EventListeners, Observers, Timeouts",
+    "explanation": "Memory leaks cause progressive performance degradation. Common causes: subscriptions not unsubscribed, event listeners, DOM references, and global state. Use DevTools to find them.",
+    "recallHint": "Unsubscribe subscriptions, remove event listeners, clear references.",
+    "practice": [
+      "Explain common memory leak causes.",
+      "Implement takeUntil pattern.",
+      "Debug memory leaks with DevTools."
+    ]
+  },
+  {
+    "id": "angular-047",
+    "category": "angular",
+    "concept": "Scenario - Large Lists",
+    "priority": "important",
+    "question": "You have 10,000 rows in a table and scrolling is extremely slow. What would you change?",
+    "answer": "Implement virtual scrolling, use trackBy, use OnPush, and paginate data. Virtual scrolling renders only visible rows, dramatically improving performance.",
+    "code": "// SOLUTION 1: Virtual scrolling with CDK\nimport { ScrollingModule } from '@angular/cdk/scrolling';\n\n@Component({\n  template: `\n    <cdk-virtual-scroll-viewport itemSize=\"50\" class=\"viewport\">\n      <div *cdkVirtualFor=\"let item of items; trackBy: trackById\">\n        {{item.id}} - {{item.name}}\n      </div>\n    </cdk-virtual-scroll-viewport>\n  `,\n  styles: [`\n    .viewport {\n      height: 500px;\n      width: 100%;\n      overflow-y: auto;\n    }\n  `]\n})\nexport class LargeListComponent {\n  items: Item[] = []; // 10,000 items\n  \n  trackById(index: number, item: Item): number {\n    return item.id;\n  }\n}\n\n// SOLUTION 2: Pagination\n@Component({...})\nexport class PaginatedComponent {\n  pageSize = 50;\n  currentPage = 1;\n  \n  get displayedItems() {\n    const start = (this.currentPage - 1) * this.pageSize;\n    const end = start + this.pageSize;\n    return this.allItems.slice(start, end);\n  }\n  \n  totalPages = Math.ceil(this.allItems.length / this.pageSize);\n}\n\n// SOLUTION 3: OnPush + trackBy\n@Component({\n  changeDetection: ChangeDetectionStrategy.OnPush,\n  template: `\n    <div *ngFor=\"let item of items; trackBy: trackById\">\n      {{item.name}}\n    </div>\n  `\n})\n\n// SOLUTION 4: Lazy load data from API\nloadMore() {\n  this.currentPage++;\n  this.userService.getUsers(this.currentPage, this.pageSize).subscribe(\n    users => this.items = [...this.items, ...users]\n  );\n}",
+    "explanation": "Virtual scrolling is the most effective solution for large lists. It renders only visible items, reducing DOM nodes and improving performance. Use trackBy and OnPush for additional gains.",
+    "recallHint": "Virtual scroll, trackBy, OnPush, pagination.",
+    "practice": [
+      "Implement virtual scrolling.",
+      "Add trackBy to a list.",
+      "Implement pagination."
+    ]
+  },
+  {
+    "id": "angular-048",
+    "category": "angular",
+    "concept": "NgModule vs Standalone - Migration",
+    "priority": "important",
+    "question": "How would you migrate an older module-based Angular application toward standalone components?",
+    "answer": "Gradually migrate features: 1) Convert components to standalone, 2) Remove unnecessary modules, 3) Use standalone routing, 4) Remove NgModules where possible. Use NgModule still for lazy-loaded features.",
+    "code": "// Before - module-based\n// user.module.ts\n@NgModule({\n  declarations: [UserComponent, UserListComponent],\n  imports: [CommonModule, FormsModule],\n  providers: [UserService]\n})\nexport class UserModule {}\n\n// user.routes.ts\nconst routes: Routes = [\n  { path: '', component: UserListComponent, loadChildren: () => import('./user.module').then(m => m.UserModule) }\n];\n\n// After - standalone\n// user-list.component.ts\n@Component({\n  selector: 'app-user-list',\n  standalone: true,\n  imports: [CommonModule, FormsModule, RouterLink],\n  providers: [UserService],\n  template: `...`\n})\nexport class UserListComponent {}\n\n// user.routes.ts (standalone routing)\nconst routes: Routes = [\n  {\n    path: '',\n    loadComponent: () => import('./user-list.component').then(m => m.UserListComponent)\n  },\n  {\n    path: ':id',\n    loadComponent: () => import('./user-detail.component').then(m => m.UserDetailComponent)\n  }\n];\n\n// Migration steps:\n// 1. Convert a feature to standalone\n// 2. Remove module for that feature\n// 3. Update routes to use loadComponent\n// 4. Remove NgModule imports where no longer needed\n\n// Hybrid approach (module + standalone)\n@NgModule({\n  imports: [StandaloneComponent, CommonModule], // Can import standalone\n  declarations: [LegacyComponent]\n})\nexport class HybridModule {}",
+    "explanation": "Standalone components simplify Angular architecture. Migrate gradually, feature by feature. Keep modules for lazy loading if needed. Standalone reduces boilerplate and improves tree-shaking.",
+    "recallHint": "Standalone = simpler, remove modules gradually, lazy-load features.",
+    "practice": [
+      "Convert a module-based component to standalone.",
+      "Update routes for lazy-loading.",
+      "Explain migration benefits."
+    ]
+  },
+  {
+    "id": "angular-049",
+    "category": "angular",
+    "concept": "Reusable Components",
+    "priority": "important",
+    "question": "How would you design reusable components in Angular?",
+    "answer": "Design components with: 1) Inputs for configuration, 2) Outputs for events, 3) Content projection (<ng-content>) for flexibility, 4) Clear APIs, 5) Minimal dependencies.",
+    "code": "@Component({\n  selector: 'app-button',\n  template: `\n    <button\n      [class]=\"variant\"\n      [disabled]=\"disabled\"\n      [class.loading]=\"loading\"\n      (click)=\"onClick.emit()\"\n    >\n      <ng-content></ng-content>\n      <span *ngIf=\"loading\" class=\"spinner\"></span>\n    </button>\n  `,\n  styles: [`\n    .primary { background: blue; color: white; }\n    .secondary { background: gray; color: white; }\n    .danger { background: red; color: white; }\n  `]\n})\nexport class ButtonComponent {\n  @Input() variant: 'primary' | 'secondary' | 'danger' = 'primary';\n  @Input() disabled = false;\n  @Input() loading = false;\n  @Output() onClick = new EventEmitter<void>();\n}\n\n// Usage\n<app-button variant=\"primary\" (onClick)=\"save()\" [loading]=\"isSaving\">\n  Save Changes\n</app-button>\n\n// Another reusable component with content projection\n@Component({\n  selector: 'app-card',\n  template: `\n    <div class=\"card\">\n      <div class=\"card-header\">\n        <ng-content select=\"[card-header]\"></ng-content>\n      </div>\n      <div class=\"card-body\">\n        <ng-content select=\"[card-body]\"></ng-content>\n      </div>\n      <div class=\"card-footer\">\n        <ng-content select=\"[card-footer]\"></ng-content>\n      </div>\n    </div>\n  `\n})\nexport class CardComponent {}\n\n// Usage\n<app-card>\n  <div card-header>User Profile</div>\n  <div card-body>User details here</div>\n  <div card-footer>\n    <app-button (onClick)=\"save()\">Save</app-button>\n  </div>\n</app-card>",
+    "explanation": "Reusable components reduce duplication and improve maintainability. Use inputs for configuration, outputs for events, content projection for flexibility, and clear APIs for easy usage.",
+    "recallHint": "@Input/@Output, ng-content, flexible design.",
+    "practice": [
+      "Design a reusable button component.",
+      "Design a reusable card component.",
+      "Explain content projection."
+    ]
+  },
+  {
+    "id": "angular-050",
+    "category": "angular",
+    "concept": "Angular DevTools",
+    "priority": "important",
+    "question": "How would you use Angular DevTools for performance debugging?",
+    "answer": "Angular DevTools provides: 1) Component tree for inspection, 2) Profiler for change detection, 3) Router inspection, 4) NgRx integration, 5) Performance analysis to identify expensive components.",
+    "code": "// Using Angular DevTools\n// 1. Install Angular DevTools extension (Chrome/Edge)\n// 2. Open DevTools → Angular tab\n\n// Profiling for performance\n// 1. Go to Profiler tab\n// 2. Click 'Start recording'\n// 3. Perform user interactions\n// 4. Stop recording\n// 5. Analyze change detection cycles\n\n// Check for:\n// - Components that check too often\n// - Expensive computations in templates\n// - Deep component trees\n// - OnPush usage\n\n// Debug with component inspector\n// 1. Select component in Component Explorer\n// 2. View properties, inputs, outputs\n// 3. Check change detection strategy\n// 4. See component hierarchy\n\n// Performance tips from DevTools\n@Component({\n  changeDetection: ChangeDetectionStrategy.OnPush\n})\nexport class ExpensiveComponent {\n  // Component only checks when inputs change\n}\n\n// Identify expensive template expressions\n// Move to component methods\n@Component({...})\nexport class Component {\n  // INSTEAD OF template: {{ expensiveFunction() }}\n  // DO THIS:\n  get computedValue() {\n    return this.expensiveFunction();\n  }\n}",
+    "explanation": "Angular DevTools is essential for debugging and optimization. Use the Profiler to find unnecessary change detection, and Component Explorer to inspect state and structure.",
+    "recallHint": "Profiler for performance, Component Explorer for inspection.",
+    "practice": [
+      "Use DevTools Profiler to find slow components.",
+      "Inspect a component in DevTools.",
+      "Debug a performance issue with DevTools."
+    ]
+  },
+  {
+    "id": "angular-051",
+    "category": "angular",
+    "concept": "NgRx - When to Use",
+    "priority": "advanced",
+    "question": "When is NgRx unnecessary and what are the alternatives?",
+    "answer": "NgRx is unnecessary for simple apps, apps with minimal state, or when team size is small. Alternatives: Services with BehaviorSubject, Signals, or smaller state libraries like NGXS or Akita.",
+    "code": "// WHEN NOT TO USE NGRX\n// 1. Simple app with 3-5 routes\n// 2. Team of 1-2 developers\n// 3. No complex state management needed\n// 4. Simple data flow (one source)\n\n// ALTERNATIVE 1: BehaviorSubject service\n@Injectable({ providedIn: 'root' })\nexport class AppState {\n  private userSubject = new BehaviorSubject<User | null>(null);\n  user$ = this.userSubject.asObservable();\n  \n  setUser(user: User) {\n    this.userSubject.next(user);\n  }\n  \n  private loadingSubject = new BehaviorSubject<boolean>(false);\n  loading$ = this.loadingSubject.asObservable();\n}\n\n// ALTERNATIVE 2: Signals (Angular 16+)\n@Injectable({ providedIn: 'root' })\nexport class AppState {\n  user = signal<User | null>(null);\n  loading = signal(false);\n  errors = signal<string[]>([]);\n  \n  setUser(user: User) {\n    this.user.set(user);\n  }\n}\n\n// ALTERNATIVE 3: NGXS (lighter than NgRx)\n@State<UserState>({\n  name: 'user',\n  defaults: { users: [] }\n})\n@Injectable()\nexport class UserState {\n  @Action(GetUsers)\n  getUsers(ctx: StateContext<UserState>) {\n    // Simpler than NgRx\n  }\n}",
+    "explanation": "NgRx adds complexity. Use simpler solutions for small apps. Signals are the new recommended approach for state management in Angular. Choose based on app complexity and team size.",
+    "recallHint": "Small app = BehaviorSubject/Signals, Large app = NgRx.",
+    "practice": [
+      "Implement state with BehaviorSubject.",
+      "Implement state with Signals.",
+      "Explain when to choose NgRx."
+    ]
+  },
+  {
+    "id": "angular-052",
+    "category": "angular",
+    "concept": "Route Parameters vs Query Parameters",
+    "priority": "must-know",
+    "question": "What is the difference between route parameters and query parameters in Angular?",
+    "answer": "Route parameters are part of the URL path (/users/123) and identify a specific resource. Query parameters are optional key-value pairs after '?' (/users?page=2) used for filtering, sorting, or pagination.",
+    "code": "// Route parameters (required, part of URL)\nconst routes: Routes = [\n  { path: 'users/:id', component: UserComponent }\n];\n\n// Access in component\nconstructor(private route: ActivatedRoute) {\n  this.route.params.subscribe(params => {\n    const id = params['id']; // '123'\n  });\n  \n  // Snapshot (one-time)\n  const id = this.route.snapshot.params['id'];\n}\n\n// Navigation with route params\nthis.router.navigate(['/users', userId]);\n\n// Query parameters (optional, for filtering)\n// URL: /users?page=2&limit=10&sort=name\nconstructor(private route: ActivatedRoute) {\n  this.route.queryParams.subscribe(params => {\n    const page = params['page']; // '2'\n    const limit = params['limit']; // '10'\n  });\n}\n\n// Navigation with query params\nthis.router.navigate(['/users'], {\n  queryParams: { page: 2, limit: 10, sort: 'name' }\n});\n\n// Route param + query param together\nthis.router.navigate(['/users', userId, 'posts'], {\n  queryParams: { page: 1 }\n});\n// URL: /users/123/posts?page=1",
+    "explanation": "Route parameters identify resources (required), query parameters modify the request (optional). Use route params for IDs, query params for pagination/filters.",
+    "recallHint": "Route params = resource ID, Query params = filtering/sorting.",
+    "practice": [
+      "Implement route parameters in routing.",
+      "Implement query parameters.",
+      "Explain when to use each."
+    ]
+  },
+  {
+    "id": "angular-053",
+    "category": "angular",
+    "concept": "Router - Lazy Loading",
+    "priority": "must-know",
+    "question": "How do you lazy-load a feature module and a standalone component in Angular?",
+    "answer": "Use loadChildren for modules, loadComponent for standalone components. Lazy loading reduces initial bundle size by loading features only when their route is accessed.",
+    "code": "// Lazy load a module\nconst routes: Routes = [\n  {\n    path: 'admin',\n    loadChildren: () => import('./admin/admin.module').then(m => m.AdminModule)\n  }\n];\n\n// Lazy load a standalone component\nconst routes: Routes = [\n  {\n    path: 'dashboard',\n    loadComponent: () => import('./dashboard/dashboard.component').then(m => m.DashboardComponent)\n  },\n  {\n    path: 'users',\n    loadChildren: () => import('./users/users.routes') // Routes file with standalone components\n  }\n];\n\n// users.routes.ts\nexport const routes: Routes = [\n  {\n    path: '',\n    loadComponent: () => import('./user-list/user-list.component').then(m => m.UserListComponent)\n  },\n  {\n    path: ':id',\n    loadComponent: () => import('./user-detail/user-detail.component').then(m => m.UserDetailComponent)\n  }\n];\n\n// With preloading strategy\nimport { PreloadAllModules } from '@angular/router';\n\n@NgModule({\n  imports: [\n    RouterModule.forRoot(routes, {\n      preloadingStrategy: PreloadAllModules // Load all after initial render\n    })\n  ]\n})\n\n// Custom preloading (load only specific modules)\n@Injectable()\nexport class CustomPreloadStrategy implements PreloadAllModules {\n  preload(route: Route, load: () => Observable<any>): Observable<any> {\n    if (route.data && route.data['preload']) {\n      return load();\n    }\n    return of(null);\n  }\n}",
+    "explanation": "Lazy loading is essential for large apps. Modules use loadChildren, standalone components use loadComponent. Preloading strategies can load modules in the background after initial render.",
+    "recallHint": "loadChildren for modules, loadComponent for standalone, preload for background.",
+    "practice": [
+      "Lazy-load a feature module.",
+      "Lazy-load a standalone component.",
+      "Implement preloading strategy."
+    ]
+  },
+  {
+    "id": "angular-054",
+    "category": "angular",
+    "concept": "Async Pipe",
+    "priority": "must-know",
+    "question": "What is the async pipe and why is it often preferable to manually subscribing?",
+    "answer": "The async pipe automatically subscribes to an Observable or Promise and returns the latest value. It automatically unsubscribes when the component is destroyed, preventing memory leaks.",
+    "code": "@Component({\n  template: `\n    <!-- Async pipe handles subscription automatically -->\n    <div *ngIf=\"users$ | async as users\">\n      <div *ngFor=\"let user of users\">\n        {{user.name}}\n      </div>\n    </div>\n    \n    <!-- Shows loading while loading -->\n    <div *ngIf=\"users$ | async as users; else loading\">\n      {{users.length}} users loaded\n    </div>\n    <ng-template #loading>Loading...</ng-template>\n    \n    <!-- Multiple async pipes share subscription with shareReplay -->\n    <div>{{ (user$ | async)?.name }}</div>\n    <div>{{ (user$ | async)?.email }}</div>\n  `\n})\nexport class UserComponent {\n  users$ = this.userService.getUsers().pipe(\n    shareReplay(1) // Share subscription\n  );\n  \n  // Without async pipe (manual)\n  users: User[];\n  \n  ngOnInit() {\n    this.userService.getUsers().subscribe(users => {\n      this.users = users;\n    });\n  }\n  \n  ngOnDestroy() {\n    // Need to unsubscribe\n  }\n}",
+    "explanation": "async pipe reduces boilerplate, prevents memory leaks, and integrates with Angular's change detection. Use it with shareReplay when using multiple async pipes on the same observable.",
+    "recallHint": "Automatic subscribe/unsubscribe, prevents memory leaks.",
+    "practice": [
+      "Use async pipe in a template.",
+      "Explain why it prevents memory leaks.",
+      "Use shareReplay with multiple async pipes."
+    ]
+  },
+  {
+    "id": "angular-055",
+    "category": "angular",
+    "concept": "Custom Pipe - Performance",
+    "priority": "important",
+    "question": "Should you use pipes for expensive calculations and when can impure pipes cause performance problems?",
+    "answer": "Pipes should be used for simple transformations. Pure pipes recalculate only when the input changes. Impure pipes recalculate on every change detection cycle and can cause performance issues.",
+    "code": "// PURE pipe (recommended for performance)\n@Pipe({\n  name: 'filter',\n  pure: true // Only recalculates when input changes\n})\nexport class FilterPipe implements PipeTransform {\n  transform(items: any[], search: string): any[] {\n    if (!items || !search) return items;\n    return items.filter(item => item.name.includes(search));\n  }\n}\n\n// IMPURE pipe (runs on every change detection)\n@Pipe({\n  name: 'filterImpure',\n  pure: false // Recalculates on every change\n})\nexport class FilterImpurePipe implements PipeTransform {\n  transform(items: any[], search: string): any[] {\n    console.log('Runs on every change detection');\n    // WILL CAUSE PERFORMANCE ISSUES with large arrays\n    return items.filter(item => item.name.includes(search));\n  }\n}\n\n// Better: Use component logic for filtering\n@Component({\n  template: `\n    <div *ngFor=\"let item of filteredItems\">\n      {{item.name}}\n    </div>\n  `\n})\nexport class Component {\n  items: any[] = [];\n  search: string = '';\n  \n  get filteredItems() {\n    // Runs on every change detection\n    // Better to use OnPush and manual update\n    return this.items.filter(item => item.name.includes(this.search));\n  }\n  \n  // BEST: Filter in service with signals\n  filteredItems = computed(() => {\n    return this.items().filter(item => \n      item.name.includes(this.searchTerm())\n    );\n  });\n}",
+    "explanation": "Pure pipes are cached and efficient. Impure pipes run on every change detection and can cause performance issues. For complex operations, use component logic or services.",
+    "recallHint": "Pure = cached, efficient. Impure = runs every time, use sparingly.",
+    "practice": [
+      "Create a pure pipe.",
+      "Explain the performance impact of impure pipes.",
+      "Use signals for filtering instead."
+    ]
+  },
+  {
+    "id": "angular-056",
+    "category": "angular",
+    "concept": "Hierarchical Dependency Injection",
+    "priority": "advanced",
+    "question": "What is hierarchical dependency injection and what happens when two components provide the same service?",
+    "answer": "Angular's DI has a hierarchy: Root → Module → Component. Each component gets its own instance of provided services. When a component provides a service, it overrides the parent's instance for that component and its children.",
+    "code": "// Service\n@Injectable()\nexport class LoggerService {\n  private id = Math.random().toString(36);\n  \n  log(message: string) {\n    console.log(`[${this.id}] ${message}`);\n  }\n}\n\n// Root provider (singleton)\n@Injectable({ providedIn: 'root' })\nexport class UserService {\n  // Same instance everywhere\n}\n\n// Component-level provider (new instance)\n@Component({\n  selector: 'app-child',\n  providers: [LoggerService] // New instance for this component\n})\nexport class ChildComponent {\n  constructor(private logger: LoggerService) {\n    this.logger.log('Child component'); // Uses new instance\n  }\n}\n\n// Multiple components with the same service\n@Component({\n  selector: 'app-parent',\n  providers: [LoggerService], // Parent instance\n  template: `\n    <app-child></app-child>\n    <app-sibling></app-sibling>\n  `\n})\nexport class ParentComponent {\n  constructor(private logger: LoggerService) {\n    this.logger.log('Parent component');\n  }\n}\n\n// Child components inherit parent's provider\n// Unless they provide their own\n\n// Service with different instances\n@Component({\n  providers: [\n    { provide: LoggerService, useClass: ConsoleLogger },\n    { provide: API_URL, useValue: 'https://api.example.com' }\n  ]\n})",
+    "explanation": "Hierarchical DI allows fine-grained control over service instances. Use component-level providers for services that should be isolated to a component subtree.",
+    "recallHint": "Root → Module → Component, component providers override parent.",
+    "practice": [
+      "Explain hierarchical DI.",
+      "Create a component-level service provider.",
+      "Describe when to use different provider levels."
+    ]
+  },
+  {
+    "id": "angular-057",
+    "category": "angular",
+    "concept": "Environment Configuration",
+    "priority": "important",
+    "question": "How do you handle environment-specific configuration in Angular?",
+    "answer": "Use environment files (environment.ts, environment.prod.ts). Angular CLI replaces the file based on the build configuration. Use environment variables for API URLs, feature flags, and production settings.",
+    "code": "// environments/environment.ts (development)\nexport const environment = {\n  production: false,\n  apiUrl: 'http://localhost:3000/api',\n  featureFlags: {\n    newDashboard: true,\n    analytics: false\n  }\n};\n\n// environments/environment.prod.ts (production)\nexport const environment = {\n  production: true,\n  apiUrl: 'https://api.example.com/api',\n  featureFlags: {\n    newDashboard: false,\n    analytics: true\n  }\n};\n\n// environments/environment.staging.ts\nexport const environment = {\n  production: false,\n  apiUrl: 'https://staging-api.example.com/api',\n  featureFlags: {\n    newDashboard: true,\n    analytics: true\n  }\n};\n\n// Using environment in code\nimport { environment } from '../environments/environment';\n\n@Injectable({ providedIn: 'root' })\nexport class ApiService {\n  private apiUrl = environment.apiUrl;\n  \n  getUsers() {\n    return this.http.get(`${this.apiUrl}/users`);\n  }\n}\n\n// Feature flag usage\n@Component({...})\nexport class DashboardComponent {\n  showNewDashboard = environment.featureFlags.newDashboard;\n}\n\n// angular.json configuration\n{\n  \"configurations\": {\n    \"production\": {\n      \"fileReplacements\": [\n        {\n          \"src\": \"src/environments/environment.ts\",\n          \"replace\": \"src/environments/environment.prod.ts\"\n        }\n      ]\n    },\n    \"staging\": {\n      \"fileReplacements\": [\n        {\n          \"src\": \"src/environments/environment.ts\",\n          \"replace\": \"src/environments/environment.staging.ts\"\n        }\n      ]\n    }\n  }\n}\n\n// Build commands\nng build --configuration=production\nng serve --configuration=staging",
+    "explanation": "Environment files provide configuration for different environments without code changes. Use them for API endpoints, feature flags, and environment-specific settings.",
+    "recallHint": "environment.ts for dev, environment.prod.ts for production.",
+    "practice": [
+      "Configure API URL in environment files.",
+      "Implement feature flags.",
+      "Build with different configurations."
+    ]
+  },
+  {
+    "id": "angular-058",
+    "category": "angular",
+    "concept": "Content Projection",
+    "priority": "important",
+    "question": "What is content projection and how do you use multiple slots with ng-content?",
+    "answer": "Content projection allows you to pass content from a parent to a child component using <ng-content>. Multiple slots use select attributes to project content to different locations.",
+    "code": "// Child component with multiple slots\n@Component({\n  selector: 'app-card',\n  template: `\n    <div class=\"card\">\n      <div class=\"card-header\">\n        <ng-content select=\"[card-header]\"></ng-content>\n      </div>\n      <div class=\"card-body\">\n        <ng-content select=\"[card-body]\"></ng-content>\n      </div>\n      <div class=\"card-footer\">\n        <ng-content select=\"[card-footer]\"></ng-content>\n      </div>\n    </div>\n  `\n})\nexport class CardComponent {}\n\n// Parent usage\n@Component({\n  template: `\n    <app-card>\n      <div card-header>\n        <h2>User Profile</h2>\n      </div>\n      <div card-body>\n        <p>Name: John</p>\n        <p>Email: john@example.com</p>\n      </div>\n      <div card-footer>\n        <button (click)=\"save()\">Save</button>\n        <button (click)=\"cancel()\">Cancel</button>\n      </div>\n    </app-card>\n  `\n})\nexport class ParentComponent {}\n\n// With fallback content\n@Component({\n  selector: 'app-modal',\n  template: `\n    <div class=\"modal\">\n      <div class=\"modal-header\">\n        <ng-content select=\"[modal-title]\"></ng-content>\n      </div>\n      <div class=\"modal-body\">\n        <ng-content></ng-content> <!-- Default slot -->\n      </div>\n    </div>\n  `\n})\nexport class ModalComponent {}\n\n// Using default slot\n<app-modal>\n  <div modal-title>Confirm Delete</div>\n  <p>Are you sure you want to delete this item?</p> <!-- Goes to default slot -->\n</app-modal>",
+    "explanation": "Content projection creates flexible reusable components. Use select for multiple slots, fallback content for default, and project content from parent to child.",
+    "recallHint": "ng-content for projection, select for multiple slots.",
+    "practice": [
+      "Create a component with content projection.",
+      "Implement multiple slots with select.",
+      "Use fallback content."
+    ]
+  },
+  {
+    "id": "angular-059",
+    "category": "angular",
+    "concept": "ViewEncapsulation",
+    "priority": "important",
+    "question": "What is ViewEncapsulation and what are the different strategies?",
+    "answer": "ViewEncapsulation controls how component styles are applied. Strategies: Emulated (default, scoped to component), ShadowDom (uses browser Shadow DOM), and None (global styles).",
+    "code": "// Emulated (default) - styles scoped to component\n@Component({\n  selector: 'app-user',\n  styles: [`\n    h2 { color: blue; } /* Only applies to this component */\n  `]\n})\nexport class UserComponent {}\n\n// ShadowDom - uses browser Shadow DOM\n@Component({\n  selector: 'app-shadow',\n  encapsulation: ViewEncapsulation.ShadowDom,\n  styles: [`\n    h2 { color: red; } /* Isolated in Shadow DOM */\n  `]\n})\nexport class ShadowComponent {}\n\n// None - styles are global\n@Component({\n  selector: 'app-global',\n  encapsulation: ViewEncapsulation.None,\n  styles: [`\n    h2 { color: green; } /* Affects all h2 elements on page */\n  `]\n})\nexport class GlobalComponent {}\n\n// ::ng-deep to pierce encapsulation (deprecated)\n@Component({\n  styles: [`\n    ::ng-deep .child-class {\n      color: red; /* Pierces child components */\n    }\n  `]\n})\n\n// Better: Use CSS variables for theme\n// styles.css\n:root {\n  --primary-color: blue;\n}\n\n// component.css\nh2 {\n  color: var(--primary-color);\n}",
+    "explanation": "Emulated is the default and most common. ShadowDom provides complete isolation. None is used for global styles. Use CSS variables for theming across components.",
+    "recallHint": "Emulated (default), ShadowDom (isolated), None (global).",
+    "practice": [
+      "Explain the encapsulation strategies.",
+      "Use ::ng-deep for child styles.",
+      "Implement theming with CSS variables."
+    ]
+  },
+  {
+    "id": "angular-060",
+    "category": "angular",
+    "concept": "Authentication - Route Guards",
+    "priority": "must-know",
+    "question": "How would you protect authenticated routes in Angular using route guards?",
+    "answer": "Use CanActivate guard to check if the user is authenticated. Redirect to login if not. Store authentication state in a service and inject it into the guard.",
+    "code": "// Auth service\n@Injectable({ providedIn: 'root' })\nexport class AuthService {\n  private currentUserSubject = new BehaviorSubject<User | null>(null);\n  currentUser$ = this.currentUserSubject.asObservable();\n  \n  login(credentials: Credentials): Observable<User> {\n    return this.http.post<User>('/api/login', credentials).pipe(\n      tap(user => this.currentUserSubject.next(user))\n    );\n  }\n  \n  logout() {\n    this.currentUserSubject.next(null);\n    this.router.navigate(['/login']);\n  }\n  \n  isAuthenticated(): boolean {\n    return this.currentUserSubject.value !== null;\n  }\n}\n\n// Auth Guard\n@Injectable({ providedIn: 'root' })\nexport class AuthGuard implements CanActivate {\n  constructor(\n    private authService: AuthService,\n    private router: Router\n  ) {}\n  \n  canActivate(\n    route: ActivatedRouteSnapshot,\n    state: RouterStateSnapshot\n  ): boolean {\n    if (this.authService.isAuthenticated()) {\n      return true;\n    }\n    \n    // Redirect to login with return URL\n    this.router.navigate(['/login'], {\n      queryParams: { returnUrl: state.url }\n    });\n    return false;\n  }\n}\n\n// Role-based guard\n@Injectable({ providedIn: 'root' })\nexport class RoleGuard implements CanActivate {\n  canActivate(route: ActivatedRouteSnapshot): boolean {\n    const requiredRoles = route.data['roles'] as string[];\n    const user = this.authService.getCurrentUser();\n    \n    if (!user) return false;\n    return requiredRoles.includes(user.role);\n  }\n}\n\n// Routes\nconst routes: Routes = [\n  { path: 'login', component: LoginComponent },\n  { \n    path: 'dashboard',\n    component: DashboardComponent,\n    canActivate: [AuthGuard],\n    data: { roles: ['admin', 'user'] }\n  },\n  { \n    path: 'admin',\n    loadChildren: () => import('./admin/admin.module').then(m => m.AdminModule),\n    canActivate: [AuthGuard, RoleGuard],\n    data: { roles: ['admin'] }\n  }\n];",
+    "explanation": "Route guards protect routes from unauthorized access. CanActivate checks before navigation. Combine with role-based guards for authorization.",
+    "recallHint": "CanActivate for auth, roles for authorization.",
+    "practice": [
+      "Create an authentication guard.",
+      "Create a role-based guard.",
+      "Implement login redirect with return URL."
+    ]
+  },
+  {
+    "id": "angular-061",
+    "category": "angular",
+    "concept": "HttpClient - Type Safety",
+    "priority": "important",
+    "question": "How do you type HTTP responses in Angular for type safety?",
+    "answer": "Use generics with HttpClient methods: this.http.get<User[]>('/api/users'). This provides type safety and IntelliSense for the response data.",
+    "code": "// Interfaces\ninterface User {\n  id: number;\n  name: string;\n  email: string;\n  role: 'admin' | 'user';\n}\n\ninterface ApiResponse<T> {\n  data: T;\n  message: string;\n  status: number;\n}\n\n// Type-safe HTTP calls\n@Injectable({ providedIn: 'root' })\nexport class UserService {\n  getUsers(): Observable<User[]> {\n    return this.http.get<User[]>('/api/users');\n  }\n  \n  getUser(id: number): Observable<User> {\n    return this.http.get<User>(`/api/users/${id}`);\n  }\n  \n  createUser(user: Omit<User, 'id'>): Observable<User> {\n    return this.http.post<User>('/api/users', user);\n  }\n  \n  // Typed API response\n  getUsersWithResponse(): Observable<ApiResponse<User[]>> {\n    return this.http.get<ApiResponse<User[]>>('/api/users');\n  }\n  \n  // Query parameters with types\n  getUsers(params: { page: number; limit: number }): Observable<User[]> {\n    return this.http.get<User[]>('/api/users', { params: params as any });\n  }\n  \n  // Using HttpParams\n  getUsersWithSearch(search: string): Observable<User[]> {\n    const params = new HttpParams()\n      .set('search', search)\n      .set('active', 'true');\n    \n    return this.http.get<User[]>('/api/users', { params });\n  }\n}\n\n// Component\n@Component({...})\nexport class UserComponent {\n  users: User[] = [];\n  \n  constructor(private userService: UserService) {}\n  \n  loadUsers() {\n    this.userService.getUsers().subscribe({\n      next: (users: User[]) => {\n        this.users = users; // Type-safe\n      },\n      error: (err) => console.error(err)\n    });\n  }\n}",
+    "explanation": "Type-safe HTTP requests prevent runtime errors and improve developer experience. Use interfaces for response types, optional fields for partial responses, and generics for reusable types.",
+    "recallHint": "http.get<Type>() for type-safe responses.",
+    "practice": [
+      "Define interfaces for API responses.",
+      "Use generics in HTTP calls.",
+      "Handle typed error responses."
+    ]
+  },
+  {
+    "id": "angular-062",
+    "category": "angular",
+    "concept": "Angular SSR/Hydration",
+    "priority": "advanced",
+    "question": "What is Server-Side Rendering (SSR) and hydration in Angular?",
+    "answer": "SSR renders the application on the server, sending fully rendered HTML to the client. Hydration attaches event listeners and makes the app interactive without re-rendering.",
+    "code": "// app.config.ts\nimport { ApplicationConfig } from '@angular/core';\nimport { provideClientHydration } from '@angular/platform-browser';\n\nexport const appConfig: ApplicationConfig = {\n  providers: [\n    provideClientHydration() // Enable hydration\n  ]\n};\n\n// main.server.ts (server-side bootstrap)\nimport { bootstrapApplication } from '@angular/platform-browser';\nimport { AppComponent } from './app/app.component';\nimport { config } from './app/app.config.server';\n\nconst bootstrap = () => bootstrapApplication(AppComponent, config);\n\n// package.json\n{\n  \"scripts\": {\n    \"serve:ssr\": \"node dist/my-app/server/main.js\",\n    \"build:ssr\": \"ng build && ng run my-app:server\"\n  }\n}\n\n// Hydration issues (common pitfalls)\n@Component({...})\nexport class Component {\n  // WRONG: Different client/server values cause hydration mismatch\n  random = Math.random(); // Server value ≠ Client value\n  \n  // WRONG: Manual DOM manipulation\n  constructor(private el: ElementRef) {\n    el.nativeElement.innerHTML = 'Dynamic content'; // Breaks hydration\n  }\n  \n  // RIGHT: Use Angular templates\n  // <div>{{ computedValue }}</div>\n  \n  // RIGHT: Use transfer state for dynamic data\n  transferState: TransferState;\n  \n  constructor(transferState: TransferState) {\n    this.transferState.set('data', data); // Share between server and client\n  }\n}",
+    "explanation": "SSR improves SEO and initial load time. Hydration makes the app interactive without re-rendering. Avoid direct DOM manipulation and ensure server/client values match.",
+    "recallHint": "SSR = render on server, hydration = make interactive.",
+    "practice": [
+      "Enable SSR in an Angular app.",
+      "Explain hydration issues.",
+      "Fix hydration mismatches."
+    ]
+  },
+  {
+    "id": "angular-063",
+    "category": "angular",
+    "concept": "Custom Structural Directive",
+    "priority": "advanced",
+    "question": "How do you create a custom structural directive?",
+    "answer": "Structural directives use TemplateRef and ViewContainerRef to manipulate the DOM. They're created with @Directive decorator and use the * syntax in templates.",
+    "code": "// Custom structural directive - *appIf\n@Directive({\n  selector: '[appIf]'\n})\nexport class IfDirective {\n  private hasView = false;\n  \n  constructor(\n    private templateRef: TemplateRef<any>,\n    private viewContainer: ViewContainerRef\n  ) {}\n  \n  @Input() set appIf(condition: boolean) {\n    if (condition && !this.hasView) {\n      this.viewContainer.createEmbeddedView(this.templateRef);\n      this.hasView = true;\n    } else if (!condition && this.hasView) {\n      this.viewContainer.clear();\n      this.hasView = false;\n    }\n  }\n}\n\n// Custom structural directive - *appFor\n@Directive({\n  selector: '[appFor][appForOf]'\n})\nexport class ForDirective {\n  @Input() set appForOf(items: any[]) {\n    this.viewContainer.clear();\n    \n    items.forEach(item => {\n      const context = { $implicit: item, index: items.indexOf(item) };\n      this.viewContainer.createEmbeddedView(this.templateRef, context);\n    });\n  }\n}\n\n// Usage\n<div *appIf=\"isVisible\">Conditional content</div>\n\n<div *appFor=\"let user of users\">\n  {{user.name}}\n</div>\n\n// Custom with multiple inputs\n@Directive({\n  selector: '[appFor][appForOf][appForTrackBy]'\n})\nexport class ForWithTrackDirective {\n  @Input() appForOf: any[];\n  @Input() appForTrackBy: (index: number, item: any) => any;\n  \n  private previousItems: any[] = [];\n  \n  ngOnChanges() {\n    // Implement trackBy logic\n    this.updateView();\n  }\n}\n\n// Usage\n<div *appFor=\"let user of users; trackBy: trackByFn\">\n  {{user.name}}\n</div>",
+    "explanation": "Structural directives change DOM structure. They use TemplateRef for the view and ViewContainerRef to add/remove views. The * syntax is syntactic sugar.",
+    "recallHint": "TemplateRef + ViewContainerRef, * syntax, create/remove views.",
+    "practice": [
+      "Create a custom if directive.",
+      "Create a custom for directive.",
+      "Implement trackBy in a structural directive."
+    ]
+  },
+  {
+    "id": "angular-064",
+    "category": "angular",
+    "concept": "Angular Elements",
+    "priority": "advanced",
+    "question": "What are Angular Elements and when would you use them?",
+    "answer": "Angular Elements allow you to package Angular components as custom elements (Web Components) that can be used in any HTML page, regardless of framework.",
+    "code": "// component-to-element.ts\nimport { createCustomElement } from '@angular/elements';\nimport { inject } from '@angular/core';\n\n@Component({\n  selector: 'app-user-card',\n  template: `\n    <div class=\"card\">\n      <h3>{{ user.name }}</h3>\n      <p>{{ user.email }}</p>\n    </div>\n  `\n})\nexport class UserCardComponent {\n  @Input() user: { name: string; email: string };\n}\n\n// Register as custom element\n@NgModule({\n  declarations: [UserCardComponent],\n  imports: [BrowserModule],\n  bootstrap: [] // No bootstrap\n})\nexport class AppModule {\n  constructor(private injector: Injector) {\n    // Create custom element\n    const element = createCustomElement(UserCardComponent, {\n      injector: this.injector\n    });\n    \n    // Register with browser\n    customElements.define('user-card', element);\n  }\n  \n  ngDoBootstrap() {}\n}\n\n// Usage in any HTML\n<user-card \n  user='{\"name\":\"John\",\"email\":\"john@example.com\"}'>\n</user-card>\n\n// With JavaScript\nconst userCard = document.createElement('user-card');\nuserCard.user = { name: 'Jane', email: 'jane@example.com' };\ndocument.body.appendChild(userCard);\n\n// Build for distribution\n// ng build --configuration=production\n// Bundle includes all dependencies\n\n// Use in React\nfunction App() {\n  return <user-card user={JSON.stringify({ name: 'John' })} />;\n}\n\n// Use in Vue\n<template>\n  <user-card :user='{ name: \"John\" }' />\n</template>",
+    "explanation": "Angular Elements enables sharing components across different frameworks or vanilla HTML. They're self-contained, have their own styles, and work in any modern browser.",
+    "recallHint": "Create custom elements, register with browser, use anywhere.",
+    "practice": [
+      "Create an Angular Element.",
+      "Use it in a React app.",
+      "Bundle for production distribution."
+    ]
+  },
+  {
+    "id": "angular-065",
+    "category": "angular",
+    "concept": "Angular Internationalization",
+    "priority": "advanced",
+    "question": "How do you implement internationalization (i18n) in Angular?",
+    "answer": "Use Angular's built-in i18n with the $localize tag or the i18n attribute in templates. Extract translations, create translation files, and build for different languages.",
+    "code": "// Template with i18n\n@Component({\n  template: `\n    <!-- Static text -->\n    <h1 i18n=\"@@pageHeader\">Welcome to My App</h1>\n    \n    <!-- With context -->\n    <p i18n=\"@@greeting|Greeting for users\">Hello, {{ user.name }}</p>\n    \n    <!-- With pluralization -->\n    <p i18n=\"@@itemsCount\">{itemsCount, plural,\n      =0 {No items}\n      =1 {1 item}\n      other {{{itemsCount}} items}\n    }</p>\n    \n    <!-- With gender -->\n    <p i18n=\"@@userGender\">{gender, select,\n      male {He}\n      female {She}\n      other {They}\n    } is a user.</p>\n  `\n})\n\nexport class AppComponent {\n  user = { name: 'John' };\n  itemsCount = 5;\n  gender = 'male';\n}\n\n// In component code\nimport { $localize } from '@angular/localize';\n\nconst message = $localize`:@@welcomeMessage:Welcome to the app!`;\n\n// Extract translations\n// ng extract-i18n\n// Creates messages.xlf\n\n// Translation file (messages.fr.xlf)\n<trans-unit id=\"pageHeader\">\n  <source>Welcome to My App</source>\n  <target>Bienvenue dans mon application</target>\n</trans-unit>\n\n// angular.json configuration\n{\n  \"configurations\": {\n    \"fr\": {\n      \"localize\": [\"fr\"],\n      \"buildOptimizer\": true\n    }\n  }\n}\n\n// Build for language\nng build --localize --configuration=fr\n\n// Runtime locale\nimport { LOCALE_ID } from '@angular/core';\n\n@NgModule({\n  providers: [\n    { provide: LOCALE_ID, useValue: navigator.language }\n  ]\n})",
+    "explanation": "Angular i18n provides comprehensive translation support. Use the i18n attribute in templates, $localize in code, and build for multiple languages.",
+    "recallHint": "i18n attribute, $localize, extract translations, build for languages.",
+    "practice": [
+      "Add i18n to a component.",
+      "Extract translation files.",
+      "Build for a different language."
+    ]
+  },
+  {
+    "id": "angular-066",
+    "category": "angular",
+    "concept": "Angular CDK - Clipboard",
+    "priority": "advanced",
+    "question": "What is the Angular CDK and what features does it provide?",
+    "answer": "The Angular CDK (Component Dev Kit) provides low-level UI primitives: virtual scrolling, drag-and-drop, overlay, clipboard, a11y, and portal. It's used to build custom components.",
+    "code": "// Virtual scrolling\nimport { ScrollingModule } from '@angular/cdk/scrolling';\n\n<cdk-virtual-scroll-viewport itemSize=\"50\">\n  <div *cdkVirtualFor=\"let item of items\">{{item}}</div>\n</cdk-virtual-scroll-viewport>\n\n// Drag and drop\nimport { DragDropModule } from '@angular/cdk/drag-drop';\n\n<div cdkDropList (cdkDropListDropped)=\"drop($event)\">\n  <div *ngFor=\"let item of items\" cdkDrag>\n    {{item}}\n  </div>\n</div>\n\ndrop(event: CdkDragDrop<string[]>) {\n  moveItemInArray(this.items, event.previousIndex, event.currentIndex);\n}\n\n// Clipboard\nimport { Clipboard } from '@angular/cdk/clipboard';\n\n@Component({...})\nexport class Component {\n  constructor(private clipboard: Clipboard) {}\n  \n  copyText(text: string) {\n    const success = this.clipboard.copy(text);\n    console.log('Copied:', success);\n  }\n}\n\n// Overlay (modals, tooltips)\nimport { Overlay, OverlayConfig } from '@angular/cdk/overlay';\n\nconst overlayRef = this.overlay.create({\n  positionStrategy: this.overlay.position().global().centerHorizontally().centerVertically(),\n  hasBackdrop: true\n});\n\n// Portal (dynamic content)\nimport { ComponentPortal } from '@angular/cdk/portal';\n\nconst portal = new ComponentPortal(MyComponent);\noverlayRef.attach(portal);\n\n// Stepper\nimport { CdkStepperModule } from '@angular/cdk/stepper';\n\n<cdk-stepper>\n  <cdk-step label=\"Step 1\">Content 1</cdk-step>\n  <cdk-step label=\"Step 2\">Content 2</cdk-step>\n</cdk-stepper>",
+    "explanation": "CDK provides low-level primitives for building custom components without reinventing the wheel. It's used internally by Angular Material and can be used independently.",
+    "recallHint": "Virtual scroll, drag-drop, clipboard, overlay, portal, a11y.",
+    "practice": [
+      "Implement virtual scrolling with CDK.",
+      "Implement drag and drop.",
+      "Use the clipboard API."
+    ]
+  },
+  {
+    "id": "angular-067",
+    "category": "angular",
+    "concept": "Angular Material",
+    "priority": "important",
+    "question": "What is Angular Material and how does it integrate with Angular?",
+    "answer": "Angular Material is a UI component library following Material Design. It provides pre-built components (buttons, cards, dialogs, tables) with accessibility and theming support.",
+    "code": "// Install\n// ng add @angular/material\n\n// Import components\nimport { MatButtonModule } from '@angular/material/button';\nimport { MatCardModule } from '@angular/material/card';\nimport { MatTableModule } from '@angular/material/table';\nimport { MatFormFieldModule } from '@angular/material/form-field';\nimport { MatInputModule } from '@angular/material/input';\n\n// Usage\n@Component({\n  template: `\n    <mat-card>\n      <mat-card-title>User List</mat-card-title>\n      <mat-card-content>\n        <mat-form-field appearance=\"fill\">\n          <mat-label>Search</mat-label>\n          <input matInput [(ngModel)]=\"search\">\n        </mat-form-field>\n        \n        <table mat-table [dataSource]=\"users\">\n          <ng-container matColumnDef=\"name\">\n            <th mat-header-cell *matHeaderCellDef>Name</th>\n            <td mat-cell *matCellDef=\"let user\">{{user.name}}</td>\n          </ng-container>\n          \n          <ng-container matColumnDef=\"email\">\n            <th mat-header-cell *matHeaderCellDef>Email</th>\n            <td mat-cell *matCellDef=\"let user\">{{user.email}}</td>\n          </ng-container>\n          \n          <tr mat-header-row *matHeaderRowDef=\"displayedColumns\"></tr>\n          <tr mat-row *matRowDef=\"let row; columns: displayedColumns;\"></tr>\n        </table>\n      </mat-card-content>\n    </mat-card>\n    \n    <button mat-raised-button color=\"primary\" (click)=\"openDialog()\">\n      Open Dialog\n    </button>\n  `\n})\nexport class UserComponent {\n  displayedColumns = ['name', 'email'];\n  users = [];\n  \n  constructor(private dialog: MatDialog) {}\n  \n  openDialog() {\n    this.dialog.open(DialogComponent, {\n      width: '400px',\n      data: { user: null }\n    });\n  }\n}",
+    "explanation": "Angular Material provides production-ready components with accessibility built-in. It integrates with Angular's theming system and supports customization.",
+    "recallHint": "Material Design components, accessibility, theming.",
+    "practice": [
+      "Implement a Material table.",
+      "Implement a Material form.",
+      "Open a Material dialog."
+    ]
+  },
+  {
+    "id": "angular-068",
+    "category": "angular",
+    "concept": "CDK - Overlay",
+    "priority": "advanced",
+    "question": "How do you create custom overlays and modals using CDK overlay?",
+    "answer": "CDK Overlay provides flexible positioning, backdrop, and scrolling support. Use it to create custom modals, dropdowns, tooltips, and context menus.",
+    "code": "// Custom overlay service\n@Injectable({ providedIn: 'root' })\nexport class OverlayService {\n  constructor(\n    private overlay: Overlay,\n    private injector: Injector\n  ) {}\n  \n  open<T>(component: ComponentType<T>, config?: any): OverlayRef {\n    const overlayConfig = new OverlayConfig({\n      positionStrategy: this.overlay.position()\n        .global()\n        .centerHorizontally()\n        .centerVertically(),\n      hasBackdrop: true,\n      backdropClass: 'cdk-overlay-dark-backdrop',\n      width: config?.width || '500px',\n      height: config?.height || '300px'\n    });\n    \n    const overlayRef = this.overlay.create(overlayConfig);\n    \n    // Handle backdrop click\n    overlayRef.backdropClick().subscribe(() => {\n      overlayRef.detach();\n    });\n    \n    // Create portal\n    const portal = new ComponentPortal(component, null, this.injector);\n    overlayRef.attach(portal);\n    \n    return overlayRef;\n  }\n}\n\n// Usage\n@Component({...})\nexport class ModalComponent {\n  constructor(private overlayService: OverlayService) {}\n  \n  openModal() {\n    const overlayRef = this.overlayService.open(MyModalComponent, {\n      width: '600px',\n      height: '400px'\n    });\n    \n    // Close after operation\n    setTimeout(() => overlayRef.detach(), 5000);\n  }\n}\n\n// Flexible connected position\nconst position = this.overlay.position()\n  .flexibleConnectedTo(triggerElement)\n  .withPositions([\n    {\n      originX: 'start',\n      originY: 'bottom',\n      overlayX: 'start',\n      overlayY: 'top'\n    },\n    {\n      originX: 'start',\n      originY: 'top',\n      overlayX: 'start',\n      overlayY: 'bottom'\n    }\n  ]);\n\nconst overlayRef = this.overlay.create({\n  positionStrategy: position,\n  scrollStrategy: this.overlay.scrollStrategies.reposition(),\n  hasBackdrop: true\n});",
+    "explanation": "CDK Overlay gives full control over floating UI elements. It handles positioning, scrolling, and backdrop management automatically.",
+    "recallHint": "Overlay service, flexible positioning, backdrop handling.",
+    "practice": [
+      "Create a custom modal with Overlay.",
+      "Create a dropdown with Overlay.",
+      "Handle backdrop clicks."
+    ]
+  },
+  {
+    "id": "angular-069",
+    "category": "angular",
+    "concept": "Angular Animations",
+    "priority": "advanced",
+    "question": "How do you implement animations in Angular?",
+    "answer": "Use Angular's @angular/animations module with triggers, state, and transition definitions. Animations run on the browser's Animation API for smooth, performant transitions.",
+    "code": "import { trigger, state, style, transition, animate } from '@angular/animations';\n\n@Component({\n  selector: 'app-expandable',\n  animations: [\n    trigger('expandCollapse', [\n      state('collapsed', style({\n        height: '0',\n        opacity: 0,\n        overflow: 'hidden'\n      })),\n      state('expanded', style({\n        height: '*',\n        opacity: 1,\n        overflow: 'hidden'\n      })),\n      transition('collapsed <=> expanded', [\n        animate('300ms ease-in-out')\n      ])\n    ]),\n    \n    trigger('fadeInOut', [\n      transition(':enter', [\n        style({ opacity: 0 }),\n        animate('500ms', style({ opacity: 1 }))\n      ]),\n      transition(':leave', [\n        animate('500ms', style({ opacity: 0 }))\n      ])\n    ]),\n    \n    trigger('slideInOut', [\n      transition(':enter', [\n        style({ transform: 'translateX(100%)' }),\n        animate('300ms', style({ transform: 'translateX(0)' }))\n      ]),\n      transition(':leave', [\n        animate('300ms', style({ transform: 'translateX(100%)' }))\n      ])\n    ])\n  ],\n  template: `\n    <button (click)=\"isExpanded = !isExpanded\">Toggle</button>\n    \n    <div [@expandCollapse]=\"isExpanded ? 'expanded' : 'collapsed'\">\n      <p>Content to expand</p>\n    </div>\n    \n    <div *ngIf=\"isVisible\" @fadeInOut>\n      <p>Fade in/out content</p>\n    </div>\n    \n    <div *ngIf=\"isVisible\" @slideInOut>\n      <p>Slide in/out content</p>\n    </div>\n  `\n})\nexport class ExpandableComponent {\n  isExpanded = false;\n  isVisible = true;\n}\n\n// Complex animation with keyframes\nimport { keyframes } from '@angular/animations';\n\ntrigger('bounce', [\n  transition(':enter', [\n    animate('500ms', keyframes([\n      style({ transform: 'scale(0)', offset: 0 }),\n      style({ transform: 'scale(1.2)', offset: 0.5 }),\n      style({ transform: 'scale(1)', offset: 1 })\n    ]))\n  ])\n])\n\n// Animation with parameters\ntrigger('customAnimation', [\n  transition(':enter', [\n    style({ transform: 'translateY({{startY}}px)' }),\n    animate('{{duration}}ms', style({ transform: 'translateY(0)' }))\n  ], { params: { startY: 100, duration: 300 } })\n])",
+    "explanation": "Angular animations enhance UX with smooth transitions. Use states for multiple conditions, transitions for animation logic, and keyframes for complex sequences.",
+    "recallHint": "trigger, state, transition, animate, keyframes.",
+    "practice": [
+      "Create a toggle animation.",
+      "Create a fade in/out animation.",
+      "Use animation parameters."
+    ]
+  },
+  {
+    "id": "angular-070",
+    "category": "angular",
+    "concept": "Angular Universal - SEO",
+    "priority": "advanced",
+    "question": "How does Angular Universal improve SEO and what are the implementation considerations?",
+    "answer": "Angular Universal (SSR) renders the app on the server, sending full HTML to crawlers. This improves SEO, social sharing, and initial load time. Implement with Angular's server-side capabilities.",
+    "code": "// angular.json\n{\n  \"projects\": {\n    \"my-app\": {\n      \"architect\": {\n        \"server\": {\n          \"builder\": \"@angular-devkit/build-angular:server\",\n          \"options\": {\n            \"outputPath\": \"dist/my-app-server\",\n            \"main\": \"server.ts\"\n          }\n        }\n      }\n    }\n  }\n}\n\n// server.ts (basic Express server for SSR)\nimport 'zone.js/dist/zone-node';\nimport { ngExpressEngine } from '@angular/platform-server';\nimport * as express from 'express';\nimport { AppServerModule } from './src/main.server';\n\nconst app = express();\n\napp.engine('html', ngExpressEngine({\n  bootstrap: AppServerModule\n}));\n\napp.set('view engine', 'html');\napp.set('views', './dist/browser');\n\napp.get('*', (req, res) => {\n  res.render('index', { req, providers: [] });\n});\n\n// Meta tags for SEO\n@Component({...})\nexport class ProductComponent {\n  constructor(private meta: Meta, private title: Title) {}\n  \n  ngOnInit() {\n    // Set for SEO\n    this.title.setTitle('Product - My App');\n    this.meta.updateTag({ name: 'description', content: 'Product description' });\n    this.meta.updateTag({ property: 'og:title', content: 'Product Title' });\n    this.meta.updateTag({ property: 'og:image', content: 'product-image.jpg' });\n  }\n}\n\n// With TransferState to avoid re-fetching data\nimport { TransferState, makeStateKey } from '@angular/platform-browser';\n\nconst DATA_KEY = makeStateKey('product-data');\n\n@Component({...})\nexport class ProductComponent {\n  constructor(\n    private transferState: TransferState,\n    private http: HttpClient\n  ) {}\n  \n  ngOnInit() {\n    const data = this.transferState.get(DATA_KEY, null);\n    \n    if (data) {\n      this.product = data;\n      this.transferState.remove(DATA_KEY);\n    } else {\n      this.http.get('/api/product').subscribe(data => {\n        this.product = data;\n        this.transferState.set(DATA_KEY, data);\n      });\n    }\n  }\n}",
+    "explanation": "Angular Universal (SSR) improves SEO and performance. Use TransferState to prevent duplicate data fetching. Meta tags should be set dynamically for each page.",
+    "recallHint": "SSR = server rendering, TransferState = avoid duplicate fetches.",
+    "practice": [
+      "Implement SSR with Angular Universal.",
+      "Add meta tags for SEO.",
+      "Use TransferState for data caching."
+    ]
+  },
+  {
+    "id": "angular-071",
+    "category": "angular",
+    "concept": "NgRx Effects",
+    "priority": "advanced",
+    "question": "What are NgRx Effects and how do you use them for side effects?",
+    "answer": "NgRx Effects handle side effects like API calls, routing, and other async operations. They listen for dispatched actions and perform operations, dispatching new actions on completion.",
+    "code": "// Actions\nexport const loadUsers = createAction('[Users] Load');\nexport const loadUsersSuccess = createAction('[Users] Load Success', props<{ users: User[] }>());\nexport const loadUsersFailure = createAction('[Users] Load Failure', props<{ error: string }>());\n\n// Effects\n@Injectable()\nexport class UserEffects {\n  loadUsers$ = createEffect(() => this.actions$.pipe(\n    ofType(loadUsers),\n    switchMap(() => this.userService.getUsers().pipe(\n      map(users => loadUsersSuccess({ users })),\n      catchError(error => of(loadUsersFailure({ error: error.message })))\n    ))\n  ));\n  \n  // Effect with router navigation\n  saveUser$ = createEffect(() => this.actions$.pipe(\n    ofType(saveUser),\n    concatMap(({ user }) => this.userService.saveUser(user).pipe(\n      map(savedUser => saveUserSuccess({ user: savedUser })),\n      catchError(error => of(saveUserFailure({ error: error.message })))\n    ))\n  ));\n  \n  // Effect that doesn't dispatch an action\n  saveUserSuccess$ = createEffect(() => this.actions$.pipe(\n    ofType(saveUserSuccess),\n    tap(({ user }) => this.router.navigate(['/users', user.id])),\n    map(() => showNotification({ message: 'User saved!' }))\n  ), { dispatch: false });\n  \n  // Effect with multiple actions\n  updateUsers$ = createEffect(() => this.actions$.pipe(\n    ofType(loadUsersSuccess, saveUserSuccess),\n    map(() => calculateTotalUsers())\n  ));\n}\n\n// Register effects in module\n@NgModule({\n  imports: [EffectsModule.forRoot([UserEffects])]\n})\nexport class AppModule {}",
+    "explanation": "Effects keep components pure by moving side effects out of components. They handle async operations and error handling in a predictable way.",
+    "recallHint": "Actions → Effects → API calls → Success/Failure actions.",
+    "practice": [
+      "Create an Effect for API calls.",
+      "Create an Effect with router navigation.",
+      "Handle errors in Effects."
+    ]
+  },
+  {
+    "id": "angular-072",
+    "category": "angular",
+    "concept": "NgRx Selectors",
+    "priority": "advanced",
+    "question": "What are NgRx Selectors and how do you create memoized selectors?",
+    "answer": "Selectors are pure functions that extract and derive data from the store. Memoized selectors cache results, recalculating only when inputs change, improving performance.",
+    "code": "// State interface\ninterface UserState {\n  users: User[];\n  loading: boolean;\n  error: string | null;\n  selectedUserId: number | null;\n}\n\n// Basic selectors\nexport const selectUserState = (state: AppState) => state.users;\n\nexport const selectAllUsers = createSelector(\n  selectUserState,\n  (state: UserState) => state.users\n);\n\nexport const selectUserLoading = createSelector(\n  selectUserState,\n  (state: UserState) => state.loading\n);\n\n// Memoized derived selector\nexport const selectActiveUsers = createSelector(\n  selectAllUsers,\n  (users: User[]) => users.filter(user => user.active)\n);\n\n// Selector with props\nexport const selectUserById = (userId: number) => createSelector(\n  selectAllUsers,\n  (users: User[]) => users.find(user => user.id === userId)\n);\n\n// Selector with multiple state slices\nexport const selectUserWithPermissions = createSelector(\n  selectAllUsers,\n  selectPermissions,\n  (users, permissions) => users.map(user => ({\n    ...user,\n    permissions: permissions[user.role] || []\n  }))\n);\n\n// Composable selectors\nexport const selectUserStats = createSelector(\n  selectAllUsers,\n  (users) => ({\n    total: users.length,\n    active: users.filter(u => u.active).length,\n    inactive: users.filter(u => !u.active).length,\n    roles: users.reduce((acc, u) => {\n      acc[u.role] = (acc[u.role] || 0) + 1;\n      return acc;\n    }, {} as Record<string, number>)\n  })\n);\n\n// Component usage\n@Component({...})\nexport class UserComponent {\n  users$ = this.store.select(selectAllUsers);\n  activeUsers$ = this.store.select(selectActiveUsers);\n  stats$ = this.store.select(selectUserStats);\n  \n  constructor(private store: Store<AppState>) {}\n}",
+    "explanation": "Selectors provide a clean way to access store data. Memoization optimizes performance by caching results. Composite selectors combine multiple state slices.",
+    "recallHint": "createSelector for memoization, composable selectors, derived state.",
+    "practice": [
+      "Create basic selectors.",
+      "Create memoized derived selectors.",
+      "Create composite selectors."
+    ]
+  },
+  {
+    "id": "angular-073",
+    "category": "angular",
+    "concept": "Angular Template Variables",
+    "priority": "important",
+    "question": "What are template reference variables in Angular?",
+    "answer": "Template reference variables are identifiers prefixed with # that reference DOM elements, components, or directives in the template. They enable direct access without using ViewChild.",
+    "code": "// Template reference variable\n@Component({\n  template: `\n    <!-- Reference an input element -->\n    <input #searchInput (input)=\"search(searchInput.value)\">\n    \n    <!-- Reference a component -->\n    <app-user #userComponent>\n    <button (click)=\"userComponent.refresh()\">Refresh</button>\n    \n    <!-- Reference with exportAs -->\n    <form #userForm=\"ngForm\" (ngSubmit)=\"submit(userForm)\">\n      <input name=\"name\" ngModel>\n      <button type=\"submit\">Submit</button>\n    </form>\n    \n    <!-- Use in structural directives -->\n    <div *ngIf=\"items$ | async as items; let first = first\">\n      First item: {{first}}\n    </div>\n    \n    <!-- Use in ngFor -->\n    <div *ngFor=\"let item of items; let i = index; let isLast = last\">\n      {{i}} - {{item}}\n      <span *ngIf=\"isLast\">Last item</span>\n    </div>\n  `\n})\nexport class AppComponent {\n  search(value: string) {\n    console.log('Searching:', value);\n  }\n  \n  submit(form: any) {\n    console.log(form.value);\n  }\n}\n\n// Access template variable in component\n@Component({\n  template: `\n    <input #inputRef>\n    <button (click)=\"focusInput(inputRef)\">Focus</button>\n  `\n})\nexport class Component {\n  @ViewChild('inputRef') inputRef: ElementRef;\n  \n  focusInput(input: HTMLInputElement) {\n    input.focus();\n  }\n}\n\n// ExportAs in custom directive\n@Directive({\n  selector: '[appValidator]',\n  exportAs: 'validator'\n})\nexport class ValidatorDirective {\n  isValid = true;\n  \n  validate() {\n    // Validation logic\n  }\n}\n\n// Usage\n<input appValidator #val=\"validator\">\n<div *ngIf=\"!val.isValid\">Invalid</div>",
+    "explanation": "Template reference variables provide a way to access elements without component code. Use them for forms, DOM access, and component communication in templates.",
+    "recallHint": "#name for references, exportAs for directives, async pipe for observables.",
+    "practice": [
+      "Use template variables for input access.",
+      "Use template variables for form access.",
+      "Use exportAs with a custom directive."
+    ]
+  },
+  {
+    "id": "angular-074",
+    "category": "angular",
+    "concept": "Angular ElementRef",
+    "priority": "important",
+    "question": "What is ElementRef and when should you use it?",
+    "answer": "ElementRef provides direct access to the DOM element of a component. Use it sparingly for third-party integrations, focus management, or when Angular's abstraction isn't sufficient.",
+    "code": "@Component({\n  selector: 'app-focus',\n  template: `\n    <input #inputRef>\n    <button (click)=\"focus()\">Focus Input</button>\n  `\n})\nexport class FocusComponent {\n  @ViewChild('inputRef') inputRef: ElementRef;\n  \n  focus() {\n    // Direct DOM access\n    this.inputRef.nativeElement.focus();\n  }\n}\n\n// Using Renderer2 (recommended over direct DOM manipulation)\n@Component({...})\nexport class Component {\n  constructor(\n    private el: ElementRef,\n    private renderer: Renderer2\n  ) {}\n  \n  updateStyle() {\n    // WRONG: Direct DOM manipulation\n    // this.el.nativeElement.style.color = 'red';\n    \n    // RIGHT: Use Renderer2\n    this.renderer.setStyle(this.el.nativeElement, 'color', 'red');\n    this.renderer.addClass(this.el.nativeElement, 'highlighted');\n  }\n}\n\n// Custom directive with ElementRef\n@Directive({\n  selector: '[appAutofocus]'\n})\nexport class AutofocusDirective implements AfterViewInit {\n  constructor(private el: ElementRef) {}\n  \n  ngAfterViewInit() {\n    this.el.nativeElement.focus();\n  }\n}\n\n// Usage\n<input appAutofocus>\n\n// For SSR (Server-Side Rendering) - check for availability\n@Directive({\n  selector: '[appCheck]'\n})\nexport class CheckDirective {\n  constructor(@Optional() private el: ElementRef) {}\n  \n  ngAfterViewInit() {\n    if (this.el && this.el.nativeElement) {\n      // Only run on client\n      this.el.nativeElement.innerText = 'Client-only content';\n    }\n  }\n}",
+    "explanation": "ElementRef gives access to the DOM but bypasses Angular's abstraction. Use Renderer2 for safe DOM manipulation that works across platforms and with SSR.",
+    "recallHint": "ElementRef = DOM access, Renderer2 = safe manipulation.",
+    "practice": [
+      "Use ElementRef for focus management.",
+      "Use Renderer2 for style changes.",
+      "Create a custom directive using ElementRef."
+    ]
+  },
+  {
+    "id": "angular-075",
+    "category": "angular",
+    "concept": "Angular AOT vs JIT",
+    "priority": "advanced",
+    "question": "What is the difference between AOT and JIT compilation in Angular?",
+    "answer": "AOT (Ahead-of-Time) compiles the app during build, producing faster rendering and smaller bundle sizes. JIT (Just-in-Time) compiles in the browser at runtime, enabling faster development but slower production performance.",
+    "code": "// JIT (default for development)\n// ng serve\n// Compiles in browser at runtime\n\n// AOT (default for production)\n// ng build --aot\n// ng build --prod\n// Compiles during build\n\n// Angular.json configuration\n{\n  \"configurations\": {\n    \"production\": {\n      \"aot\": true, // Enable AOT\n      \"buildOptimizer\": true,\n      \"outputHashing\": \"all\"\n    }\n  }\n}\n\n// AOT benefits\n// 1. Faster rendering (pre-compiled)\n// 2. Smaller bundle size (no compiler included)\n// 3. Better error detection during build\n// 4. Improved security (no compilation in browser)\n\n// AOT requirements\n// 1. All code must be statically analyzable\n// 2. No dynamic component creation without proper setup\n// 3. No private properties in templates\n\n// Example of AOT-compatible code\n@Component({\n  selector: 'app-example',\n  template: `\n    <!-- AOT works: static property -->\n    <div>{{ publicProperty }}</div>\n    \n    <!-- AOT fails: private property -->\n    <div>{{ privateProperty }}</div>\n    \n    <!-- AOT works: public method -->\n    <div>{{ getPublic() }}</div>\n  `\n})\nexport class ExampleComponent {\n  publicProperty = 'Public';\n  private privateProperty = 'Private';\n  \n  getPublic() { return 'Works'; }\n}\n\n// AOT with dynamic component loading\n// Must use compiler if needed\nimport { Compiler, Component } from '@angular/core';\n\nconstructor(private compiler: Compiler) {}\n\nloadDynamicComponent() {\n  const component = Component({...})(class {});\n  this.compiler.compileModuleAndAllComponentsAsync(component);\n}",
+    "explanation": "AOT is recommended for production due to performance and security benefits. JIT is fine for development due to faster build times and easier debugging.",
+    "recallHint": "AOT = build-time compilation (production), JIT = runtime compilation (development).",
+    "practice": [
+      "Explain AOT vs JIT differences.",
+      "Enable AOT in build configuration.",
+      "Fix AOT compilation errors."
+    ]
+  },
+  {
+    "id": "angular-076",
+    "category": "angular",
+    "concept": "Angular Micro Frontends",
+    "priority": "advanced",
+    "question": "How would you implement micro frontends with Angular?",
+    "answer": "Use module federation (Webpack 5) to load remote Angular modules dynamically. Each micro frontend is a separate Angular app built independently but integrated at runtime.",
+    "code": "// webpack.config.js (host application)\nconst { ModuleFederationPlugin } = require('webpack').container;\n\nmodule.exports = {\n  plugins: [\n    new ModuleFederationPlugin({\n      name: 'host',\n      remotes: {\n        'mfe1': 'mfe1@http://localhost:4201/remoteEntry.js',\n        'mfe2': 'mfe2@http://localhost:4202/remoteEntry.js'\n      },\n      shared: ['@angular/core', '@angular/common', 'rxjs']\n    })\n  ]\n};\n\n// webpack.config.js (micro frontend 1)\nmodule.exports = {\n  plugins: [\n    new ModuleFederationPlugin({\n      name: 'mfe1',\n      filename: 'remoteEntry.js',\n      exposes: {\n        './Module': './src/app/app.module.ts',\n        './Component': './src/app/app.component.ts'\n      },\n      shared: ['@angular/core', '@angular/common', 'rxjs']\n    })\n  ]\n};\n\n// Lazy load remote module in host\nconst routes: Routes = [\n  {\n    path: 'mfe1',\n    loadChildren: () =>\n      import('mfe1/Module').then(m => m.AppModule)\n  }\n];\n\n// Alternative: Dynamic loading with manifest\n@Injectable({ providedIn: 'root' })\nexport class MfeLoaderService {\n  private mfeManifest: Record<string, string> = {\n    'mfe1': 'http://localhost:4201/remoteEntry.js',\n    'mfe2': 'http://localhost:4202/remoteEntry.js'\n  };\n  \n  loadMfe(name: string): Promise<any> {\n    const url = this.mfeManifest[name];\n    return import(/* webpackIgnore: true */ url);\n  }\n}\n\n// Shared state between micro frontends\n// Use browser storage or global event bus\n@Injectable({ providedIn: 'root' })\nexport class SharedState {\n  private stateSubject = new BehaviorSubject<any>({});\n  state$ = this.stateSubject.asObservable();\n  \n  updateState(newState: any) {\n    this.stateSubject.next({ ...this.stateSubject.value, ...newState });\n  }\n}",
+    "explanation": "Micro frontends enable independent development and deployment of Angular applications. Module Federation is the standard approach for runtime integration.",
+    "recallHint": "Module Federation, remote modules, independent builds.",
+    "practice": [
+      "Set up module federation.",
+      "Create a remote micro frontend.",
+      "Share state between micro frontends."
+    ]
+  },
+  {
+    "id": "angular-077",
+    "category": "angular",
+    "concept": "Angular Performance Budget",
+    "priority": "advanced",
+    "question": "What is a performance budget and how do you enforce it in Angular?",
+    "answer": "A performance budget sets limits for bundle sizes, load time, and request counts. Enforce with ng build --budgets in angular.json. Fail builds if budgets are exceeded.",
+    "code": "// angular.json performance budgets\n{\n  \"projects\": {\n    \"my-app\": {\n      \"architect\": {\n        \"build\": {\n          \"configurations\": {\n            \"production\": {\n              \"budgets\": [\n                {\n                  \"type\": \"initial\",\n                  \"maximumWarning\": \"500kb\",\n                  \"maximumError\": \"1mb\"\n                },\n                {\n                  \"type\": \"anyComponentStyle\",\n                  \"maximumWarning\": \"20kb\",\n                  \"maximumError\": \"50kb\"\n                },\n                {\n                  \"type\": \"anyScript\",\n                  \"maximumWarning\": \"100kb\",\n                  \"maximumError\": \"200kb\"\n                },\n                {\n                  \"type\": \"bundle\",\n                  \"name\": \"main\",\n                  \"maximumWarning\": \"400kb\",\n                  \"maximumError\": \"600kb\"\n                }\n              ]\n            }\n          }\n        }\n      }\n    }\n  }\n}\n\n// Budget types\n// initial = initial load time\n// anyComponentStyle = component CSS\n// anyScript = any script file\n// bundle = specific bundle\n\n// Measuring bundle size\n// ng build --stats-json\n// Analyze with: webpack-bundle-analyzer\n\n// Bundle analysis script\n{\n  \"scripts\": {\n    \"analyze\": \"ng build --stats-json && webpack-bundle-analyzer dist/my-app/stats.json\"\n  }\n}\n\n// Source map analysis\n{\n  \"scripts\": {\n    \"sourcemap\": \"ng build --source-map --prod\"\n  }\n}\n\n// Monitoring budget compliance\n// npm run build:prod 2>&1 | grep \"budget\"",
+    "explanation": "Performance budgets prevent bundle bloat. Set budgets based on your app's performance goals. Use bundle analyzers to identify optimization opportunities.",
+    "recallHint": "Budgets in angular.json, bundle analyzer, monitor build output.",
+    "practice": [
+      "Configure performance budgets.",
+      "Analyze bundle size with webpack-bundle-analyzer.",
+      "Fix budget violations."
+    ]
+  },
+  {
+    "id": "angular-078",
+    "category": "angular",
+    "concept": "Angular Service Worker",
+    "priority": "advanced",
+    "question": "What is the Angular Service Worker and how does it enable PWA features?",
+    "answer": "The Angular Service Worker is a built-in service worker that provides PWA features: offline support, caching, push notifications, and background sync. It's configured via the ngsw-config.json file.",
+    "code": "// Install\n// ng add @angular/pwa\n\n// ngsw-config.json\n{\n  \"index\": \"/index.html\",\n  \"assetGroups\": [\n    {\n      \"name\": \"app\",\n      \"installMode\": \"prefetch\",\n      \"resources\": {\n        \"files\": [\n          \"/favicon.ico\",\n          \"/index.html\",\n          \"/*.css\",\n          \"/*.js\"\n        ]\n      }\n    },\n    {\n      \"name\": \"assets\",\n      \"installMode\": \"lazy\",\n      \"updateMode\": \"lazy\",\n      \"resources\": {\n        \"files\": [\n          \"/assets/**\"\n        ]\n      }\n    },\n    {\n      \"name\": \"api\",\n      \"installMode\": \"lazy\",\n      \"updateMode\": \"lazy\",\n      \"resources\": {\n        \"urls\": [\n          \"https://api.example.com/**\"\n        ]\n      }\n    }\n  ],\n  \"dataGroups\": [\n    {\n      \"name\": \"api-cache\",\n      \"version\": 1,\n      \"cacheConfig\": {\n        \"maxSize\": 100,\n        \"maxAge\": \"1d\",\n        \"timeout\": \"5s\"\n      }\n    }\n  ]\n}\n\n// In app.module.ts\nimport { ServiceWorkerModule } from '@angular/service-worker';\n\n@NgModule({\n  imports: [\n    ServiceWorkerModule.register('ngsw-worker.js', {\n      enabled: environment.production,\n      registrationStrategy: 'registerWhenStable:30000'\n    })\n  ]\n})\n\n// Check for updates\nimport { SwUpdate, VersionReadyEvent } from '@angular/service-worker';\n\n@Component({...})\nexport class AppComponent {\n  constructor(private swUpdate: SwUpdate) {\n    if (this.swUpdate.isEnabled) {\n      this.swUpdate.versionUpdates.subscribe((evt) => {\n        if (evt.type === 'VERSION_READY') {\n          this.showUpdateNotification();\n        }\n      });\n    }\n  }\n  \n  activateUpdate() {\n    this.swUpdate.activateUpdate().then(() => {\n      document.location.reload();\n    });\n  }\n}\n\n// Build for production\nng build --configuration=production\n\n// Serve with HTTP server that supports Service Worker\n// Use angular-http-server or configure properly",
+    "explanation": "Angular Service Worker enables PWA features. It automatically handles caching strategies, offline support, and update notifications. Configure carefully for your app's needs.",
+    "recallHint": "PWA features, offline support, caching strategies, update notification.",
+    "practice": [
+      "Add PWA to an Angular app.",
+      "Configure caching for API calls.",
+      "Implement update notification."
+    ]
+  },
+  {
+    "id": "angular-079",
+    "category": "angular",
+    "concept": "Angular Zone.js",
+    "priority": "advanced",
+    "question": "What is Zone.js and how does it relate to Angular's change detection?",
+    "answer": "Zone.js is a library that patches browser APIs (events, setTimeout, XMLHttpRequest) and notifies Angular when async operations occur. This triggers change detection. It's the foundation of Angular's reactivity.",
+    "code": "// Zone.js patches these APIs:\n// - setTimeout, setInterval, clearTimeout\n// - addEventListener, removeEventListener\n// - Promise\n// - XMLHttpRequest\n// - requestAnimationFrame\n\n// Zone.js execution\nconsole.log('Before zone');\n\nZone.run(() => {\n  console.log('Inside zone');\n  setTimeout(() => {\n    console.log('Async operation');\n    // Change detection runs after this\n  }, 1000);\n});\n\n// Running outside Angular zone (performance optimization)\n@Component({...})\nexport class Component {\n  constructor(private ngZone: NgZone) {}\n  \n  heavyOperation() {\n    // Runs outside Angular zone, no change detection\n    this.ngZone.runOutsideAngular(() => {\n      setInterval(() => {\n        // Performance-critical code\n        // Won't trigger change detection\n        this.updateDomWithoutAngular();\n      }, 100);\n    });\n  }\n  \n  // Force change detection after outside work\n  updateAfterWork() {\n    this.ngZone.run(() => {\n      this.data = newData; // Triggers change detection\n    });\n  }\n}\n\n// Detecting zone execution\nif (Zone.current) {\n  console.log('Running in zone:', Zone.current.name);\n}\n\n// Custom zone task\nconst task = Zone.current.scheduleMacroTask(\n  'custom',\n  () => { /* work */ },\n  {},\n  () => { /* before */ },\n  () => { /* after */ }\n);\n\n// When to use runOutsideAngular\n// - Performance-critical loops\n// - Event listeners that don't need UI updates\n// - Third-party library integrations\n// - Continuous polling",
+    "explanation": "Zone.js is the engine that makes Angular's automatic change detection work. Understanding it helps with performance optimization and debugging change detection issues.",
+    "recallHint": "Zone.js = async operation tracker, runOutsideAngular = performance optimization.",
+    "practice": [
+      "Explain Zone.js role in change detection.",
+      "Use runOutsideAngular for performance.",
+      "Run code inside Angular zone after outside work."
+    ]
+  },
+  {
+    "id": "angular-080",
+    "category": "angular",
+    "concept": "Angular with Tailwind CSS",
+    "priority": "advanced",
+    "question": "How do you integrate Tailwind CSS with Angular?",
+    "answer": "Install Tailwind, add configuration files, and integrate with Angular's build process. Use Tailwind's utility-first classes directly in templates for rapid styling.",
+    "code": "// Install Tailwind\nnpm install -D tailwindcss postcss autoprefixer\nnpx tailwindcss init\n\n// tailwind.config.js\nmodule.exports = {\n  content: [\n    './src/**/*.{html,ts}',\n  ],\n  theme: {\n    extend: {\n      colors: {\n        primary: '#007bff',\n        secondary: '#6c757d'\n      }\n    }\n  },\n  plugins: []\n};\n\n// src/styles.css\n@tailwind base;\n@tailwind components;\n@tailwind utilities;\n\n// Angular component with Tailwind\n@Component({\n  selector: 'app-card',\n  template: `\n    <div class=\"max-w-sm rounded overflow-hidden shadow-lg\">\n      <div class=\"px-6 py-4\">\n        <div class=\"font-bold text-xl mb-2\">{{ title }}</div>\n        <p class=\"text-gray-700 text-base\">{{ content }}</p>\n      </div>\n      <div class=\"px-6 pt-4 pb-2\">\n        <span class=\"inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700\">\n          #tailwind\n        </span>\n        <span class=\"inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700\">\n          #angular\n        </span>\n      </div>\n    </div>\n  `\n})\nexport class CardComponent {\n  @Input() title: string;\n  @Input() content: string;\n}\n\n// Custom utilities\n@layer utilities {\n  .text-shadow {\n    text-shadow: 2px 2px 4px rgba(0,0,0,0.1);\n  }\n}\n\n// Dark mode support\n// tailwind.config.js\ndarkMode: 'class' // or 'media'\n\n// Usage\n<div class=\"dark:bg-gray-800 dark:text-white\">\n  Dark mode content\n</div>\n\n// Angular theme toggling\ndocument.documentElement.classList.toggle('dark');",
+    "explanation": "Tailwind CSS provides utility-first styling for Angular applications. It reduces CSS bundle size and speeds up development. Integrate with Angular's build pipeline.",
+    "recallHint": "tailwind.config.js, @tailwind directives, utility classes in templates.",
+    "practice": [
+      "Set up Tailwind in an Angular project.",
+      "Create a component with Tailwind classes.",
+      "Implement dark mode with Tailwind."
+    ]
+  },
+  {
+    "id": "angular-081",
+    "category": "angular",
+    "concept": "Angular with GraphQL",
+    "priority": "advanced",
+    "question": "How do you use GraphQL with Angular?",
+    "answer": "Use Apollo Angular for GraphQL integration. Apollo provides a client that handles queries, mutations, caching, and subscriptions with Angular integration.",
+    "code": "// Install Apollo Angular\nnpm install @apollo/client @apollo/angular graphql\n\n// app.config.ts (standalone)\nimport { provideApollo } from '@apollo/angular';\nimport { InMemoryCache } from '@apollo/client/core';\n\nconst apolloClient = new ApolloClient({\n  uri: 'https://api.example.com/graphql',\n  cache: new InMemoryCache()\n});\n\nexport const appConfig = {\n  providers: [\n    provideApollo(apolloClient)\n  ]\n};\n\n// OR module-based\n@NgModule({\n  imports: [\n    ApolloModule,\n    HttpLinkModule\n  ],\n  providers: [\n    {\n      provide: APOLLO_OPTIONS,\n      useFactory: (httpLink: HttpLink) => {\n        return {\n          cache: new InMemoryCache(),\n          link: httpLink.create({ uri: '/graphql' })\n        };\n      },\n      deps: [HttpLink]\n    }\n  ]\n})\n\n// GraphQL query component\nimport { Apollo, gql } from '@apollo/angular';\n\nconst GET_USERS = gql`\n  query GetUsers {\n    users {\n      id\n      name\n      email\n      posts {\n        id\n        title\n      }\n    }\n  }\n`;\n\n@Component({...})\nexport class UserComponent implements OnInit {\n  users$ = this.apollo.watchQuery<any>({\n    query: GET_USERS\n  }).valueChanges.pipe(\n    map(result => result.data.users)\n  );\n  \n  constructor(private apollo: Apollo) {}\n  \n  ngOnInit() {\n    this.users$.subscribe(users => {\n      console.log('Users:', users);\n    });\n  }\n}\n\n// GraphQL mutation\nconst CREATE_USER = gql`\n  mutation CreateUser($input: UserInput!) {\n    createUser(input: $input) {\n      id\n      name\n      email\n    }\n  }\n`;\n\ncreateUser(user: { name: string; email: string }) {\n  this.apollo.mutate({\n    mutation: CREATE_USER,\n    variables: { input: user }\n  }).subscribe(response => {\n    console.log('Created:', response.data.createUser);\n  });\n}\n\n// Apollo with cache\nconst apolloClient = new ApolloClient({\n  uri: '/graphql',\n  cache: new InMemoryCache({\n    typePolicies: {\n      User: {\n        keyFields: ['id']\n      }\n    }\n  })\n});",
+    "explanation": "GraphQL provides flexible querying and reduces over-fetching. Apollo Angular integrates GraphQL with Angular's reactive patterns. Use it for complex data fetching.",
+    "recallHint": "Apollo Angular, queries, mutations, caching.",
+    "practice": [
+      "Set up Apollo with Angular.",
+      "Create a GraphQL query component.",
+      "Implement a mutation."
+    ]
+  },
+  {
+    "id": "angular-082",
+    "category": "angular",
+    "concept": "Angular Signals - Advanced",
+    "priority": "advanced",
+    "question": "What are the advanced patterns with Angular Signals: computed, effect, and linkedSignal?",
+    "answer": "computed creates derived signals that update automatically. effect runs side effects when signal values change. linkedSignal (Angular 19+) links two signals together for two-way syncing.",
+    "code": "// computed - derived state\n@Component({...})\nexport class ShoppingCart {\n  items = signal<Item[]>([]);\n  \n  // Computed values auto-update\n  totalItems = computed(() => \n    this.items().reduce((sum, item) => sum + item.quantity, 0)\n  );\n  \n  totalPrice = computed(() => \n    this.items().reduce((sum, item) => sum + item.price * item.quantity, 0)\n  );\n  \n  // Computed with dependencies\n  discount = computed(() => \n    this.totalItems() > 10 ? 0.1 : 0\n  );\n  \n  finalPrice = computed(() => \n    this.totalPrice() * (1 - this.discount())\n  );\n}\n\n// effect - side effects\n@Component({...})\nexport class UserComponent {\n  userId = signal<number | null>(null);\n  user = signal<User | null>(null);\n  \n  // Effect for API calls\n  userEffect = effect(() => {\n    const id = this.userId();\n    if (id) {\n      this.loadUser(id);\n    }\n  });\n  \n  // Effect with cleanup\n  intervalEffect = effect((onCleanup) => {\n    const interval = setInterval(() => {\n      this.tick.update(v => v + 1);\n    }, 1000);\n    \n    onCleanup(() => clearInterval(interval));\n  });\n  \n  // Effect with injection context\n  private logger = inject(Logger);\n  \n  logEffect = effect(() => {\n    this.logger.log('User changed:', this.userId());\n  }, { injector: this.injector });\n}\n\n// linkedSignal - two-way sync (Angular 19+)\n@Component({...})\nexport class FormComponent {\n  // Linked signal with source\n  sourceValue = signal('initial');\n  \n  // Synchronized with source\n  linkedValue = linkedSignal(() => this.sourceValue());\n  \n  // Manual update without breaking link\n  updateSource(value: string) {\n    this.sourceValue.set(value); // linkedValue auto-updates\n  }\n  \n  // Break link and set value\n  updateLocal(value: string) {\n    this.linkedValue.set(value);\n  }\n  \n  // Linked signal with transform\n  uppercaseLinked = linkedSignal({\n    source: this.sourceValue,\n    transform: (value: string) => value.toUpperCase()\n  });\n}\n\n// Signal in services with singleton\n@Injectable({ providedIn: 'root' })\nexport class AppStore {\n  private state = signal<AppState>(initialState);\n  \n  // Expose readonly\n  readonlyState = this.state.asReadonly();\n  \n  // Selectors\n  selectUser = computed(() => this.state().user);\n  selectLoading = computed(() => this.state().loading);\n  \n  // Actions\n  setUser(user: User) {\n    this.state.update(state => ({ ...state, user }));\n  }\n  \n  setLoading(loading: boolean) {\n    this.state.update(state => ({ ...state, loading }));\n  }\n}",
+    "explanation": "Signals advanced patterns: computed for derived state, effect for side effects with cleanup, linkedSignal for two-way sync. These create reactive, predictable applications.",
+    "recallHint": "computed = derived, effect = side effects, linkedSignal = two-way sync.",
+    "practice": [
+      "Use computed for derived state.",
+      "Use effect for side effects.",
+      "Use linkedSignal for two-way sync."
+    ]
+  }
+]

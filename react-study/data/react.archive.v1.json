@@ -1,0 +1,77 @@
+[
+  {
+    "id": "react-001",
+    "category": "Basics",
+    "concept": "Virtual DOM",
+    "priority": "must-know",
+    "question": "What is the Virtual DOM and how does React use it for performance?",
+    "answer": "The Virtual DOM is a lightweight in-memory representation of the real DOM. React creates a virtual DOM tree, diffs it with the previous snapshot (reconciliation), and batches only the necessary changes to the real DOM.",
+    "code": "// React compares virtual DOM nodes:\nconst element = <h1>Hello, World!</h1>;",
+    "explanation": "Direct DOM manipulation is slow. By computing minimal differences in memory, React avoids expensive layout reflows and repaints in the browser.",
+    "recallHint": "Lightweight JavaScript object copy of DOM + Reconciliation diffing.",
+    "practice": [
+      "Explain the difference between real DOM and virtual DOM.",
+      "How does React batch DOM updates in React 18?"
+    ]
+  },
+  {
+    "id": "react-002",
+    "category": "Basics",
+    "concept": "Props vs State",
+    "priority": "must-know",
+    "question": "What is the fundamental difference between Props and State in React?",
+    "answer": "Props are read-only inputs passed from parent to child components. State is local, mutable component memory managed internally by the component itself.",
+    "code": "function Greeting({ name }) {\n  const [count, setCount] = useState(0);\n  return <button onClick={() => setCount(count + 1)}>{name}: {count}</button>;\n}",
+    "explanation": "Props make components reusable and configurable from outside. State allows components to handle interactive, dynamic data that changes over time.",
+    "recallHint": "Props are passed down (immutable); State is owned locally (mutable).",
+    "practice": [
+      "Can a child component directly modify its props?",
+      "How do you pass data from a child component back up to a parent?"
+    ]
+  },
+  {
+    "id": "react-003",
+    "category": "Hooks",
+    "concept": "useEffect Lifecycle",
+    "priority": "must-know",
+    "question": "How does useEffect work and how does the dependency array control its execution?",
+    "answer": "useEffect lets you synchronize a component with external systems (API calls, event listeners, timers). No dependency array runs on every render; empty [] runs only on mount; [dep1, dep2] runs when dependencies change. Returning a function provides cleanup.",
+    "code": "useEffect(() => {\n  const timer = setInterval(() => console.log('tick'), 1000);\n  return () => clearInterval(timer); // cleanup on unmount\n}, []);",
+    "explanation": "The cleanup function runs before the effect runs again and when the component unmounts, preventing memory leaks.",
+    "recallHint": "Effects synchronize with external systems; cleanup prevents leaks.",
+    "practice": [
+      "Why should you never omit reactive dependencies from the array?",
+      "When does the cleanup function execute in relation to the next render?"
+    ]
+  },
+  {
+    "id": "react-004",
+    "category": "Performance",
+    "concept": "useMemo vs useCallback",
+    "priority": "must-know",
+    "question": "What is the difference between useMemo and useCallback?",
+    "answer": "useMemo memoizes the computed result of an expensive calculation. useCallback memoizes the callback function reference itself to prevent unnecessary child re-renders.",
+    "code": "const memoizedValue = useMemo(() => computeExpensive(a, b), [a, b]);\nconst memoizedCallback = useCallback(() => doSomething(a), [a]);",
+    "explanation": "useCallback(fn, deps) is equivalent to useMemo(() => fn, deps). Both only recalculate when their dependencies change.",
+    "recallHint": "useMemo caches the VALUE; useCallback caches the FUNCTION definition.",
+    "practice": [
+      "Why shouldn't you wrap every single function in useCallback?",
+      "How does React.memo pair with useCallback?"
+    ]
+  },
+  {
+    "id": "react-005",
+    "category": "State",
+    "concept": "Context API",
+    "priority": "must-know",
+    "question": "What problem does the Context API solve and when should it be avoided?",
+    "answer": "Context solves prop drilling by passing data deeply down the component tree without passing props through intermediate layers. It should be avoided for frequently changing values because all consumer components re-render when context value changes.",
+    "code": "const ThemeContext = createContext('light');\n// Consuming with useContext hook:\nconst theme = useContext(ThemeContext);",
+    "explanation": "Context is ideal for global state like current user, authentication token, theme, or localized language.",
+    "recallHint": "Avoids prop drilling for shared, relatively stable application state.",
+    "practice": [
+      "How can you optimize Context to avoid re-rendering consumers that only need a subset of state?",
+      "Compare Context API with Redux or Zustand."
+    ]
+  }
+]

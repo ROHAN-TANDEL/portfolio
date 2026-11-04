@@ -1,0 +1,1145 @@
+[
+  {
+    "id": "angular-ex-01",
+    "title": "Accessible Auto-Focus Directive with afterNextRender",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Creates an accessible auto-focus attribute directive that focuses target input elements safely on the browser after DOM rendering, avoiding SSR crashes.",
+    "conceptsCovered": [
+      "Directive",
+      "ElementRef",
+      "afterNextRender",
+      "SSR Safety",
+      "Accessibility (a11y)"
+    ],
+    "code": "import { Directive, ElementRef, inject, afterNextRender } from '@angular/core';\n\n@Directive({\n  selector: '[appAutoFocus]',\n  standalone: true\n})\nexport class AutoFocusDirective {\n  private el = inject(ElementRef<HTMLInputElement | HTMLButtonElement>);\n\n  constructor() {\n    // afterNextRender runs ONLY on the browser, safely after DOM painting!\n    afterNextRender(() => {\n      this.el.nativeElement.focus();\n    });\n  }\n}\n\n// Usage in Component:\n// <input appAutoFocus placeholder=\"Auto-focused field\" />",
+    "breakdown": [
+      "afterNextRender executes only in the browser context, preventing 'document is not defined' errors during SSR.",
+      "ElementRef injects the host DOM element reference with strict type constraints.",
+      "Synchronizes element focus after the browser layout and paint phase has completed.",
+      "Eliminates boilerplate ngAfterViewInit lifecycle checks and setTimeout workarounds."
+    ],
+    "expectedOutput": "Host input automatically receives focus immediately upon component mount without SSR errors."
+  },
+  {
+    "id": "angular-ex-02",
+    "title": "Click-Outside Directive for Flyouts & Dropdowns",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Detects user clicks outside a specified container element using ElementRef.contains and dispatches an output event to dismiss dropdowns or modals.",
+    "conceptsCovered": [
+      "HostListener",
+      "ElementRef",
+      "OutputEmitterRef",
+      "DOM Traversal",
+      "Event Propagation"
+    ],
+    "code": "import { Directive, ElementRef, output, HostListener, inject } from '@angular/core';\n\n@Directive({\n  selector: '[appClickOutside]',\n  standalone: true\n})\nexport class ClickOutsideDirective {\n  private el = inject(ElementRef);\n  // Angular 17+ functional output signal:\n  clickOutside = output<MouseEvent>();\n\n  @HostListener('document:click', ['$event'])\n  onDocumentClick(event: MouseEvent) {\n    const target = event.target as HTMLElement;\n    // Check if clicked target is outside host element hierarchy:\n    if (!this.el.nativeElement.contains(target)) {\n      this.clickOutside.emit(event);\n    }\n  }\n}\n\n// Usage:\n// <div class=\"dropdown-menu\" (appClickOutside)=\"isMenuOpen = false\">Menu Items</div>",
+    "breakdown": [
+      "@HostListener('document:click') registers a global click listener on the browser document.",
+      "this.el.nativeElement.contains(target) verifies whether the clicked DOM node resides within the host element.",
+      "output<MouseEvent>() replaces legacy @Output() EventEmitter with Angular 17+ functional output syntax.",
+      "Emits an event only when click originated outside the component boundary, perfect for closing flyouts."
+    ],
+    "expectedOutput": "Dropdown menu closes cleanly when user clicks anywhere else on the document."
+  },
+  {
+    "id": "angular-ex-03",
+    "title": "Host Directives Composition API with Input/Output Aliasing",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Composes multiple reusable behaviors (Tooltip, ClickOutside) onto a component using hostDirectives, aliasing inputs and outputs without template clutter.",
+    "conceptsCovered": [
+      "hostDirectives",
+      "Composition over Inheritance",
+      "Directive Aliasing",
+      "Standalone Architecture"
+    ],
+    "code": "import { Directive, Component, input } from '@angular/core';\n\n@Directive({ selector: '[appHighlight]', standalone: true })\nexport class HighlightDirective {\n  color = input<string>('yellow');\n}\n\n@Directive({ selector: '[appRipple]', standalone: true })\nexport class RippleDirective {\n  rippleColor = input<string>('rgba(0,0,0,0.1)');\n}\n\n// Host Component composing both directives without adding them to template:\n@Component({\n  selector: 'app-fancy-button',\n  standalone: true,\n  hostDirectives: [\n    {\n      directive: HighlightDirective,\n      inputs: ['color: highlightColor'] // Exposes 'color' as 'highlightColor'\n    },\n    {\n      directive: RippleDirective,\n      inputs: ['rippleColor']\n    }\n  ],\n  template: `<button><ng-content /></button>`\n})\nexport class FancyButtonComponent {}\n\n// Usage in parent template:\n// <app-fancy-button highlightColor=\"lightblue\" rippleColor=\"red\">Submit</app-fancy-button>",
+    "breakdown": [
+      "hostDirectives attaches behavior directives directly to the host component element at compile time.",
+      "Avoids deep class inheritance hierarchies by favoring clean functional composition.",
+      "The inputs array exposes and renames directive inputs on the host component's public API.",
+      "Consumers interact with a single unified component tag while behaviors remain strictly modular."
+    ],
+    "expectedOutput": "FancyButton incorporates highlight and ripple directives seamlessly with exposed inputs."
+  },
+  {
+    "id": "angular-ex-04",
+    "title": "Dynamic Component Portal via ViewContainerRef",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Dynamically instantiates standalone components into an arbitrary container using ViewContainerRef.createComponent, passing inputs via setInput and subscribing to outputs.",
+    "conceptsCovered": [
+      "ViewContainerRef",
+      "ComponentRef",
+      "Dynamic Instantiation",
+      "setInput API",
+      "Teardown Cleanup"
+    ],
+    "code": "import { Component, ViewContainerRef, viewChild, ComponentRef, OnDestroy } from '@angular/core';\n\n@Component({\n  selector: 'app-alert-banner',\n  standalone: true,\n  template: `<div class=\"alert alert-info\">{{ message }}</div>`\n})\nexport class AlertBannerComponent {\n  message = 'Default Banner';\n}\n\n@Component({\n  selector: 'app-portal-host',\n  standalone: true,\n  template: `\n    <button (click)=\"createAlert()\">Spawn Dynamic Alert</button>\n    <button (click)=\"clearAll()\">Clear Alerts</button>\n    <div #alertOutlet></div>\n  `\n})\nexport class PortalHostComponent implements OnDestroy {\n  private outlet = viewChild.required('alertOutlet', { read: ViewContainerRef });\n  private spawnedRefs: ComponentRef<AlertBannerComponent>[] = [];\n\n  createAlert() {\n    // Instantiate component dynamically without ComponentFactoryResolver!\n    const compRef = this.outlet().createComponent(AlertBannerComponent);\n    compRef.setInput('message', `Alert created at ${new Date().toLocaleTimeString()}`);\n    this.spawnedRefs.push(compRef);\n  }\n\n  clearAll() {\n    this.outlet().clear();\n    this.spawnedRefs = [];\n  }\n\n  ngOnDestroy() {\n    this.clearAll();\n  }\n}",
+    "breakdown": [
+      "outlet().createComponent(AlertBannerComponent) instantiates the standalone component directly into the DOM.",
+      "compRef.setInput('message', value) binds properties reactively without manual change detection triggering.",
+      "Maintains array of ComponentRef instances to manage lifecycle and clean up on parent destruction.",
+      "this.outlet().clear() cleanly destroys all dynamically attached embedded views."
+    ],
+    "expectedOutput": "Clicking spawn inserts a new AlertBannerComponent into the DOM; clear removes all instances."
+  },
+  {
+    "id": "angular-ex-05",
+    "title": "Multi-Slot Content Projection Card with Fallback Content",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Implements an enterprise card component with multi-slot content projection using CSS selectors and Angular 18 default fallback content.",
+    "conceptsCovered": [
+      "ng-content",
+      "Multi-slot Projection",
+      "CSS Selectors",
+      "Fallback Content",
+      "Angular 18 Features"
+    ],
+    "code": "import { Component } from '@angular/core';\n\n@Component({\n  selector: 'app-content-card',\n  standalone: true,\n  styles: [`\n    .card { border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }\n    .header { background: #f8f9fa; padding: 12px 16px; border-bottom: 1px solid #eee; }\n    .body { padding: 16px; }\n    .footer { padding: 8px 16px; background: #fafafa; border-top: 1px solid #eee; }\n  `],\n  template: `\n    <div class=\"card\">\n      <header class=\"header\">\n        <ng-content select=\"[card-header]\">\n          <!-- Fallback content if parent projects nothing -->\n          <h4 style=\"margin: 0;\">Standard Card Header</h4>\n        </ng-content>\n      </header>\n      <main class=\"body\">\n        <ng-content /> <!-- Default catch-all projection slot -->\n      </main>\n      <footer class=\"footer\">\n        <ng-content select=\"[card-footer]\" />\n      </footer>\n    </div>\n  `\n})\nexport class ContentCardComponent {}\n\n// Parent Usage:\n// <app-content-card>\n//   <div card-header>Custom Invoicing Title</div>\n//   <p>Invoice details for order #9921.</p>\n//   <button card-footer>Print</button>\n// </app-content-card>",
+    "breakdown": [
+      "ng-content with select=\"[card-header]\" matches elements decorated with the card-header attribute.",
+      "Angular 18 allows nesting default fallback elements directly inside <ng-content>...</ng-content>.",
+      "The unselected <ng-content /> acts as the primary catch-all slot for component body content.",
+      "Zero JavaScript overhead: slots are resolved purely during compile time by the Ivy template engine."
+    ],
+    "expectedOutput": "Card renders header, body, and footer into designated slots with automatic fallback if header omitted."
+  },
+  {
+    "id": "angular-ex-06",
+    "title": "Custom Debounced Input Directive with RxJS Subject",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Debounces input keystrokes at the directive level, emitting a clean throttled output event to prevent spamming search endpoints.",
+    "conceptsCovered": [
+      "Directive",
+      "RxJS Subject",
+      "debounceTime",
+      "distinctUntilChanged",
+      "takeUntilDestroyed"
+    ],
+    "code": "import { Directive, output, input, HostListener, OnInit, inject, DestroyRef } from '@angular/core';\nimport { Subject } from 'rxjs';\nimport { debounceTime, distinctUntilChanged } from 'rxjs/operators';\nimport { takeUntilDestroyed } from '@angular/core/rxjs-interop';\n\n@Directive({\n  selector: '[appDebounceInput]',\n  standalone: true\n})\nexport class DebounceInputDirective implements OnInit {\n  private destroyRef = inject(DestroyRef);\n  private input$ = new Subject<string>();\n\n  debounceMs = input<number>(300);\n  debouncedValue = output<string>();\n\n  @HostListener('input', ['$event.target.value'])\n  onInput(value: string) {\n    this.input$.next(value);\n  }\n\n  ngOnInit() {\n    this.input$.pipe(\n      debounceTime(this.debounceMs()),\n      distinctUntilChanged(),\n      takeUntilDestroyed(this.destroyRef)\n    ).subscribe(val => this.debouncedValue.emit(val));\n  }\n}\n\n// Usage:\n// <input [debounceMs]=\"400\" (debouncedValue)=\"onSearch($event)\" />",
+    "breakdown": [
+      "Subject<string> captures raw browser input events dispatched by the host input element.",
+      "debounceTime waits for a pause in typing before emitting the latest value.",
+      "distinctUntilChanged prevents emitting identical consecutive values.",
+      "takeUntilDestroyed(this.destroyRef) ensures the subscription is cleaned up when input unmounts."
+    ],
+    "expectedOutput": "Typing triggers search callback only after user pauses for specified millisecond window."
+  },
+  {
+    "id": "angular-ex-07",
+    "title": "One-Click Copy-to-Clipboard Directive with Visual Feedback",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Copies specified text strings to the system clipboard using navigator.clipboard, toggling a temporary 'copied' CSS class on the host element.",
+    "conceptsCovered": [
+      "Clipboard API",
+      "HostListener",
+      "Renderer2",
+      "ElementRef",
+      "Async Browser API"
+    ],
+    "code": "import { Directive, ElementRef, HostListener, input, inject, Renderer2 } from '@angular/core';\n\n@Directive({\n  selector: '[appCopyToClipboard]',\n  standalone: true\n})\nexport class CopyToClipboardDirective {\n  private el = inject(ElementRef);\n  private renderer = inject(Renderer2);\n\n  textToCopy = input.required<string>({ alias: 'appCopyToClipboard' });\n\n  @HostListener('click')\n  async onClick() {\n    if (!navigator.clipboard) return;\n\n    try {\n      await navigator.clipboard.writeText(this.textToCopy());\n      // Add success feedback class\n      this.renderer.addClass(this.el.nativeElement, 'copy-success');\n      setTimeout(() => {\n        this.renderer.removeClass(this.el.nativeElement, 'copy-success');\n      }, 1500);\n    } catch (err) {\n      console.error('Failed to copy to clipboard', err);\n    }\n  }\n}\n\n// Usage:\n// <button [appCopyToClipboard]=\"apiKey\">Copy API Key</button>",
+    "breakdown": [
+      "navigator.clipboard.writeText copies the text string asynchronously to the system clipboard.",
+      "Renderer2 safely mutates DOM element class lists in an SSR-compatible way.",
+      "input.required ensures compile-time errors if textToCopy is omitted.",
+      "Automatically removes visual feedback class after 1.5 seconds."
+    ],
+    "expectedOutput": "Clicking copies target text to clipboard and flashes 'copy-success' class on button."
+  },
+  {
+    "id": "angular-ex-08",
+    "title": "Dynamic Tooltip Directive with CDK Overlay & ConnectedPosition",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Displays a floating tooltip positioned relative to the target element using Angular CDK Overlay, handling mouseenter and mouseleave triggers.",
+    "conceptsCovered": [
+      "CDK Overlay",
+      "ComponentPortal",
+      "FlexibleConnectedPositionStrategy",
+      "HostListener",
+      "OverlayRef"
+    ],
+    "code": "import { Directive, ElementRef, HostListener, input, inject, Component, OnDestroy } from '@angular/core';\nimport { Overlay, OverlayRef } from '@angular/cdk/overlay';\nimport { ComponentPortal } from '@angular/cdk/portal';\n\n@Component({\n  selector: 'app-tooltip-box',\n  standalone: true,\n  styles: [`\n    :host { background: #333; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px; }\n  `],\n  template: `<span>{{ text }}</span>`\n})\nexport class TooltipBoxComponent {\n  text = '';\n}\n\n@Directive({\n  selector: '[appTooltip]',\n  standalone: true\n})\nexport class TooltipDirective implements OnDestroy {\n  private el = inject(ElementRef);\n  private overlay = inject(Overlay);\n  private overlayRef?: OverlayRef;\n\n  tooltipText = input.required<string>({ alias: 'appTooltip' });\n\n  @HostListener('mouseenter')\n  show() {\n    if (this.overlayRef) return;\n\n    const positionStrategy = this.overlay.position()\n      .flexibleConnectedTo(this.el)\n      .withPositions([\n        { originX: 'center', originY: 'top', overlayX: 'center', overlayY: 'bottom', offsetY: -6 }\n      ]);\n\n    this.overlayRef = this.overlay.create({ positionStrategy });\n    const portal = new ComponentPortal(TooltipBoxComponent);\n    const ref = this.overlayRef.attach(portal);\n    ref.instance.text = this.tooltipText();\n  }\n\n  @HostListener('mouseleave')\n  hide() {\n    this.overlayRef?.dispose();\n    this.overlayRef = undefined;\n  }\n\n  ngOnDestroy() {\n    this.hide();\n  }\n}",
+    "breakdown": [
+      "CDK Overlay creates a floating DOM container outside parent clipping layers.",
+      "FlexibleConnectedPositionStrategy pins the tooltip above the host element with automatic boundary checking.",
+      "ComponentPortal mounts TooltipBoxComponent dynamically inside the overlay pane.",
+      "Properly disposes of the overlay in mouseleave and ngOnDestroy to prevent memory leaks."
+    ],
+    "expectedOutput": "Hovering over element displays floating tooltip centered above target element."
+  },
+  {
+    "id": "angular-ex-09",
+    "title": "Infinite Scroll Trigger Directive with IntersectionObserver",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Emits a scrollEnd event when a sentinel element enters the viewport using IntersectionObserver, triggering pagination for infinite feeds.",
+    "conceptsCovered": [
+      "IntersectionObserver",
+      "ElementRef",
+      "output",
+      "afterNextRender",
+      "Performance"
+    ],
+    "code": "import { Directive, ElementRef, output, inject, afterNextRender, OnDestroy } from '@angular/core';\n\n@Directive({\n  selector: '[appInfiniteScrollTrigger]',\n  standalone: true\n})\nexport class InfiniteScrollTriggerDirective implements OnDestroy {\n  private el = inject(ElementRef);\n  private observer?: IntersectionObserver;\n\n  scrolled = output<void>();\n\n  constructor() {\n    afterNextRender(() => {\n      this.observer = new IntersectionObserver(([entry]) => {\n        if (entry.isIntersecting) {\n          this.scrolled.emit();\n        }\n      }, { threshold: 0.1 });\n\n      this.observer.observe(this.el.nativeElement);\n    });\n  }\n\n  ngOnDestroy() {\n    this.observer?.disconnect();\n  }\n}\n\n// Usage in template at bottom of list:\n// <div appInfiniteScrollTrigger (scrolled)=\"loadNextPage()\">Loading more items...</div>",
+    "breakdown": [
+      "Uses browser native IntersectionObserver rather than high-frequency window scroll event listeners.",
+      "afterNextRender ensures the observer attaches only in browser environments.",
+      "threshold: 0.1 fires when the sentinel element is 10% visible in the viewport.",
+      "Disconnects observer in ngOnDestroy to prevent memory leaks when navigating away."
+    ],
+    "expectedOutput": "Scrolling to the bottom of the page fires scrolled event, triggering next page fetch."
+  },
+  {
+    "id": "angular-ex-10",
+    "title": "HTML5 Drag-and-Drop File Upload Directive",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements a drag-and-drop file dropzone directive, intercepting dragover and drop events, extracting files, and toggling visual drag states.",
+    "conceptsCovered": [
+      "HTML5 Drag and Drop API",
+      "HostListener",
+      "HostBinding",
+      "FileList",
+      "Custom Output"
+    ],
+    "code": "import { Directive, HostBinding, HostListener, output } from '@angular/core';\n\n@Directive({\n  selector: '[appFileDrop]',\n  standalone: true\n})\nexport class FileDropDirective {\n  @HostBinding('class.drag-over') isDragOver = false;\n\n  filesDropped = output<File[]>();\n\n  @HostListener('dragover', ['$event'])\n  onDragOver(e: DragEvent) {\n    e.preventDefault();\n    e.stopPropagation();\n    this.isDragOver = true;\n  }\n\n  @HostListener('dragleave', ['$event'])\n  onDragLeave(e: DragEvent) {\n    e.preventDefault();\n    e.stopPropagation();\n    this.isDragOver = false;\n  }\n\n  @HostListener('drop', ['$event'])\n  onDrop(e: DragEvent) {\n    e.preventDefault();\n    e.stopPropagation();\n    this.isDragOver = false;\n\n    if (e.dataTransfer && e.dataTransfer.files.length > 0) {\n      const files = Array.from(e.dataTransfer.files);\n      this.filesDropped.emit(files);\n    }\n  }\n}\n\n// Usage:\n// <div appFileDrop (filesDropped)=\"uploadFiles($event)\" class=\"dropzone\">Drop files here</div>",
+    "breakdown": [
+      "e.preventDefault() on dragover is mandatory to permit drop events in HTML5.",
+      "@HostBinding('class.drag-over') dynamically toggles styling when files hover over target.",
+      "Converts FileList into standard JavaScript Array for type-safe processing.",
+      "Emits an array of File objects to the parent component."
+    ],
+    "expectedOutput": "Dropping files on host element highlights container and emits selected File array."
+  },
+  {
+    "id": "angular-ex-11",
+    "title": "Signal-Based View Queries with viewChild and viewChildren",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Leverages modern Angular 17.1+ signal-based viewChild and viewChildren queries to access DOM elements and child components with automatic reactivity.",
+    "conceptsCovered": [
+      "viewChild.required",
+      "viewChildren",
+      "Signal View Queries",
+      "ElementRef",
+      "effect()"
+    ],
+    "code": "import { Component, ElementRef, viewChild, viewChildren, effect, AfterViewInit } from '@angular/core';\n\n@Component({\n  selector: 'app-view-query-demo',\n  standalone: true,\n  template: `\n    <input #mainInput placeholder=\"Focus me\" />\n    <ul>\n      @for (item of items; track item) {\n        <li #listItem>{{ item }}</li>\n      }\n    </ul>\n    <button (click)=\"focusInput()\">Focus</button>\n  `\n})\nexport class ViewQueryDemoComponent {\n  items = ['Item Alpha', 'Item Beta', 'Item Gamma'];\n\n  // Signal-based queries: automatically reactive!\n  mainInput = viewChild.required<ElementRef<HTMLInputElement>>('mainInput');\n  listItems = viewChildren<ElementRef<HTMLLIElement>>('listItem');\n\n  constructor() {\n    // Automatically reacts whenever query matches resolve or change!\n    effect(() => {\n      console.log('List item count in DOM:', this.listItems().length);\n    });\n  }\n\n  focusInput() {\n    this.mainInput().nativeElement.focus();\n  }\n}",
+    "breakdown": [
+      "viewChild.required returns a Signal<ElementRef<T>> guaranteed to exist after view initialization.",
+      "viewChildren returns a Signal<readonly ElementRef<T>[]> that updates automatically when list changes.",
+      "Queries work natively with effect(), eliminating boilerplate ngAfterViewInit subscriptions.",
+      "Reading the signal (mainInput().nativeElement) provides instantaneous type-safe DOM access."
+    ],
+    "expectedOutput": "DOM elements accessed cleanly via reactive signals with zero legacy decorator boilerplate."
+  },
+  {
+    "id": "angular-ex-12",
+    "title": "Typeahead Autocomplete Search with switchMap & Cancellation",
+    "category": "Reactive RxJS Orchestration",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs an enterprise search typeahead input with debouncing, duplicate suppression, and switchMap race-condition cancellation.",
+    "conceptsCovered": [
+      "switchMap",
+      "debounceTime",
+      "distinctUntilChanged",
+      "filter",
+      "toSignal"
+    ],
+    "code": "import { Component, inject } from '@angular/core';\nimport { FormControl, ReactiveFormsModule } from '@angular/forms';\nimport { HttpClient } from '@angular/common/http';\nimport { debounceTime, distinctUntilChanged, switchMap, filter, catchError } from 'rxjs/operators';\nimport { of } from 'rxjs';\nimport { toSignal } from '@angular/core/rxjs-interop';\n\ninterface SearchResult { id: string; title: string; }\n\n@Component({\n  selector: 'app-typeahead-search',\n  standalone: true,\n  imports: [ReactiveFormsModule],\n  template: `\n    <input [formControl]=\"searchControl\" placeholder=\"Search articles...\" />\n    <ul>\n      @for (item of results(); track item.id) {\n        <li>{{ item.title }}</li>\n      }\n    </ul>\n  `\n})\nexport class TypeaheadSearchComponent {\n  private http = inject(HttpClient);\n  searchControl = new FormControl('', { nonNullable: true });\n\n  private search$ = this.searchControl.valueChanges.pipe(\n    debounceTime(300),\n    filter(term => term.trim().length >= 2),\n    distinctUntilChanged(),\n    // switchMap cancels prior in-flight search requests when user types again!\n    switchMap(query => this.http.get<SearchResult[]>(`/api/search?q=${encodeURIComponent(query)}`).pipe(\n      catchError(() => of([])) // Prevent stream failure\n    ))\n  );\n\n  // Expose as clean synchronous Signal for the template\n  results = toSignal(this.search$, { initialValue: [] });\n}",
+    "breakdown": [
+      "debounceTime(300) waits 300ms after user stops typing before making network requests.",
+      "filter(term => term.length >= 2) ignores single characters to avoid firing heavy queries.",
+      "switchMap cancels prior in-flight HTTP calls if the user enters a new keystroke, preventing race conditions.",
+      "toSignal converts the RxJS stream into a Signal, rendering cleanly in template without async pipe."
+    ],
+    "expectedOutput": "Smooth search autocomplete that cancels outdated network requests on fast keystrokes."
+  },
+  {
+    "id": "angular-ex-13",
+    "title": "Resilient Polling Stream with timer, exhaustMap & Auto-Teardown",
+    "category": "Reactive RxJS Orchestration",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Executes periodic background polling for status updates using timer and exhaustMap, avoiding overlapping concurrent requests and cleaning up via takeUntilDestroyed.",
+    "conceptsCovered": [
+      "timer",
+      "exhaustMap",
+      "takeUntilDestroyed",
+      "Background Polling",
+      "DestroyRef"
+    ],
+    "code": "import { Component, inject, OnInit, signal } from '@angular/core';\nimport { HttpClient } from '@angular/common/http';\nimport { timer } from 'rxjs';\nimport { exhaustMap, tap } from 'rxjs/operators';\nimport { takeUntilDestroyed, DestroyRef } from '@angular/core/rxjs-interop';\n\n@Component({\n  selector: 'app-job-poller',\n  standalone: true,\n  template: `\n    <p>Job Status: {{ status() }}</p>\n    <p>Last Ping: {{ lastPing() }}</p>\n  `\n})\nexport class JobPollerComponent implements OnInit {\n  private http = inject(HttpClient);\n  private destroyRef = inject(DestroyRef);\n\n  status = signal('PENDING');\n  lastPing = signal('');\n\n  ngOnInit() {\n    // Polls every 5000ms after an initial 0ms delay:\n    timer(0, 5000).pipe(\n      // exhaustMap ignores timer tick if the previous HTTP poll is still pending!\n      exhaustMap(() => this.http.get<{ status: string }>('/api/jobs/current/status')),\n      takeUntilDestroyed(this.destroyRef) // Auto unsubs on component unmount\n    ).subscribe({\n      next: (res) => {\n        this.status.set(res.status);\n        this.lastPing.set(new Date().toLocaleTimeString());\n      }\n    });\n  }\n}",
+    "breakdown": [
+      "timer(0, 5000) generates an emission immediately and every 5 seconds thereafter.",
+      "exhaustMap drops subsequent timer ticks if the previous HTTP response has not yet completed (slow networks).",
+      "takeUntilDestroyed(this.destroyRef) automatically tears down the polling loop when navigating away.",
+      "Updates Signals synchronously, ensuring OnPush change detection flags views cleanly."
+    ],
+    "expectedOutput": "Polls server status every 5s without stacking duplicate requests on slow connections."
+  },
+  {
+    "id": "angular-ex-14",
+    "title": "Resilient HTTP Retry with Exponential Backoff & Jitter",
+    "category": "Reactive RxJS Orchestration",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements an exponential backoff retry mechanism with randomized jitter to handle transient network and 503 service unavailable failures gracefully.",
+    "conceptsCovered": [
+      "retry",
+      "Exponential Backoff",
+      "Jitter Calculation",
+      "Error Handling",
+      "Resilience"
+    ],
+    "code": "import { Injectable, inject } from '@angular/core';\nimport { HttpClient, HttpErrorResponse } from '@angular/common/http';\nimport { Observable, timer, throwError } from 'rxjs';\nimport { retry } from 'rxjs/operators';\n\n@Injectable({ providedIn: 'root' })\nexport class ResilientApiService {\n  private http = inject(HttpClient);\n\n  fetchDataWithRetry<T>(url: string, maxRetries = 3, baseDelayMs = 1000): Observable<T> {\n    return this.http.get<T>(url).pipe(\n      retry({\n        count: maxRetries,\n        delay: (error: HttpErrorResponse, retryCount: number) => {\n          // Do not retry 4xx client errors (e.g. 401, 403, 404)\n          if (error.status >= 400 && error.status < 500) {\n            return throwError(() => error);\n          }\n\n          // Calculate Exponential Backoff: baseDelay * 2^(retryCount - 1)\n          const exponentialDelay = baseDelayMs * Math.pow(2, retryCount - 1);\n          // Add randomized Jitter (+/- 20%) to prevent thundering herd problem:\n          const jitter = (Math.random() - 0.5) * 0.4 * exponentialDelay;\n          const totalDelay = Math.max(100, Math.floor(exponentialDelay + jitter));\n\n          console.warn(`Attempt ${retryCount} failed. Retrying in ${totalDelay}ms...`);\n          return timer(totalDelay);\n        }\n      })\n    );\n  }\n}",
+    "breakdown": [
+      "Uses RxJS 7+ retry({ count, delay: (err, count) => Observable }) signature.",
+      "Checks error status code to avoid futile retries on 401 Unauthorized or 404 Not Found.",
+      "Exponential backoff scales delay geometrically (1s, 2s, 4s, etc.).",
+      "Randomized jitter prevents thousands of clients from hammering a recovering server simultaneously."
+    ],
+    "expectedOutput": "Retries failed requests with increasing intervals and jitter before finally throwing error."
+  },
+  {
+    "id": "angular-ex-15",
+    "title": "Real-Time WebSocket Subject with Auto-Reconnect & Heartbeat",
+    "category": "Reactive RxJS Orchestration",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Wraps browser WebSocket into an RxJS webSocket subject, handling automatic reconnection on disconnect, ping/pong heartbeats, and message multiplexing.",
+    "conceptsCovered": [
+      "webSocket Subject",
+      "Auto-Reconnect",
+      "Heartbeat Ping/Pong",
+      "retryWhen / retry",
+      "Teardown"
+    ],
+    "code": "import { Injectable } from '@angular/core';\nimport { webSocket, WebSocketSubject } from 'rxjs/webSocket';\nimport { Observable, timer, Subject } from 'rxjs';\nimport { retry, shareReplay, tap } from 'rxjs/operators';\n\n@Injectable({ providedIn: 'root' })\nexport class RealtimeStreamService {\n  private socket$?: WebSocketSubject<any>;\n  private reconnectIntervalMs = 3000;\n\n  connect<T>(url: string): Observable<T> {\n    if (!this.socket$ || this.socket$.closed) {\n      this.socket$ = webSocket({\n        url,\n        openObserver: {\n          next: () => console.log('WebSocket connection opened successfully')\n        },\n        closeObserver: {\n          next: () => console.warn('WebSocket connection closed. Scheduling reconnect...')\n        }\n      });\n    }\n\n    return this.socket$.asObservable().pipe(\n      // Auto-reconnect on socket failure\n      retry({\n        delay: () => timer(this.reconnectIntervalMs)\n      }),\n      shareReplay({ bufferSize: 1, refCount: true })\n    );\n  }\n\n  send(message: any) {\n    this.socket$?.next(message);\n  }\n\n  close() {\n    this.socket$?.complete();\n  }\n}",
+    "breakdown": [
+      "webSocket from rxjs/webSocket provides bidirectional message streaming.",
+      "openObserver and closeObserver track socket connection state lifecycle.",
+      "retry({ delay: () => timer(3000) }) automatically re-establishes socket connection after dropped network.",
+      "shareReplay({ refCount: true }) multiplexes single socket among multiple component subscribers."
+    ],
+    "expectedOutput": "Robust WebSocket stream that automatically re-establishes connection on disconnection."
+  },
+  {
+    "id": "angular-ex-16",
+    "title": "Concurrent Multi-Resource Loader with forkJoin & Loading States",
+    "category": "Reactive RxJS Orchestration",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Fetches user profile, permissions, and system preferences concurrently using forkJoin, mapping into a unified state model with error protection.",
+    "conceptsCovered": [
+      "forkJoin",
+      "catchError",
+      "Concurrent Loading",
+      "Unified State Model",
+      "toSignal"
+    ],
+    "code": "import { Component, inject } from '@angular/core';\nimport { HttpClient } from '@angular/common/http';\nimport { forkJoin, of } from 'rxjs';\nimport { map, catchError } from 'rxjs/operators';\nimport { toSignal } from '@angular/core/rxjs-interop';\n\ninterface DashboardData {\n  user: { name: string };\n  notifications: string[];\n  systemStatus: string;\n}\n\n@Component({\n  selector: 'app-dashboard-loader',\n  standalone: true,\n  template: `\n    @if (dashboard(); as data) {\n      <h1>Welcome, {{ data.user.name }}</h1>\n      <p>System: {{ data.systemStatus }}</p>\n      <p>Notifications: {{ data.notifications.length }}</p>\n    } @else {\n      <div class=\"skeleton\">Loading dashboard resources...</div>\n    }\n  `\n})\nexport class DashboardLoaderComponent {\n  private http = inject(HttpClient);\n\n  private dashboard$ = forkJoin({\n    user: this.http.get<{ name: string }>('/api/user/me'),\n    notifications: this.http.get<string[]>('/api/notifications').pipe(catchError(() => of([]))),\n    systemStatus: this.http.get<{ status: string }>('/api/status').pipe(\n      map(r => r.status),\n      catchError(() => of('Operational'))\n    )\n  });\n\n  dashboard = toSignal(this.dashboard$, { initialValue: null });\n}",
+    "breakdown": [
+      "forkJoin executes all 3 HTTP requests concurrently in parallel.",
+      "Emits only when ALL requests have successfully completed.",
+      "Each individual call has localized catchError to prevent a single failure from aborting the entire page.",
+      "toSignal delivers synchronous data object to the @if control flow block."
+    ],
+    "expectedOutput": "Dashboard data loaded in parallel with fallback defaults for failing auxiliary endpoints."
+  },
+  {
+    "id": "angular-ex-17",
+    "title": "Sequential Order Processing Queue with concatMap",
+    "category": "Reactive RxJS Orchestration",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Guarantees strict sequential order of asynchronous tasks using concatMap, processing order submissions one after another without overlap.",
+    "conceptsCovered": [
+      "concatMap",
+      "Subject",
+      "FIFO Processing",
+      "Queue Management",
+      "Async Synchronization"
+    ],
+    "code": "import { Component, inject } from '@angular/core';\nimport { HttpClient } from '@angular/common/http';\nimport { Subject } from 'rxjs';\nimport { concatMap, tap } from 'rxjs/operators';\nimport { takeUntilDestroyed } from '@angular/core/rxjs-interop';\n\ninterface OrderItem { id: string; qty: number; }\n\n@Component({\n  selector: 'app-order-queue',\n  standalone: true,\n  template: `\n    <button (click)=\"enqueueOrder('ORD-1')\">Submit Order 1</button>\n    <button (click)=\"enqueueOrder('ORD-2')\">Submit Order 2</button>\n  `\n})\nexport class OrderQueueComponent {\n  private http = inject(HttpClient);\n  private queue$ = new Subject<OrderItem>();\n\n  constructor() {\n    this.queue$.pipe(\n      // concatMap waits for the previous HTTP post to finish before starting next!\n      concatMap(order => this.http.post('/api/orders/process', order).pipe(\n        tap(() => console.log(`Order ${order.id} processed successfully.`))\n      )),\n      takeUntilDestroyed()\n    ).subscribe();\n  }\n\n  enqueueOrder(id: string) {\n    this.queue$.next({ id, qty: 1 });\n  }\n}",
+    "breakdown": [
+      "concatMap enforces strict First-In-First-Out (FIFO) sequential processing.",
+      "If user clicks both buttons rapidly, Order 2 waits until Order 1 completes.",
+      "Prevents concurrent stock allocation races on transactional backend endpoints.",
+      "takeUntilDestroyed cleans up the queue processor on component unmount."
+    ],
+    "expectedOutput": "Orders execute one at a time sequentially regardless of how fast user triggers them."
+  },
+  {
+    "id": "angular-ex-18",
+    "title": "High-Frequency Window Event Throttling with throttleTime",
+    "category": "Reactive RxJS Orchestration",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Throttles high-frequency window resize and scroll events to 60 FPS using throttleTime and asyncScheduler, updating coordinates smoothly.",
+    "conceptsCovered": [
+      "fromEvent",
+      "throttleTime",
+      "asyncScheduler",
+      "trailing: true",
+      "Performance"
+    ],
+    "code": "import { Component, inject, OnInit, signal, NgZone } from '@angular/core';\nimport { fromEvent, asyncScheduler } from 'rxjs';\nimport { throttleTime, map } from 'rxjs/operators';\nimport { takeUntilDestroyed, DestroyRef } from '@angular/core/rxjs-interop';\n\n@Component({\n  selector: 'app-scroll-spy',\n  standalone: true,\n  template: `<p>Scroll Y: {{ scrollY() }}px</p>`\n})\nexport class ScrollSpyComponent implements OnInit {\n  private destroyRef = inject(DestroyRef);\n  private ngZone = inject(NgZone);\n\n  scrollY = signal(0);\n\n  ngOnInit() {\n    // Run registration outside Angular zone to avoid Zone.js CD ticks on every pixel!\n    this.ngZone.runOutsideAngular(() => {\n      fromEvent(window, 'scroll').pipe(\n        // Throttle to 60fps (16.6ms) with trailing emission enabled:\n        throttleTime(16, asyncScheduler, { leading: true, trailing: true }),\n        map(() => window.scrollY),\n        takeUntilDestroyed(this.destroyRef)\n      ).subscribe(y => {\n        // Bring back into Angular zone to update signal\n        this.ngZone.run(() => this.scrollY.set(y));\n      });\n    });\n  }\n}",
+    "breakdown": [
+      "fromEvent(window, 'scroll') creates an observable stream of scroll events.",
+      "runOutsideAngular isolates high-frequency events from Zone.js change detection checks.",
+      "throttleTime(16, asyncScheduler, { leading: true, trailing: true }) locks updates to 60 FPS.",
+      "trailing: true guarantees the final resting scroll position is always captured."
+    ],
+    "expectedOutput": "Smooth 60 FPS scroll tracking with zero CPU lag or frame dropping."
+  },
+  {
+    "id": "angular-ex-19",
+    "title": "Reactive In-Memory HTTP Cache with shareReplay",
+    "category": "Reactive RxJS Orchestration",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements an in-memory cached data service using shareReplay with bufferSize: 1 and refCount: true, deduplicating HTTP calls across components.",
+    "conceptsCovered": [
+      "shareReplay",
+      "refCount",
+      "Deduplication",
+      "Multicasting",
+      "HTTP Caching"
+    ],
+    "code": "import { Injectable, inject } from '@angular/core';\nimport { HttpClient } from '@angular/common/http';\nimport { Observable } from 'rxjs';\nimport { shareReplay } from 'rxjs/operators';\n\nexport interface Configuration { theme: string; version: string; }\n\n@Injectable({ providedIn: 'root' })\nexport class ConfigService {\n  private http = inject(HttpClient);\n  private config$?: Observable<Configuration>;\n\n  getConfig(): Observable<Configuration> {\n    if (!this.config$) {\n      this.config$ = this.http.get<Configuration>('/api/system/config').pipe(\n        // Caches 1 latest emission; disposes cache when active subscribers drop to 0\n        shareReplay({ bufferSize: 1, refCount: true })\n      );\n    }\n    return this.config$;\n  }\n\n  invalidateCache() {\n    this.config$ = undefined;\n  }\n}",
+    "breakdown": [
+      "shareReplay multicasts the single HTTP response to all current and future subscribers.",
+      "bufferSize: 1 replays the latest cached emission immediately upon new subscription.",
+      "refCount: true clears the cache if all subscribing components unmount (prevents stale leaks).",
+      "invalidateCache allows manual cache invalidation upon mutation operations."
+    ],
+    "expectedOutput": "Multiple components calling getConfig() share 1 single HTTP request."
+  },
+  {
+    "id": "angular-ex-20",
+    "title": "Type-Safe Cross-Component Event Bus with RxJS Subject",
+    "category": "Reactive RxJS Orchestration",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a decoupled, type-safe global event bus using RxJS Subject and discriminated union types for communication across disparate modules.",
+    "conceptsCovered": [
+      "Subject",
+      "Discriminated Unions",
+      "filter",
+      "Event Bus Pattern",
+      "Type Safety"
+    ],
+    "code": "import { Injectable } from '@angular/core';\nimport { Subject, Observable } from 'rxjs';\nimport { filter, map } from 'rxjs/operators';\n\n// Discriminated union of system events:\nexport type AppEvent =\n  | { type: 'NOTIFICATION'; payload: { message: string; level: 'info' | 'error' } }\n  | { type: 'CART_UPDATED'; payload: { itemCount: number } }\n  | { type: 'LOGOUT'; payload: { reason: string } };\n\n@Injectable({ providedIn: 'root' })\nexport class EventBusService {\n  private bus$ = new Subject<AppEvent>();\n\n  emit(event: AppEvent) {\n    this.bus$.next(event);\n  }\n\n  // Type-safe listener filtering specific event types:\n  on<T extends AppEvent['type']>(eventType: T): Observable<Extract<AppEvent, { type: T }>['payload']> {\n    return this.bus$.asObservable().pipe(\n      filter((e): e is Extract<AppEvent, { type: T }> => e.type === eventType),\n      map(e => e.payload)\n    );\n  }\n}\n\n// In Component:\n// bus.emit({ type: 'NOTIFICATION', payload: { message: 'Saved!', level: 'info' } });\n// bus.on('NOTIFICATION').subscribe(payload => showToast(payload.message));",
+    "breakdown": [
+      "Subject<AppEvent> acts as the central broadcast pipe.",
+      "TypeScript discriminated unions ensure payload types match the event type string.",
+      "Custom TypeScript type guard (e is Extract<...>) guarantees type-safe payload extraction.",
+      "Provides decoupled pub-sub messaging without direct component-to-component references."
+    ],
+    "expectedOutput": "Type-safe event publishing and subscribing across independent Angular components."
+  },
+  {
+    "id": "angular-ex-21",
+    "title": "Smooth Animated Number Counter using animationFrames & scan",
+    "category": "Reactive RxJS Orchestration",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Animates an integer counter smoothly from 0 to target value using animationFrames, lerp interpolation, and scan.",
+    "conceptsCovered": [
+      "animationFrames",
+      "scan",
+      "takeWhile",
+      "Lerp Math",
+      "toSignal"
+    ],
+    "code": "import { Component, input } from '@angular/core';\nimport { animationFrames } from 'rxjs';\nimport { map, takeWhile, endWith } from 'rxjs/operators';\nimport { toSignal } from '@angular/core/rxjs-interop';\n\n@Component({\n  selector: 'app-animated-counter',\n  standalone: true,\n  template: `<span class=\"metric-val\">{{ count() }}</span>`\n})\nexport class AnimatedCounterComponent {\n  target = input<number>(1000);\n  durationMs = input<number>(1500);\n\n  private counter$ = animationFrames().pipe(\n    map(({ elapsed }) => Math.min(elapsed / this.durationMs(), 1)),\n    // Ease-out cubic formula\n    map(progress => 1 - Math.pow(1 - progress, 3)),\n    map(easedProgress => Math.floor(easedProgress * this.target())),\n    takeWhile(val => val < this.target(), true),\n    endWith(this.target())\n  );\n\n  count = toSignal(this.counter$, { initialValue: 0 });\n}",
+    "breakdown": [
+      "animationFrames() provides smooth 60/120 FPS timestamp emissions synced with browser paint.",
+      "Calculates eased interpolation using cubic ease-out mathematical formula.",
+      "takeWhile(val => val < target, true) terminates the stream when target value is reached.",
+      "endWith ensures the final displayed value is precisely the specified target number."
+    ],
+    "expectedOutput": "Counter animates smoothly from 0 to 1000 using native browser refresh rate."
+  },
+  {
+    "id": "angular-ex-22",
+    "title": "Multi-Tab Synchronization via BroadcastChannel & RxJS",
+    "category": "Reactive RxJS Orchestration",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Synchronizes user authentication and cart state across multiple browser tabs using BroadcastChannel wrapped in an RxJS Subject.",
+    "conceptsCovered": [
+      "BroadcastChannel API",
+      "Multi-Tab Sync",
+      "RxJS Subject",
+      "DestroyRef",
+      "Session Security"
+    ],
+    "code": "import { Injectable, inject, DestroyRef } from '@angular/core';\nimport { Subject, Observable } from 'rxjs';\n\nexport interface TabMessage { action: 'LOGOUT' | 'CART_SYNC'; data?: any; }\n\n@Injectable({ providedIn: 'root' })\nexport class MultiTabSyncService {\n  private channel?: BroadcastChannel;\n  private message$ = new Subject<TabMessage>();\n\n  constructor() {\n    if (typeof BroadcastChannel !== 'undefined') {\n      this.channel = new BroadcastChannel('app_sync_channel');\n      this.channel.onmessage = (event: MessageEvent<TabMessage>) => {\n        this.message$.next(event.data);\n      };\n    }\n  }\n\n  post(message: TabMessage) {\n    this.channel?.postMessage(message);\n  }\n\n  getMessages(): Observable<TabMessage> {\n    return this.message$.asObservable();\n  }\n}\n\n// In AuthService:\n// When user logs out in Tab A:\n// multiTab.post({ action: 'LOGOUT' });\n// Tab B receives message and redirects to /login immediately!",
+    "breakdown": [
+      "BroadcastChannel API enables zero-server inter-tab browser communication.",
+      "Emits events onto an internal RxJS Subject for clean component/service consumption.",
+      "Logging out in one tab immediately forces logouts across all open tabs in same origin.",
+      "Gracefully handles environments where BroadcastChannel is unavailable."
+    ],
+    "expectedOutput": "Actions in one browser tab (like logging out) instantly sync across all open tabs."
+  },
+  {
+    "id": "angular-ex-23",
+    "title": "Reactive Shopping Cart State with signal, update & computed",
+    "category": "Angular Signals & State Management",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements a complete reactive shopping cart using signal, computed derived metrics (subtotal, VAT, shipping), and immutable update methods.",
+    "conceptsCovered": [
+      "signal",
+      "computed",
+      "update",
+      "Derived State",
+      "Immutability"
+    ],
+    "code": "import { Injectable, signal, computed } from '@angular/core';\n\nexport interface CartItem { id: string; name: string; price: number; quantity: number; }\n\n@Injectable({ providedIn: 'root' })\nexport class CartService {\n  // 1. Core writable state\n  items = signal<CartItem[]>([]);\n\n  // 2. Computed derived signals (auto-memoized)\n  totalCount = computed(() =>\n    this.items().reduce((acc, item) => acc + item.quantity, 0)\n  );\n\n  subtotal = computed(() =>\n    this.items().reduce((acc, item) => acc + (item.price * item.quantity), 0)\n  );\n\n  tax = computed(() => +(this.subtotal() * 0.15).toFixed(2));\n  shipping = computed(() => (this.subtotal() > 100 || this.subtotal() === 0 ? 0 : 15));\n  grandTotal = computed(() => this.subtotal() + this.tax() + this.shipping());\n\n  // 3. Mutator methods\n  addItem(product: { id: string; name: string; price: number }) {\n    this.items.update(current => {\n      const existing = current.find(i => i.id === product.id);\n      if (existing) {\n        return current.map(i => i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i);\n      }\n      return [...current, { ...product, quantity: 1 }];\n    });\n  }\n\n  removeItem(id: string) {\n    this.items.update(current => current.filter(i => i.id !== id));\n  }\n}",
+    "breakdown": [
+      "items writable signal holds the immutable collection of cart items.",
+      "computed signals (subtotal, tax, grandTotal) calculate automatically with push-pull glitch-free guarantees.",
+      "this.items.update() derives next state from previous state cleanly.",
+      "Zero manual subscriptions; components reading grandTotal() update fine-grained on mutation."
+    ],
+    "expectedOutput": "Shopping cart updates items, counts, tax, and free shipping thresholds reactively."
+  },
+  {
+    "id": "angular-ex-24",
+    "title": "Form Synchronization with linkedSignal (Angular 19)",
+    "category": "Angular Signals & State Management",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Uses Angular 19 linkedSignal to create writable local component state that resets automatically whenever an upstream input signal changes.",
+    "conceptsCovered": [
+      "linkedSignal",
+      "Angular 19 Features",
+      "Reset on Input Change",
+      "Writable Signals",
+      "Form Default State"
+    ],
+    "code": "import { Component, input, linkedSignal } from '@angular/core';\n\ninterface UserShippingAddress { street: string; city: string; zip: string; }\n\n@Component({\n  selector: 'app-address-editor',\n  standalone: true,\n  template: `\n    <div class=\"editor\">\n      <h3>Editing Address for User</h3>\n      <input [value]=\"editableStreet()\" (input)=\"editableStreet.set($any($event.target).value)\" />\n      <button (click)=\"resetToDefault()\">Reset</button>\n    </div>\n  `\n})\nexport class AddressEditorComponent {\n  // Upstream input signal from parent component:\n  serverAddress = input.required<UserShippingAddress>();\n\n  // linkedSignal: Writable signal whose value resets automatically\n  // whenever serverAddress() emits a new object!\n  editableStreet = linkedSignal({\n    source: this.serverAddress,\n    computation: (source) => source.street\n  });\n\n  resetToDefault() {\n    this.editableStreet.set(this.serverAddress().street);\n  }\n}",
+    "breakdown": [
+      "linkedSignal solves the classic problem where local editable state must track upstream inputs.",
+      "Whenever the serverAddress input changes, editableStreet automatically recalculates and resets.",
+      "The user can edit the field locally via .set() without mutating the upstream input.",
+      "Eliminates complex ngOnChanges lifecycle hooks and manual effect() synchronization."
+    ],
+    "expectedOutput": "Local input changes allow editing, but switching user profiles resets field to new default."
+  },
+  {
+    "id": "angular-ex-25",
+    "title": "Two-Way Model Binding with model() & model.required()",
+    "category": "Angular Signals & State Management",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements two-way banana-in-a-box [()] component binding using Angular 17.2+ model() signals, replacing legacy @Input() and @Output() EventEmitter pairs.",
+    "conceptsCovered": [
+      "model()",
+      "model.required()",
+      "Two-Way Data Binding",
+      "Banana-in-a-box syntax",
+      "Signal Inputs"
+    ],
+    "code": "import { Component, model } from '@angular/core';\n\n// 1. Child Component declaring a model signal:\n@Component({\n  selector: 'app-counter-stepper',\n  standalone: true,\n  template: `\n    <div class=\"stepper\">\n      <button (click)=\"decrement()\">-</button>\n      <span>Value: {{ count() }}</span>\n      <button (click)=\"increment()\">+</button>\n    </div>\n  `\n})\nexport class CounterStepperComponent {\n  // model() creates both an input AND a corresponding output 'countChange'!\n  count = model.required<number>();\n\n  increment() {\n    this.count.update(n => n + 1); // Automatically notifies parent!\n  }\n\n  decrement() {\n    this.count.update(n => n - 1);\n  }\n}\n\n// 2. Parent Component consuming with banana-in-a-box [()]:\n@Component({\n  selector: 'app-parent-page',\n  standalone: true,\n  imports: [CounterStepperComponent],\n  template: `\n    <!-- Two-way binding effortlessly synchronized -->\n    <app-counter-stepper [(count)]=\"parentQuantity\" />\n    <p>Parent Quantity: {{ parentQuantity() }}</p>\n  `\n})\nexport class ParentPageComponent {\n  parentQuantity = model(10);\n}",
+    "breakdown": [
+      "model.required<number>() defines a writable signal that acts as an input and an output.",
+      "Angular automatically generates the corresponding countChange output event under the hood.",
+      "Calling this.count.update() pushes changes to the parent without manual EventEmitter.emit() calls.",
+      "Parent binds via [(count)]=\"parentQuantity\", achieving seamless two-way signal synchronization."
+    ],
+    "expectedOutput": "Clicking +/- updates stepper and synchronizes parentQuantity value instantaneously."
+  },
+  {
+    "id": "angular-ex-26",
+    "title": "Full CRUD Entity Store using NgRx SignalStore withEntities",
+    "category": "Angular Signals & State Management",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Constructs a production-grade entity management store using @ngrx/signals and withEntities, supporting normalized CRUD operations and computed selectors.",
+    "conceptsCovered": [
+      "signalStore",
+      "withEntities",
+      "addEntity",
+      "removeEntity",
+      "updateEntity"
+    ],
+    "code": "import { signalStore, withMethods, patchState } from '@ngrx/signals';\nimport { withEntities, addEntity, removeEntity, updateEntity, setAllEntities } from '@ngrx/signals/entities';\n\nexport interface Customer { id: string; name: string; email: string; tier: 'FREE' | 'VIP'; }\n\nexport const CustomerStore = signalStore(\n  { providedIn: 'root' },\n  // Provides entities(), entityMap(), and ids() signals automatically:\n  withEntities<Customer>(),\n  withMethods((store) => ({\n    loadCustomers(customers: Customer[]) {\n      patchState(store, setAllEntities(customers));\n    },\n    addCustomer(customer: Customer) {\n      patchState(store, addEntity(customer));\n    },\n    updateCustomer(id: string, changes: Partial<Customer>) {\n      patchState(store, updateEntity({ id, changes }));\n    },\n    deleteCustomer(id: string) {\n      patchState(store, removeEntity(id));\n    }\n  }))\n);\n\n// Usage in Component:\n// export class CustomerListComponent {\n//   readonly store = inject(CustomerStore);\n//   // Read entities directly: this.store.entities()\n// }",
+    "breakdown": [
+      "withEntities<Customer>() normalizes state into ids array and entityMap dictionary.",
+      "Exposes out-of-the-box computed signals: entities(), entityMap(), ids().",
+      "patchState with addEntity/updateEntity guarantees immutable O(1) dictionary updates.",
+      "Zero boilerplate compared to classic NgRx actions, reducers, and selectors."
+    ],
+    "expectedOutput": "Normalized customer state managed with clean methods and automatic entity signals."
+  },
+  {
+    "id": "angular-ex-27",
+    "title": "Persistent LocalStorage Signal Wrapper",
+    "category": "Angular Signals & State Management",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Creates a custom signal utility that persists state to browser localStorage and updates automatically via effect().",
+    "conceptsCovered": [
+      "signal",
+      "effect",
+      "localStorage",
+      "JSON Serialization",
+      "Custom Utilities"
+    ],
+    "code": "import { signal, effect, WritableSignal } from '@angular/core';\n\nexport function persistentSignal<T>(key: string, defaultValue: T): WritableSignal<T> {\n  // 1. Read initial state from localStorage safely\n  let initialValue = defaultValue;\n  if (typeof window !== 'undefined' && window.localStorage) {\n    const stored = localStorage.getItem(key);\n    if (stored !== null) {\n      try {\n        initialValue = JSON.parse(stored);\n      } catch (e) {\n        console.error(`Failed to parse localStorage for key: ${key}`, e);\n      }\n    }\n  }\n\n  // 2. Create signal with resolved initial value\n  const sig = signal<T>(initialValue);\n\n  // 3. Sync to localStorage on every change using effect:\n  effect(() => {\n    const val = sig();\n    if (typeof window !== 'undefined' && window.localStorage) {\n      localStorage.setItem(key, JSON.stringify(val));\n    }\n  });\n\n  return sig;\n}\n\n// In Component:\n// theme = persistentSignal<'light' | 'dark'>('app_theme', 'light');\n// toggle() { this.theme.update(t => t === 'light' ? 'dark' : 'light'); }",
+    "breakdown": [
+      "Initializes signal with stored localStorage data if available, falling back to default.",
+      "effect() registers a reactive listener that triggers whenever the signal value mutates.",
+      "SSR safe: guards window.localStorage checks before attempting browser storage access.",
+      "Returns standard WritableSignal<T> supporting .set() and .update() methods."
+    ],
+    "expectedOutput": "Signal mutations persist to browser localStorage across page reloads automatically."
+  },
+  {
+    "id": "angular-ex-28",
+    "title": "Deep Immutability State Updater with Signals",
+    "category": "Angular Signals & State Management",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Demonstrates safe nested object and array updates on Angular Signals without mutating existing memory references.",
+    "conceptsCovered": [
+      "Deep Immutability",
+      "update()",
+      "Spread Operators",
+      "Array Mapping",
+      "Change Detection"
+    ],
+    "code": "import { Component, signal } from '@angular/core';\n\ninterface UserProfile {\n  id: string;\n  preferences: {\n    notifications: { email: boolean; push: boolean };\n    tags: string[];\n  };\n}\n\n@Component({\n  selector: 'app-nested-profile',\n  standalone: true,\n  template: `\n    <button (click)=\"togglePushNotifications()\">Toggle Push</button>\n    <button (click)=\"addTag('Angular')\">Add Tag</button>\n  `\n})\nexport class NestedProfileComponent {\n  profile = signal<UserProfile>({\n    id: 'u123',\n    preferences: {\n      notifications: { email: true, push: false },\n      tags: ['TypeScript']\n    }\n  });\n\n  togglePushNotifications() {\n    this.profile.update(state => ({\n      ...state,\n      preferences: {\n        ...state.preferences,\n        notifications: {\n          ...state.preferences.notifications,\n          push: !state.preferences.notifications.push\n        }\n      }\n    }));\n  }\n\n  addTag(newTag: string) {\n    this.profile.update(state => ({\n      ...state,\n      preferences: {\n        ...state.preferences,\n        tags: [...state.preferences.tags, newTag]\n      }\n    }));\n  }\n}",
+    "breakdown": [
+      "Deep nested state must be copied at every hierarchy level using object spread ({ ...obj }).",
+      "Arrays are updated immutably using array spread ([...arr, item]) or .map() / .filter().",
+      "Guarantees that OnPush change detection and computed signals detect the mutation.",
+      "Prevents subtle bugs where shared references are unexpectedly mutated."
+    ],
+    "expectedOutput": "Nested profile properties update cleanly with new object references."
+  },
+  {
+    "id": "angular-ex-29",
+    "title": "Undo/Redo State History Stack with Signals",
+    "category": "Angular Signals & State Management",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements an undo/redo state management stack using signals and computed flags (canUndo, canRedo) for rich interactive canvas or text editors.",
+    "conceptsCovered": [
+      "Undo/Redo Pattern",
+      "History Stack",
+      "computed",
+      "State Snapshots",
+      "signal"
+    ],
+    "code": "import { Injectable, signal, computed } from '@angular/core';\n\n@Injectable({ providedIn: 'root' })\nexport class HistoryStore<T> {\n  private past = signal<T[]>([]);\n  private present = signal<T | null>(null);\n  private future = signal<T[]>([]);\n\n  readonly current = computed(() => this.present());\n  readonly canUndo = computed(() => this.past().length > 0);\n  readonly canRedo = computed(() => this.future().length > 0);\n\n  init(initialState: T) {\n    this.present.set(initialState);\n    this.past.set([]);\n    this.future.set([]);\n  }\n\n  set(nextState: T) {\n    const current = this.present();\n    if (current !== null) {\n      this.past.update(p => [...p, current]);\n    }\n    this.present.set(nextState);\n    this.future.set([]); // Reset redo history on new action\n  }\n\n  undo() {\n    const pastArr = this.past();\n    if (pastArr.length === 0) return;\n\n    const previous = pastArr[pastArr.length - 1];\n    const newPast = pastArr.slice(0, -1);\n    const current = this.present();\n\n    if (current !== null) {\n      this.future.update(f => [current, ...f]);\n    }\n    this.present.set(previous);\n    this.past.set(newPast);\n  }\n\n  redo() {\n    const futureArr = this.future();\n    if (futureArr.length === 0) return;\n\n    const next = futureArr[0];\n    const newFuture = futureArr.slice(1);\n    const current = this.present();\n\n    if (current !== null) {\n      this.past.update(p => [...p, current]);\n    }\n    this.present.set(next);\n    this.future.set(newFuture);\n  }\n}",
+    "breakdown": [
+      "Maintains past, present, and future signal stacks.",
+      "canUndo and canRedo computed signals bind directly to button [disabled] attributes.",
+      "Pushing a new state wipes out future redo history as expected in standard editors.",
+      "Undo moves present to future and pops past to present seamlessly."
+    ],
+    "expectedOutput": "History stack supports undo and redo transitions with reactive UI button disabling."
+  },
+  {
+    "id": "angular-ex-30",
+    "title": "Multi-Criteria Filtering & Sorting Matrix with computed",
+    "category": "Angular Signals & State Management",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Filters and sorts large collections across multiple criteria (search query, category, price range, sort direction) using a single memoized computed signal.",
+    "conceptsCovered": [
+      "computed",
+      "Multi-field Filtering",
+      "Sorting",
+      "Memoization",
+      "signal"
+    ],
+    "code": "import { Component, signal, computed } from '@angular/core';\n\ninterface Product { id: string; name: string; category: string; price: number; }\n\n@Component({\n  selector: 'app-catalog-filter',\n  standalone: true,\n  template: `\n    <input (input)=\"search.set($any($event.target).value)\" placeholder=\"Search...\" />\n    <select (change)=\"selectedCategory.set($any($event.target).value)\">\n      <option value=\"ALL\">All Categories</option>\n      <option value=\"ELECTRONICS\">Electronics</option>\n      <option value=\"BOOKS\">Books</option>\n    </select>\n    <p>Showing {{ filteredProducts().length }} items</p>\n  `\n})\nexport class CatalogFilterComponent {\n  products = signal<Product[]>([\n    { id: '1', name: 'MacBook Air', category: 'ELECTRONICS', price: 999 },\n    { id: '2', name: 'TypeScript Handbook', category: 'BOOKS', price: 49 },\n    { id: '3', name: 'USB-C Cable', category: 'ELECTRONICS', price: 19 }\n  ]);\n\n  search = signal('');\n  selectedCategory = signal('ALL');\n  sortBy = signal<'price_asc' | 'price_desc'>('price_asc');\n\n  // Single memoized computed signal reacting to any filter change:\n  filteredProducts = computed(() => {\n    const q = this.search().toLowerCase().trim();\n    const cat = this.selectedCategory();\n    const sort = this.sortBy();\n\n    return this.products()\n      .filter(p => {\n        const matchesQuery = !q || p.name.toLowerCase().includes(q);\n        const matchesCat = cat === 'ALL' || p.category === cat;\n        return matchesQuery && matchesCat;\n      })\n      .sort((a, b) => {\n        return sort === 'price_asc' ? a.price - b.price : b.price - a.price;\n      });\n  });\n}",
+    "breakdown": [
+      "filteredProducts tracks search, selectedCategory, and sortBy dependencies automatically.",
+      "Recalculates ONLY when one of the tracked signals changes value.",
+      "Returns a new filtered array ready for @for loop rendering with track p.id.",
+      "Eliminates duplicate imperative filter methods and out-of-sync UI state."
+    ],
+    "expectedOutput": "Products table filters and sorts reactively with optimal caching."
+  },
+  {
+    "id": "angular-ex-31",
+    "title": "Asynchronous Data Loading with rxResource (Angular 19)",
+    "category": "Angular Signals & State Management",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Loads async HTTP data into reactive signals using Angular 19 rxResource, managing loading, value, and error states automatically.",
+    "conceptsCovered": [
+      "rxResource",
+      "Angular 19 Features",
+      "Async Loading",
+      "HTTP Integration",
+      "resource()"
+    ],
+    "code": "import { Component, signal, inject } from '@angular/core';\nimport { HttpClient } from '@angular/common/http';\nimport { rxResource } from '@angular/core/rxjs-interop';\n\ninterface UserData { id: string; name: string; role: string; }\n\n@Component({\n  selector: 'app-user-resource',\n  standalone: true,\n  template: `\n    <button (click)=\"userId.set('u2')\">Load User 2</button>\n\n    @if (userResource.isLoading()) {\n      <p>Loading user data...</p>\n    } @else if (userResource.error()) {\n      <p class=\"error\">Failed to load user: {{ userResource.error() }}</p>\n    } @else if (userResource.value(); as user) {\n      <h2>User: {{ user.name }} (Role: {{ user.role }})</h2>\n    }\n  `\n})\nexport class UserResourceComponent {\n  private http = inject(HttpClient);\n  userId = signal('u1');\n\n  // Angular 19 rxResource bridges reactive params with async fetching:\n  userResource = rxResource({\n    request: () => ({ id: this.userId() }),\n    loader: ({ request }) => this.http.get<UserData>(`/api/users/${request.id}`)\n  });\n}",
+    "breakdown": [
+      "rxResource automatically re-fetches whenever request signals (this.userId) change.",
+      "Exposes out-of-the-box signals: .value(), .isLoading(), .error(), and .status().",
+      "Eliminates manual switchMap, loading booleans, and error-handling boilerplate.",
+      "Integrates natively with built-in control flow (@if)."
+    ],
+    "expectedOutput": "Changing userId re-fetches user, displaying loading spinner and rendering result."
+  },
+  {
+    "id": "angular-ex-32",
+    "title": "Dynamic Theme Switcher with Signal-Driven CSS Variables",
+    "category": "Angular Signals & State Management",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Toggles application theme between dark and light modes, applying CSS variables to document.documentElement using an Angular effect.",
+    "conceptsCovered": [
+      "effect()",
+      "CSS Custom Properties",
+      "Signal State",
+      "DOM Synchronization",
+      "Theming"
+    ],
+    "code": "import { Injectable, signal, effect, inject, PLATFORM_ID } from '@angular/core';\nimport { isPlatformBrowser } from '@angular/common';\n\nexport type Theme = 'light' | 'dark';\n\n@Injectable({ providedIn: 'root' })\nexport class ThemeService {\n  private platformId = inject(PLATFORM_ID);\n  currentTheme = signal<Theme>('light');\n\n  constructor() {\n    // Automatically synchronizes CSS variables when currentTheme() changes:\n    effect(() => {\n      const theme = this.currentTheme();\n      if (isPlatformBrowser(this.platformId)) {\n        const root = document.documentElement;\n        if (theme === 'dark') {\n          root.style.setProperty('--bg-color', '#121212');\n          root.style.setProperty('--text-color', '#ffffff');\n          root.classList.add('dark-theme');\n        } else {\n          root.style.setProperty('--bg-color', '#ffffff');\n          root.style.setProperty('--text-color', '#212529');\n          root.classList.remove('dark-theme');\n        }\n      }\n    });\n  }\n\n  toggleTheme() {\n    this.currentTheme.update(t => t === 'light' ? 'dark' : 'light');\n  }\n}",
+    "breakdown": [
+      "currentTheme signal holds active 'light' or 'dark' string value.",
+      "effect() runs automatically whenever currentTheme is mutated via .update().",
+      "isPlatformBrowser guards against document reference errors during SSR.",
+      "Modifies CSS custom properties (--bg-color) directly on document root element."
+    ],
+    "expectedOutput": "Toggling theme updates root CSS variables and swaps dark/light styles across the app."
+  },
+  {
+    "id": "angular-ex-33",
+    "title": "Functional Auth Guard with Return URL Redirection",
+    "category": "Routing & Form Systems",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Guards protected routes using CanActivateFn, atomically redirecting unauthenticated users to /login and preserving returnUrl query parameter.",
+    "conceptsCovered": [
+      "CanActivateFn",
+      "UrlTree",
+      "Router.createUrlTree",
+      "Functional Guards",
+      "Return URL"
+    ],
+    "code": "import { inject } from '@angular/core';\nimport { CanActivateFn, Router } from '@angular/router';\n\n// Mock AuthService contract\nexport interface AuthService { isAuthenticated(): boolean; }\nexport const AUTH_SERVICE = 'AUTH_SERVICE';\n\nexport const authGuard: CanActivateFn = (route, state) => {\n  const router = inject(Router);\n  // In real app: const auth = inject(AuthService);\n  const isAuthenticated = false; // Mocked unauthenticated state\n\n  if (isAuthenticated) {\n    return true;\n  }\n\n  // ATOMIC REDIRECT: Returns a UrlTree preserving the attempted destination\n  return router.createUrlTree(['/login'], {\n    queryParams: { returnUrl: state.url }\n  });\n};\n\n// Route Configuration:\n// { path: 'dashboard', canActivate: [authGuard], loadComponent: ... }",
+    "breakdown": [
+      "CanActivateFn eliminates class-based guard boilerplate and implements functional injection.",
+      "state.url contains the full path the user was attempting to visit.",
+      "Returning router.createUrlTree cancels the pending navigation and triggers redirect in one turn.",
+      "Attaches returnUrl query param so login page can redirect back after successful login."
+    ],
+    "expectedOutput": "Unauthenticated navigation redirected to /login?returnUrl=%2Fdashboard atomically."
+  },
+  {
+    "id": "angular-ex-34",
+    "title": "Unsaved Changes Guard with CanDeactivateFn & Modal Confirmation",
+    "category": "Routing & Form Systems",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Warns users when navigating away from dirty forms using CanDeactivateFn and an asynchronous confirmation dialog.",
+    "conceptsCovered": [
+      "CanDeactivateFn",
+      "Form Dirty State",
+      "Dialog Confirmation",
+      "Navigation Abort",
+      "Interface Contract"
+    ],
+    "code": "import { CanDeactivateFn } from '@angular/router';\n\n// Contract interface for components that feature unsaved changes\nexport interface FormDeactivatable {\n  hasUnsavedChanges(): boolean;\n}\n\nexport const unsavedChangesGuard: CanDeactivateFn<FormDeactivatable> = (component) => {\n  // If no unsaved changes exist, allow navigation immediately\n  if (!component.hasUnsavedChanges()) {\n    return true;\n  }\n\n  // Prompt user; in production use a custom Angular Material or Signals modal dialog:\n  const confirmation = window.confirm(\n    'You have unsaved form modifications. Are you sure you want to discard them?'\n  );\n\n  return confirmation; // true allows navigation; false aborts navigation\n};",
+    "breakdown": [
+      "CanDeactivateFn receives the active component instance with full TypeScript typing.",
+      "Component implements hasUnsavedChanges() returning true if form is dirty.",
+      "Returning false cancels navigation and keeps the user on the existing view.",
+      "Supports returning boolean, Promise<boolean>, or Observable<boolean> for async modals."
+    ],
+    "expectedOutput": "Attempting to navigate away from an edited form prompts confirmation dialog."
+  },
+  {
+    "id": "angular-ex-35",
+    "title": "Dynamic Feature Flag Branching Route with CanMatchFn",
+    "category": "Routing & Form Systems",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Routes users to completely different components for the exact same URL path based on feature flags using CanMatchFn.",
+    "conceptsCovered": [
+      "CanMatchFn",
+      "Feature Flagging",
+      "Route Fallthrough",
+      "A/B Testing",
+      "Dynamic Loading"
+    ],
+    "code": "import { inject } from '@angular/core';\nimport { CanMatchFn, Routes } from '@angular/router';\n\n// Mock Feature Flag Service\nclass FeatureFlagService {\n  isFeatureActive(flag: string): boolean {\n    return flag === 'new_checkout'; // Toggle feature\n  }\n}\n\nexport const newCheckoutGuard: CanMatchFn = () => {\n  const flags = new FeatureFlagService();\n  return flags.isFeatureActive('new_checkout');\n};\n\nexport const routes: Routes = [\n  // 1. Matched if beta flag is active:\n  {\n    path: 'checkout',\n    canMatch: [newCheckoutGuard],\n    loadComponent: () => import('./v2-checkout.component').then(m => m.V2CheckoutComponent)\n  },\n  // 2. Fallback: Matched if guard returns false:\n  {\n    path: 'checkout',\n    loadComponent: () => import('./legacy-checkout.component').then(m => m.LegacyCheckoutComponent)\n  }\n];",
+    "breakdown": [
+      "CanMatchFn determines whether a route definition can match during the initial URL evaluation.",
+      "If newCheckoutGuard returns false, the router does NOT abort; it falls through to candidate #2.",
+      "Enables clean A/B rollout without having ugly conditional logic inside a single monolithic component.",
+      "Prevents downloading the v2 chunk for users who are not in the beta test group."
+    ],
+    "expectedOutput": "URL /checkout renders V2Checkout for beta users and LegacyCheckout for regular users."
+  },
+  {
+    "id": "angular-ex-36",
+    "title": "Network-Aware Selective Preloading Strategy",
+    "category": "Routing & Form Systems",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Preloads lazy route bundles conditionally based on route data.preload flags and checks if the client is on a 2G/data-saver mobile connection.",
+    "conceptsCovered": [
+      "PreloadingStrategy",
+      "Route.data",
+      "Network Information API",
+      "Data-Saver Optimization",
+      "Performance"
+    ],
+    "code": "import { Injectable } from '@angular/core';\nimport { PreloadingStrategy, Route } from '@angular/router';\nimport { Observable, of } from 'rxjs';\n\n@Injectable({ providedIn: 'root' })\nexport class SelectivePreloadingStrategy implements PreloadingStrategy {\n  preload(route: Route, load: () => Observable<any>): Observable<any> {\n    // 1. Check if user has requested Data-Saver in browser:\n    if (typeof navigator !== 'undefined' && (navigator as any).connection) {\n      const conn = (navigator as any).connection;\n      if (conn.saveData || /2g/.test(conn.effectiveType)) {\n        console.log('Skipping preload on slow or metered mobile connection');\n        return of(null);\n      }\n    }\n\n    // 2. Check if route definition explicitly flagged data: { preload: true }\n    if (route.data && route.data['preload']) {\n      return load();\n    }\n\n    return of(null);\n  }\n}\n\n// In app.config.ts:\n// provideRouter(routes, withPreloading(SelectivePreloadingStrategy))",
+    "breakdown": [
+      "Implements Angular's PreloadingStrategy contract.",
+      "Inspects navigator.connection.saveData to respect mobile user bandwidth limits.",
+      "Preloads only routes explicitly tagged with data: { preload: true }.",
+      "Combines fast initial application loads with instant subsequent page transitions."
+    ],
+    "expectedOutput": "High-priority routes preload in background on Wi-Fi, but skip on 2G/metered data."
+  },
+  {
+    "id": "angular-ex-37",
+    "title": "Dynamic FormArray with Real-Time Total Calculation",
+    "category": "Routing & Form Systems",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a dynamic invoice line-item form using typed FormArray and calculates the grand total in real-time using RxJS and toSignal.",
+    "conceptsCovered": [
+      "FormArray",
+      "NonNullableFormBuilder",
+      "toSignal",
+      "Dynamic Rows",
+      "Typed Forms"
+    ],
+    "code": "import { Component, inject } from '@angular/core';\nimport { NonNullableFormBuilder, ReactiveFormsModule, Validators, FormArray, FormGroup, FormControl } from '@angular/forms';\nimport { toSignal } from '@angular/core/rxjs-interop';\nimport { map } from 'rxjs/operators';\n\ninterface LineItemForm {\n  description: FormControl<string>;\n  price: FormControl<number>;\n  quantity: FormControl<number>;\n}\n\n@Component({\n  selector: 'app-invoice-form',\n  standalone: true,\n  imports: [ReactiveFormsModule],\n  template: `\n    <form [formGroup]=\"form\">\n      <div formArrayName=\"items\">\n        @for (item of items.controls; track $index; let idx = $index) {\n          <div [formGroupName]=\"idx\" class=\"item-row\">\n            <input formControlName=\"description\" placeholder=\"Item description\" />\n            <input formControlName=\"price\" type=\"number\" />\n            <input formControlName=\"quantity\" type=\"number\" />\n            <button type=\"button\" (click)=\"removeItem(idx)\">Delete</button>\n          </div>\n        }\n      </div>\n      <button type=\"button\" (click)=\"addItem()\">Add Line Item</button>\n      <p>Grand Total: ${{ grandTotal() }}</p>\n    </form>\n  `\n})\nexport class InvoiceFormComponent {\n  private fb = inject(NonNullableFormBuilder);\n\n  form = this.fb.group({\n    items: this.fb.array<FormGroup<LineItemForm>>([])\n  });\n\n  get items(): FormArray<FormGroup<LineItemForm>> {\n    return this.form.controls.items;\n  }\n\n  // Real-time grand total stream converted into Signal:\n  grandTotal = toSignal(\n    this.form.valueChanges.pipe(\n      map(val => (val.items || []).reduce((acc, row) => acc + ((row?.price || 0) * (row?.quantity || 0)), 0))\n    ),\n    { initialValue: 0 }\n  );\n\n  addItem() {\n    this.items.push(\n      this.fb.group<LineItemForm>({\n        description: this.fb.control('', [Validators.required]),\n        price: this.fb.control(0, [Validators.min(0)]),\n        quantity: this.fb.control(1, [Validators.min(1)])\n      })\n    );\n  }\n\n  removeItem(index: number) {\n    this.items.removeAt(index);\n  }\n}",
+    "breakdown": [
+      "Typed FormArray manages dynamic list of FormGroup<LineItemForm> entries.",
+      "items.push() and items.removeAt(index) handle dynamic row creation and deletion.",
+      "valueChanges stream observes all line item updates and recalculates total.",
+      "toSignal provides clean synchronous grandTotal() signal for template rendering."
+    ],
+    "expectedOutput": "Invoice rows add/remove dynamically with real-time recalculation of grand total."
+  },
+  {
+    "id": "angular-ex-38",
+    "title": "Custom Star Rating Widget implementing ControlValueAccessor",
+    "category": "Routing & Form Systems",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a production-ready 5-star rating form widget implementing ControlValueAccessor, integrating with standard reactive forms and validation.",
+    "conceptsCovered": [
+      "ControlValueAccessor",
+      "NG_VALUE_ACCESSOR",
+      "forwardRef",
+      "writeValue",
+      "registerOnChange"
+    ],
+    "code": "import { Component, forwardRef } from '@angular/core';\nimport { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';\n\n@Component({\n  selector: 'app-star-rating',\n  standalone: true,\n  providers: [\n    {\n      provide: NG_VALUE_ACCESSOR,\n      useExisting: forwardRef(() => StarRatingComponent),\n      multi: true\n    }\n  ],\n  styles: [`\n    .star { font-size: 24px; cursor: pointer; color: #ccc; }\n    .star.filled { color: #f5a623; }\n    :host(.disabled) .star { cursor: not-allowed; opacity: 0.6; }\n  `],\n  template: `\n    <div class=\"rating-container\" [class.disabled]=\"isDisabled\">\n      @for (star of [1,2,3,4,5]; track star) {\n        <span \n          class=\"star\" \n          [class.filled]=\"star <= value\"\n          (click)=\"setRating(star)\"\n        >★</span>\n      }\n    </div>\n  `\n})\nexport class StarRatingComponent implements ControlValueAccessor {\n  value = 0;\n  isDisabled = false;\n\n  private onChange: (v: number) => void = () => {};\n  private onTouched: () => void = () => {};\n\n  writeValue(val: number): void {\n    this.value = val || 0;\n  }\n\n  registerOnChange(fn: (v: number) => void): void {\n    this.onChange = fn;\n  }\n\n  registerOnTouched(fn: () => void): void {\n    this.onTouched = fn;\n  }\n\n  setDisabledState?(isDisabled: boolean): void {\n    this.isDisabled = isDisabled;\n  }\n\n  setRating(rating: number) {\n    if (!this.isDisabled) {\n      this.value = rating;\n      this.onChange(rating);\n      this.onTouched();\n    }\n  }\n}\n\n// Usage:\n// <app-star-rating formControlName=\"userRating\" />",
+    "breakdown": [
+      "NG_VALUE_ACCESSOR token registers component as an official form control accessor.",
+      "forwardRef resolves class reference before TypeScript decorator execution finishes.",
+      "writeValue receives external model value updates from parent form.",
+      "onChange and onTouched notify parent form of user selection and blur state."
+    ],
+    "expectedOutput": "Star rating widget binds directly with [formControl] or formControlName."
+  },
+  {
+    "id": "angular-ex-39",
+    "title": "Custom Asynchronous Username Uniqueness Validator",
+    "category": "Routing & Form Systems",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements an AsyncValidatorFn that checks username availability via HTTP, debouncing requests and returning error objects.",
+    "conceptsCovered": [
+      "AsyncValidatorFn",
+      "timer",
+      "switchMap",
+      "take(1)",
+      "ValidationErrors"
+    ],
+    "code": "import { AbstractControl, AsyncValidatorFn, ValidationErrors } from '@angular/forms';\nimport { HttpClient } from '@angular/common/http';\nimport { Observable, timer, of } from 'rxjs';\nimport { switchMap, map, catchError, take } from 'rxjs/operators';\n\nexport function usernameAvailabilityValidator(http: HttpClient): AsyncValidatorFn {\n  return (control: AbstractControl): Observable<ValidationErrors | null> => {\n    if (!control.value || control.value.trim().length < 3) {\n      return of(null);\n    }\n\n    // Debounce HTTP call by 400ms:\n    return timer(400).pipe(\n      switchMap(() => http.get<{ exists: boolean }>(`/api/users/check?name=${encodeURIComponent(control.value)}`)),\n      map(res => (res.exists ? { usernameTaken: { requested: control.value } } : null)),\n      catchError(() => of(null)), // Don't block form if server is offline\n      take(1) // Mandatory: Observable MUST complete!\n    );\n  };\n}\n\n// In Component:\n// const usernameCtrl = new FormControl('', {\n//   asyncValidators: [usernameAvailabilityValidator(this.http)],\n//   updateOn: 'change'\n// });",
+    "breakdown": [
+      "AsyncValidatorFn returns an Observable emitting ValidationErrors | null.",
+      "timer(400) debounces user typing, avoiding network flooding on every keystroke.",
+      "switchMap cancels pending checks if the user continues typing.",
+      "take(1) guarantees stream completion; incomplete streams leave control stuck in PENDING status."
+    ],
+    "expectedOutput": "Input checks availability 400ms after user pauses; flags error if name is taken."
+  },
+  {
+    "id": "angular-ex-40",
+    "title": "Cross-Field Password & Confirmation Validator",
+    "category": "Routing & Form Systems",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Enforces password matching across two form fields using a cross-field validator attached to the parent FormGroup.",
+    "conceptsCovered": [
+      "ValidatorFn",
+      "Cross-field Validation",
+      "FormGroup Validators",
+      "updateValueAndValidity",
+      "Error Keys"
+    ],
+    "code": "import { AbstractControl, ValidationErrors, ValidatorFn, FormGroup, FormControl, Validators } from '@angular/forms';\n\nexport const passwordMatchValidator: ValidatorFn = (control: AbstractControl): ValidationErrors | null => {\n  const password = control.get('password');\n  const confirmPassword = control.get('confirmPassword');\n\n  if (!password || !confirmPassword) return null;\n\n  // Don't validate if confirm password is empty yet\n  if (!confirmPassword.value) return null;\n\n  return password.value === confirmPassword.value\n    ? null\n    : { passwordMismatch: true };\n};\n\n// Form Definition:\nexport function createRegistrationForm() {\n  return new FormGroup({\n    password: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.minLength(8)] }),\n    confirmPassword: new FormControl('', { nonNullable: true, validators: [Validators.required] })\n  }, { validators: [passwordMatchValidator] }); // Attached to parent group!\n}\n\n// In Template:\n// @if (form.errors?.['passwordMismatch'] && form.get('confirmPassword')?.touched) {\n//   <p class=\"error\">Passwords do not match.</p>\n// }",
+    "breakdown": [
+      "Cross-field validators are attached to the FormGroup options object, not individual controls.",
+      "Reads child controls via control.get('password') and compares values safely.",
+      "Recalculates automatically whenever either password or confirmPassword changes.",
+      "Displays error cleanly in template when parent form exhibits passwordMismatch error."
+    ],
+    "expectedOutput": "Form indicates invalid status when password and confirmPassword fields differ."
+  },
+  {
+    "id": "angular-ex-41",
+    "title": "Auto-Saving Form with toSignal & Debounced Storage",
+    "category": "Routing & Form Systems",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Watches reactive form value changes, debounces modifications by 1 second, and saves draft state automatically with visual saving indicators.",
+    "conceptsCovered": [
+      "valueChanges",
+      "debounceTime",
+      "switchMap",
+      "toSignal",
+      "Auto-save"
+    ],
+    "code": "import { Component, inject } from '@angular/core';\nimport { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';\nimport { HttpClient } from '@angular/common/http';\nimport { debounceTime, switchMap, tap } from 'rxjs/operators';\nimport { of } from 'rxjs';\nimport { toSignal } from '@angular/core/rxjs-interop';\n\n@Component({\n  selector: 'app-auto-save-form',\n  standalone: true,\n  imports: [ReactiveFormsModule],\n  template: `\n    <form [formGroup]=\"form\">\n      <input formControlName=\"title\" placeholder=\"Document title\" />\n      <textarea formControlName=\"notes\" placeholder=\"Notes...\"></textarea>\n    </form>\n    <div class=\"save-indicator\">Status: {{ saveStatus() }}</div>\n  `\n})\nexport class AutoSaveFormComponent {\n  private fb = inject(NonNullableFormBuilder);\n  private http = inject(HttpClient);\n\n  form = this.fb.group({\n    title: this.fb.control(''),\n    notes: this.fb.control('')\n  });\n\n  // Observe form modifications and auto-save after 1000ms idle:\n  private save$ = this.form.valueChanges.pipe(\n    debounceTime(1000),\n    switchMap(payload => {\n      console.log('Auto-saving draft:', payload);\n      // Mock API save:\n      return of('Saved just now').pipe(tap());\n    })\n  );\n\n  saveStatus = toSignal(this.save$, { initialValue: 'All changes saved' });\n}",
+    "breakdown": [
+      "form.valueChanges emits whenever any control value in the form changes.",
+      "debounceTime(1000) delays save until user stops typing for 1 full second.",
+      "switchMap cancels prior pending saves if new input arrives, ensuring only latest draft saves.",
+      "saveStatus signal renders saving confirmation feedback cleanly to user."
+    ],
+    "expectedOutput": "Form automatically persists draft 1s after user stops typing."
+  },
+  {
+    "id": "angular-ex-42",
+    "title": "Tag / Chip Input Component with Custom CVA & Keyboard Navigation",
+    "category": "Routing & Form Systems",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Creates an interactive tag/chip input widget implementing ControlValueAccessor with Enter key insertion and Backspace tag deletion.",
+    "conceptsCovered": [
+      "ControlValueAccessor",
+      "NG_VALUE_ACCESSOR",
+      "Keyboard Navigation",
+      "Tag System",
+      "Immutability"
+    ],
+    "code": "import { Component, forwardRef } from '@angular/core';\nimport { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';\n\n@Component({\n  selector: 'app-chip-input',\n  standalone: true,\n  providers: [\n    {\n      provide: NG_VALUE_ACCESSOR,\n      useExisting: forwardRef(() => ChipInputComponent),\n      multi: true\n    }\n  ],\n  styles: [`\n    .chip-container { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; border: 1px solid #ccc; }\n    .chip { background: #e0e0e0; padding: 2px 8px; border-radius: 12px; font-size: 13px; }\n    .chip button { border: none; background: transparent; cursor: pointer; margin-left: 4px; }\n    input { border: none; outline: none; flex: 1; min-width: 100px; }\n  `],\n  template: `\n    <div class=\"chip-container\">\n      @for (chip of chips; track chip; let idx = $index) {\n        <span class=\"chip\">\n          {{ chip }}\n          <button type=\"button\" (click)=\"removeChip(idx)\">×</button>\n        </span>\n      }\n      <input \n        #chipInput\n        placeholder=\"Add tag and press Enter\"\n        (keydown.enter)=\"addChip($event, chipInput)\"\n        (keydown.backspace)=\"onBackspace(chipInput)\"\n      />\n    </div>\n  `\n})\nexport class ChipInputComponent implements ControlValueAccessor {\n  chips: string[] = [];\n  private onChange: (v: string[]) => void = () => {};\n  private onTouched: () => void = () => {};\n\n  writeValue(val: string[]): void {\n    this.chips = val || [];\n  }\n  registerOnChange(fn: any): void { this.onChange = fn; }\n  registerOnTouched(fn: any): void { this.onTouched = fn; }\n\n  addChip(e: Event, input: HTMLInputElement) {\n    e.preventDefault();\n    const val = input.value.trim();\n    if (val && !this.chips.includes(val)) {\n      this.chips = [...this.chips, val];\n      input.value = '';\n      this.onChange(this.chips);\n      this.onTouched();\n    }\n  }\n\n  removeChip(index: number) {\n    this.chips = this.chips.filter((_, i) => i !== index);\n    this.onChange(this.chips);\n    this.onTouched();\n  }\n\n  onBackspace(input: HTMLInputElement) {\n    if (!input.value && this.chips.length > 0) {\n      this.removeChip(this.chips.length - 1);\n    }\n  }\n}",
+    "breakdown": [
+      "Implements ControlValueAccessor for string[] tag collections.",
+      "Enter key listener adds new unique tag and clears input field.",
+      "Backspace on empty input deletes the most recently added tag.",
+      "Notifies parent form via this.onChange(this.chips) with immutable array reference."
+    ],
+    "expectedOutput": "Tag input widget creates and deletes tags via keyboard and binds with formControl."
+  },
+  {
+    "id": "angular-ex-43",
+    "title": "HTTP Bearer Token Interceptor with 401 Refresh Mutex",
+    "category": "Production, SSR & Performance",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Intercepts HTTP requests, clones them with Bearer Authorization tokens, and handles 401 Unauthorized errors with a synchronized refresh mutex.",
+    "conceptsCovered": [
+      "HttpInterceptorFn",
+      "req.clone",
+      "catchError",
+      "Token Refresh Mutex",
+      "Concurrency"
+    ],
+    "code": "import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';\nimport { inject } from '@angular/core';\nimport { Observable, throwError, BehaviorSubject } from 'rxjs';\nimport { catchError, switchMap, filter, take } from 'rxjs/operators';\n\n// Mock Token Service\nclass AuthService {\n  getToken(): string | null { return 'expired_jwt'; }\n  refreshToken(): Observable<{ token: string }> {\n    return new Observable(sub => { sub.next({ token: 'new_fresh_jwt' }); sub.complete(); });\n  }\n}\n\nlet isRefreshing = false;\nconst refreshTokenSubject = new BehaviorSubject<string | null>(null);\n\nexport const authInterceptor: HttpInterceptorFn = (req, next) => {\n  const auth = new AuthService();\n  const token = auth.getToken();\n\n  let clonedReq = req;\n  if (token) {\n    clonedReq = req.clone({ setHeaders: { Authorization: `Bearer ${token}` } });\n  }\n\n  return next(clonedReq).pipe(\n    catchError((error: HttpErrorResponse) => {\n      if (error.status === 401 && !req.url.includes('/auth/refresh')) {\n        if (!isRefreshing) {\n          isRefreshing = true;\n          refreshTokenSubject.next(null);\n\n          return auth.refreshToken().pipe(\n            switchMap(({ token: newToken }) => {\n              isRefreshing = false;\n              refreshTokenSubject.next(newToken);\n              return next(req.clone({ setHeaders: { Authorization: `Bearer ${newToken}` } }));\n            }),\n            catchError(err => {\n              isRefreshing = false;\n              return throwError(() => err);\n            })\n          );\n        } else {\n          // If already refreshing, queue this request until new token is published:\n          return refreshTokenSubject.pipe(\n            filter(newToken => newToken !== null),\n            take(1),\n            switchMap(newToken => next(req.clone({ setHeaders: { Authorization: `Bearer ${newToken}` } })))\n          );\n        }\n      }\n      return throwError(() => error);\n    })\n  );\n};",
+    "breakdown": [
+      "Clones outgoing requests to inject the Authorization Bearer header safely.",
+      "Catches 401 Unauthorized responses to initiate silent background token refresh.",
+      "Uses isRefreshing flag and BehaviorSubject to queue concurrent failing requests.",
+      "Retries all queued requests with the newly minted access token once refresh finishes."
+    ],
+    "expectedOutput": "Expired token caught; requests paused while single refresh executes, then seamlessly retried."
+  },
+  {
+    "id": "angular-ex-44",
+    "title": "Global HTTP Error Notification Interceptor",
+    "category": "Production, SSR & Performance",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Intercepts all outgoing HTTP failures globally, displaying toast alerts for 500, 403, and network errors while preserving original error streams.",
+    "conceptsCovered": [
+      "HttpInterceptorFn",
+      "HttpErrorResponse",
+      "Global Error Handling",
+      "Toast Notifications",
+      "throwError"
+    ],
+    "code": "import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';\nimport { inject } from '@angular/core';\nimport { catchError } from 'rxjs/operators';\nimport { throwError } from 'rxjs';\n\n// Mock Notification Service\nclass ToastService {\n  showError(msg: string) { console.error('TOAST ALERT:', msg); }\n}\n\nexport const errorNotificationInterceptor: HttpInterceptorFn = (req, next) => {\n  const toast = new ToastService();\n\n  return next(req).pipe(\n    catchError((error: HttpErrorResponse) => {\n      let errorMessage = 'An unexpected error occurred.';\n\n      if (error.status === 0) {\n        errorMessage = 'Network connection lost. Please check your internet connection.';\n      } else if (error.status === 403) {\n        errorMessage = 'Access denied: You do not have permissions for this resource.';\n      } else if (error.status >= 500) {\n        errorMessage = `Internal server error (${error.status}). Our team has been notified.`;\n      }\n\n      toast.showError(errorMessage);\n      return throwError(() => error); // Re-throw so caller can still handle if needed\n    })\n  );\n};",
+    "breakdown": [
+      "Catches unhandled HTTP failures centrally across the entire application.",
+      "status === 0 identifies client offline or CORS blockage conditions.",
+      "Formats friendly user messages rather than exposing raw server stack traces.",
+      "Re-throws the error via throwError(() => error) to preserve caller error pipelines."
+    ],
+    "expectedOutput": "Server errors trigger user-friendly toast alerts automatically without component-level try-catch."
+  },
+  {
+    "id": "angular-ex-45",
+    "title": "Non-Destructive SSR Hydration with Event Replay Configuration",
+    "category": "Production, SSR & Performance",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Configures Angular 18+ non-destructive client hydration with event replay and HTTP transfer cache options in app.config.ts.",
+    "conceptsCovered": [
+      "provideClientHydration",
+      "withEventReplay",
+      "withHttpTransferCacheOptions",
+      "SSR Setup",
+      "Core Web Vitals"
+    ],
+    "code": "import { ApplicationConfig } from '@angular/core';\nimport { provideRouter } from '@angular/router';\nimport { provideHttpClient, withFetch } from '@angular/common/http';\nimport {\n  provideClientHydration,\n  withEventReplay,\n  withHttpTransferCacheOptions\n} from '@angular/platform-browser';\nimport { routes } from './app.routes';\n\nexport const appConfig: ApplicationConfig = {\n  providers: [\n    provideRouter(routes),\n    provideHttpClient(withFetch()), // Mandatory for modern SSR & edge streaming\n    // Enable production hydration:\n    provideClientHydration(\n      withEventReplay(), // Replays clicks happening before JS download finishes\n      withHttpTransferCacheOptions({\n        includePostRequests: false // Strictly cache GET requests\n      })\n    )\n  ]\n};",
+    "breakdown": [
+      "provideClientHydration() turns on non-destructive DOM node preservation.",
+      "withEventReplay() captures early user clicks during page load and replays them upon hydration.",
+      "withFetch() switches HttpClient from XMLHttpRequest to the native modern browser fetch API.",
+      "withHttpTransferCacheOptions configures server-to-client HTTP response serialization."
+    ],
+    "expectedOutput": "Instant FCP with zero DOM flicker and zero lost user clicks during client download."
+  },
+  {
+    "id": "angular-ex-46",
+    "title": "Platform-Safe Storage Service Guarding Window & LocalStorage",
+    "category": "Production, SSR & Performance",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Encapsulates localStorage into an injectable service that safely detects browser vs server environments using PLATFORM_ID and isPlatformBrowser.",
+    "conceptsCovered": [
+      "PLATFORM_ID",
+      "isPlatformBrowser",
+      "SSR Safety",
+      "Storage Abstraction",
+      "Dependency Injection"
+    ],
+    "code": "import { Injectable, inject, PLATFORM_ID } from '@angular/core';\nimport { isPlatformBrowser } from '@angular/common';\n\n@Injectable({ providedIn: 'root' })\nexport class SafeStorageService {\n  private platformId = inject(PLATFORM_ID);\n  private isBrowser = isPlatformBrowser(this.platformId);\n\n  getItem(key: string): string | null {\n    if (!this.isBrowser) {\n      return null; // Safe fallback on Node.js server\n    }\n    try {\n      return localStorage.getItem(key);\n    } catch (e) {\n      console.warn('LocalStorage access blocked', e);\n      return null;\n    }\n  }\n\n  setItem(key: string, value: string): void {\n    if (this.isBrowser) {\n      try {\n        localStorage.setItem(key, value);\n      } catch (e) {\n        console.warn('LocalStorage write failed (quota exceeded or blocked)', e);\n      }\n    }\n  }\n\n  removeItem(key: string): void {\n    if (this.isBrowser) {\n      localStorage.removeItem(key);\n    }\n  }\n}",
+    "breakdown": [
+      "isPlatformBrowser(this.platformId) verifies whether execution is currently inside Node or browser.",
+      "Prevents 'ReferenceError: localStorage is not defined' crashes during SSR compilation.",
+      "Wraps browser calls in try-catch to handle Safari Private Browsing quota restrictions.",
+      "Provides uniform storage API across client and server."
+    ],
+    "expectedOutput": "Storage operations execute safely in browser and return clean nulls during SSR."
+  },
+  {
+    "id": "angular-ex-47",
+    "title": "Virtual Scrolling 100,000 Item List with CDK Virtual Scroll",
+    "category": "Production, SSR & Performance",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Renders a 100,000 item transaction feed at 60 FPS using ScrollingModule and cdk-virtual-scroll-viewport with fixed itemSize.",
+    "conceptsCovered": [
+      "ScrollingModule",
+      "cdk-virtual-scroll-viewport",
+      "*cdkVirtualFor",
+      "itemSize",
+      "DOM Recycling"
+    ],
+    "code": "import { Component, ChangeDetectionStrategy } from '@angular/core';\nimport { ScrollingModule } from '@angular/cdk/scrolling';\n\ninterface Transaction { id: number; description: string; amount: number; }\n\n@Component({\n  selector: 'app-virtual-feed',\n  standalone: true,\n  imports: [ScrollingModule],\n  changeDetection: ChangeDetectionStrategy.OnPush,\n  styles: [`\n    .viewport { height: 500px; width: 100%; border: 1px solid #ccc; }\n    .item-row { height: 50px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid #eee; }\n  `],\n  template: `\n    <!-- itemSize is mandatory: represents exact row height in px -->\n    <cdk-virtual-scroll-viewport itemSize=\"50\" class=\"viewport\">\n      <div *cdkVirtualFor=\"let item of transactions; trackBy: trackById\" class=\"item-row\">\n        <span>#{{ item.id }}</span>\n        <span style=\"flex: 1; margin-left: 12px;\">{{ item.description }}</span>\n        <span>${{ item.amount }}</span>\n      </div>\n    </cdk-virtual-scroll-viewport>\n  `\n})\nexport class VirtualFeedComponent {\n  transactions: Transaction[] = Array.from({ length: 100000 }).map((_, i) => ({\n    id: i + 1,\n    description: `Transaction Record ${i + 1}`,\n    amount: +(Math.random() * 500).toFixed(2)\n  }));\n\n  trackById(index: number, item: Transaction) {\n    return item.id;\n  }\n}",
+    "breakdown": [
+      "itemSize=\"50\" tells the CDK the exact vertical pixel height of each item row.",
+      "cdk-virtual-scroll-viewport only instantiates ~15 DOM nodes matching the visible area.",
+      "Recycles DOM nodes as the user scrolls, maintaining constant memory footprint.",
+      "trackBy function ensures smooth scrolling without element destruction."
+    ],
+    "expectedOutput": "100,000 items scroll fluidly at 60 FPS with minimal DOM node count."
+  },
+  {
+    "id": "angular-ex-48",
+    "title": "Offloading Heavy Computation to Web Worker in Angular CLI",
+    "category": "Production, SSR & Performance",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Spawns a dedicated Web Worker to process heavy calculations off the main UI thread, preserving responsive 60 FPS animation.",
+    "conceptsCovered": [
+      "Web Worker",
+      "import.meta.url",
+      "postMessage",
+      "Worker Teardown",
+      "INP Optimization"
+    ],
+    "code": "import { Component, OnInit, OnDestroy, signal } from '@angular/core';\n\n@Component({\n  selector: 'app-worker-calc',\n  standalone: true,\n  template: `\n    <button (click)=\"startCalculation()\" [disabled]=\"isCalculating()\">\n      {{ isCalculating() ? 'Computing on Background Thread...' : 'Run Heavy Calculation' }}\n    </button>\n    <p>Result: {{ calculationResult() }}</p>\n  `\n})\nexport class WorkerCalcComponent implements OnInit, OnDestroy {\n  private worker?: Worker;\n  isCalculating = signal(false);\n  calculationResult = signal<number | null>(null);\n\n  ngOnInit() {\n    if (typeof Worker !== 'undefined') {\n      // Angular CLI compiles worker files into isolated chunks:\n      this.worker = new Worker(new URL('./heavy.worker', import.meta.url), { type: 'module' });\n\n      this.worker.onmessage = ({ data }) => {\n        this.calculationResult.set(data);\n        this.isCalculating.set(false);\n      };\n    }\n  }\n\n  startCalculation() {\n    this.isCalculating.set(true);\n    // Sends input payload to background OS thread\n    this.worker?.postMessage({ iterations: 100000000 });\n  }\n\n  ngOnDestroy() {\n    this.worker?.terminate(); // Clean up thread!\n  }\n}\n\n// In heavy.worker.ts:\n// addEventListener('message', ({ data }) => {\n//   let sum = 0;\n//   for (let i = 0; i < data.iterations; i++) sum += i;\n//   postMessage(sum);\n// });",
+    "breakdown": [
+      "new Worker(new URL('./path', import.meta.url), { type: 'module' }) leverages modern standard worker loading.",
+      "Heavy computations execute on background OS threads, keeping browser main thread completely unblocked.",
+      "postMessage sends serializable payloads across thread boundaries.",
+      "worker.terminate() in ngOnDestroy frees OS system resources when component destroys."
+    ],
+    "expectedOutput": "100-million iteration loop calculates in background without dropping browser UI frames."
+  },
+  {
+    "id": "angular-ex-49",
+    "title": "Pure Memoized Currency & Date Formatting Pipe",
+    "category": "Production, SSR & Performance",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Creates an enterprise pure memoized pipe that formats numbers into localized currency strings, executing only when input parameters change.",
+    "conceptsCovered": [
+      "Pipe",
+      "PipeTransform",
+      "pure: true",
+      "Memoization",
+      "Intl.NumberFormat"
+    ],
+    "code": "import { Pipe, PipeTransform } from '@angular/core';\n\n@Pipe({\n  name: 'appCurrency',\n  standalone: true,\n  pure: true // Default: Memoized by Angular! Executes only on parameter reference change!\n})\nexport class AppCurrencyPipe implements PipeTransform {\n  private formatters = new Map<string, Intl.NumberFormat>();\n\n  transform(value: number | null | undefined, currency = 'USD', locale = 'en-US'): string {\n    if (value === null || value === undefined || isNaN(value)) {\n      return '';\n    }\n\n    const key = `${locale}_${currency}`;\n    let formatter = this.formatters.get(key);\n\n    if (!formatter) {\n      formatter = new Intl.NumberFormat(locale, {\n        style: 'currency',\n        currency,\n        minimumFractionDigits: 2\n      });\n      this.formatters.set(key, formatter);\n    }\n\n    return formatter.format(value);\n  }\n}\n\n// Usage:\n// <p>{{ transaction.amount | appCurrency:'EUR':'de-DE' }}</p>",
+    "breakdown": [
+      "pure: true guarantees that Angular skips executing transform() if inputs have not changed.",
+      "Caches Intl.NumberFormat instances in an internal Map to avoid recreating expensive formatting objects.",
+      "Handles null, undefined, and NaN inputs gracefully without crashing template rendering.",
+      "Zero bundle bloat: lightweight standalone utility pipe."
+    ],
+    "expectedOutput": "Numbers format to localized currency strings ($1,299.00) with zero duplicate re-evaluations."
+  },
+  {
+    "id": "angular-ex-50",
+    "title": "Dynamic SVG & Safe URL Sanitization with DomSanitizer",
+    "category": "Production, SSR & Performance",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Sanitizes trusted external SVG strings and dynamic iframe URLs safely using DomSanitizer and SecurityContext.",
+    "conceptsCovered": [
+      "DomSanitizer",
+      "SecurityContext",
+      "bypassSecurityTrustHtml",
+      "SafeHtml",
+      "XSS Protection"
+    ],
+    "code": "import { Component, inject, input } from '@angular/core';\nimport { DomSanitizer, SafeHtml, SafeResourceUrl } from '@angular/platform-browser';\n\n@Component({\n  selector: 'app-safe-svg-icon',\n  standalone: true,\n  template: `\n    <!-- Bound safely to innerHTML using SafeHtml token -->\n    <span [innerHTML]=\"sanitizedSvg()\"></span>\n  `\n})\nexport class SafeSvgIconComponent {\n  private sanitizer = inject(DomSanitizer);\n  rawSvg = input.required<string>();\n\n  sanitizedSvg = () => {\n    const raw = this.rawSvg();\n    // CAUTION: Only bypass if source is trusted internal SVG asset!\n    return this.sanitizer.bypassSecurityTrustHtml(raw);\n  };\n}\n\n// Service example for trusted video URLs:\nexport function createSafeVideoUrl(sanitizer: DomSanitizer, videoId: string): SafeResourceUrl {\n  const safeUrl = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}`;\n  return sanitizer.bypassSecurityTrustResourceUrl(safeUrl);\n}",
+    "breakdown": [
+      "DomSanitizer.bypassSecurityTrustHtml bypasses Angular's built-in HTML stripping for trusted SVGs.",
+      "bypassSecurityTrustResourceUrl permits binding external iframe URLs dynamically.",
+      "Always validate and encode URL parameters to avoid injecting untrusted user content.",
+      "Returns SafeHtml / SafeResourceUrl opaque types recognized by Ivy property bindings."
+    ],
+    "expectedOutput": "Trusted SVGs and iframes render cleanly without security stripping warnings."
+  },
+  {
+    "id": "angular-ex-51",
+    "title": "Content Security Policy (CSP) Nonce Integration",
+    "category": "Production, SSR & Performance",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Configures Angular to attach cryptographic CSP nonces to all dynamically generated component <style> tags, satisfying strict security policies.",
+    "conceptsCovered": [
+      "Content Security Policy",
+      "ngCspNonce",
+      "CSP Nonce",
+      "XSS Mitigation",
+      "Security"
+    ],
+    "code": "// In index.html (or generated dynamically by SSR Node.js server):\n// The Express server generates a random cryptographic nonce per request:\n// const nonce = crypto.randomBytes(16).toString('base64');\n// res.setHeader('Content-Security-Policy', `default-src 'self'; style-src 'self' 'nonce-${nonce}';`);\n\n// Pass nonce to Angular root element via ngCspNonce attribute:\n/*\n  <!DOCTYPE html>\n  <html>\n    <head><title>Secure Enterprise App</title></head>\n    <body>\n      <app-root ngCspNonce=\"randomNonceGeneratedByServer123==\"></app-root>\n    </body>\n  </html>\n*/\n\n// When Angular Ivy renders components with ViewEncapsulation.Emulated,\n// it automatically attaches the nonce attribute to every dynamic <style> tag:\n// <style ng-csp-nonce=\"randomNonceGeneratedByServer123==\">\n//   .container[_ngcontent-c1] { display: flex; }\n// </style>",
+    "breakdown": [
+      "Strict Content Security Policy forbids unsafe-inline styles to prevent CSS injection attacks.",
+      "Adding ngCspNonce to <app-root> informs Angular of the active request nonce.",
+      "Ivy automatically propagates this nonce to every component style block injected into <head>.",
+      "Eliminates the need for 'unsafe-inline' in enterprise security audits."
+    ],
+    "expectedOutput": "Dynamic component styles pass strict CSP headers with cryptographic nonces intact."
+  },
+  {
+    "id": "angular-ex-52",
+    "title": "Microfrontend Web Component Packaging with createCustomElement",
+    "category": "Production, SSR & Performance",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Packages a standalone Angular component into a framework-agnostic W3C Custom Element using @angular/elements for use in React, Vue, or legacy HTML.",
+    "conceptsCovered": [
+      "createCustomElement",
+      "@angular/elements",
+      "customElements.define",
+      "Microfrontends",
+      "Web Components"
+    ],
+    "code": "import { createApplication } from '@angular/platform-browser';\nimport { createCustomElement } from '@angular/elements';\nimport { Component, input, output } from '@angular/core';\n\n@Component({\n  selector: 'app-shared-user-card',\n  standalone: true,\n  styles: [`\n    :host { display: block; font-family: sans-serif; border: 1px solid #ccc; padding: 12px; border-radius: 6px; }\n    button { background: #007bff; color: white; border: none; padding: 6px 12px; border-radius: 4px; }\n  `],\n  template: `\n    <h3>{{ username() }}</h3>\n    <button (click)=\"ping.emit(username())\">Send Ping</button>\n  `\n})\nexport class SharedUserCardComponent {\n  username = input<string>('Guest');\n  ping = output<string>();\n}\n\n// Bootstrap application as a Custom Element (Web Component) without index app-root:\nexport async function bootstrapWebComponent() {\n  const app = await createApplication({ providers: [] });\n\n  // Convert standalone Angular component to standard W3C Custom Element:\n  const UserCardElement = createCustomElement(SharedUserCardComponent, {\n    injector: app.injector\n  });\n\n  // Register in browser window registry:\n  if (!customElements.get('shared-user-card')) {\n    customElements.define('shared-user-card', UserCardElement);\n  }\n}\n\n// In React / Vue / Plain HTML:\n// <shared-user-card username=\"John Doe\"></shared-user-card>\n// document.querySelector('shared-user-card').addEventListener('ping', (e) => alert(e.detail));",
+    "breakdown": [
+      "createApplication({ providers: [] }) initializes Angular environment without mounting to the DOM.",
+      "createCustomElement bridges Angular inputs, outputs, and change detection to W3C standards.",
+      "customElements.define registers the custom HTML tag globally in the browser.",
+      "Can be embedded inside React, Vue, or plain static HTML pages as an isolated microfrontend."
+    ],
+    "expectedOutput": "Angular component functions as native <shared-user-card> web component in any frontend stack."
+  }
+]

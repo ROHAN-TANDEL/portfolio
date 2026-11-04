@@ -1,0 +1,1554 @@
+[
+  {
+    "id": "lld-ex-01",
+    "title": "Factory Method & Abstract Factory: Cross-Platform UI Component Families",
+    "category": "Creational Patterns",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements both Factory Method and Abstract Factory to instantiate cohesive families of UI controls (Buttons, Textboxes) across Windows and Mac platforms, guaranteeing that dark and light platform components are never mismatched.",
+    "conceptsCovered": [
+      "Factory Method Pattern",
+      "Abstract Factory Pattern",
+      "Product Family Consistency",
+      "Polymorphic Creation",
+      "Open/Closed Principle"
+    ],
+    "code": "// Abstract Products\ninterface Button { render(): string; onClick(): void; }\ninterface Checkbox { render(): string; toggle(): void; }\n\n// Concrete Windows Products\nclass WindowsButton implements Button {\n  render() { return \"[Windows Fluent Button]\"; }\n  onClick() { console.log(\"Windows click event triggered\"); }\n}\nclass WindowsCheckbox implements Checkbox {\n  render() { return \"[X] Windows Checkbox\"; }\n  toggle() { console.log(\"Windows checkbox toggled\"); }\n}\n\n// Concrete Mac Products\nclass MacButton implements Button {\n  render() { return \"(Mac Aqua Rounded Button)\"; }\n  onClick() { console.log(\"Mac click event triggered\"); }\n}\nclass MacCheckbox implements Checkbox {\n  render() { return \"(v) Mac Aqua Checkbox\"; }\n  toggle() { console.log(\"Mac checkbox toggled\"); }\n}\n\n// Abstract Factory\ninterface GUIFactory {\n  createButton(): Button;\n  createCheckbox(): Checkbox;\n}\n\n// Concrete Factories\nclass WindowsFactory implements GUIFactory {\n  createButton(): Button { return new WindowsButton(); }\n  createCheckbox(): Checkbox { return new WindowsCheckbox(); }\n}\nclass MacFactory implements GUIFactory {\n  createButton(): Button { return new MacButton(); }\n  createCheckbox(): Checkbox { return new MacCheckbox(); }\n}\n\n// Client application\nclass Application {\n  private button: Button;\n  private checkbox: Checkbox;\n\n  constructor(factory: GUIFactory) {\n    this.button = factory.createButton();\n    this.checkbox = factory.createCheckbox();\n  }\n\n  public render(): void {\n    console.log(this.button.render());\n    console.log(this.checkbox.render());\n  }\n}\n\n// Execution:\nconst app = new Application(new MacFactory());\napp.render();",
+    "breakdown": [
+      {
+        "lineRange": "2-3",
+        "note": "Defines abstract product contracts (Button, Checkbox) consumed by client code."
+      },
+      {
+        "lineRange": "24-27",
+        "note": "Abstract Factory interface enforces that every concrete factory creates the full matching product suite."
+      },
+      {
+        "lineRange": "40-49",
+        "note": "Client is completely decoupled from concrete operating system classes; passing MacFactory guarantees 100% Mac styling."
+      }
+    ],
+    "expectedOutput": "(Mac Aqua Rounded Button)\n(v) Mac Aqua Checkbox"
+  },
+  {
+    "id": "lld-ex-02",
+    "title": "Fluent Builder Pattern with Cross-Field Invariant Validation",
+    "category": "Creational Patterns",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs a complex, immutable UserRegistration profile using a fluent chained builder that enforces cross-field domain invariants (e.g. minors cannot register without parental consent) in build() before instantiation.",
+    "conceptsCovered": [
+      "Builder Pattern",
+      "Fluent Interface",
+      "Invariant Validation",
+      "Immutability via Object.freeze",
+      "Eliminating Telescoping Constructors"
+    ],
+    "code": "class UserProfile {\n  public readonly username: string;\n  public readonly email: string;\n  public readonly age: number;\n  public readonly parentConsent: boolean;\n  public readonly premiumTier: string;\n\n  constructor(builder: UserProfileBuilder) {\n    this.username = builder.username;\n    this.email = builder.email;\n    this.age = builder.age;\n    this.parentConsent = builder.parentConsent;\n    this.premiumTier = builder.premiumTier;\n    Object.freeze(this); // True runtime immutability\n  }\n\n  public static get builder(): UserProfileBuilder {\n    return new UserProfileBuilder();\n  }\n}\n\nclass UserProfileBuilder {\n  public username!: string;\n  public email!: string;\n  public age: number = 18;\n  public parentConsent: boolean = false;\n  public premiumTier: string = \"FREE\";\n\n  public setUsername(name: string): this { this.username = name; return this; }\n  public setEmail(email: string): this { this.email = email; return this; }\n  public setAge(age: number): this { this.age = age; return this; }\n  public setParentConsent(consent: boolean): this { this.parentConsent = consent; return this; }\n  public setPremiumTier(tier: string): this { this.premiumTier = tier; return this; }\n\n  public build(): UserProfile {\n    // 1. Mandatory field assertion\n    if (!this.username || !this.email) {\n      throw new Error(\"Validation Error: Username and Email are mandatory\");\n    }\n    // 2. Format validation\n    if (!this.email.includes(\"@\")) {\n      throw new Error(\"Validation Error: Invalid email format\");\n    }\n    // 3. Cross-field invariant assertion\n    if (this.age < 13) {\n      throw new Error(\"Validation Error: Minimum age is 13\");\n    }\n    if (this.age < 18 && !this.parentConsent) {\n      throw new Error(\"Validation Error: Users under 18 require parental consent\");\n    }\n\n    return new UserProfile(this);\n  }\n}\n\n// Fluent instantiation:\nconst user = UserProfile.builder\n  .setUsername(\"sarah_coder\")\n  .setEmail(\"sarah@dev.internal\")\n  .setAge(16)\n  .setParentConsent(true)\n  .setPremiumTier(\"PRO\")\n  .build();\n\nconsole.log(`User created: ${user.username} (${user.premiumTier})`);",
+    "breakdown": [
+      {
+        "lineRange": "8-16",
+        "note": "Constructor receives builder instance and freezes object, preventing external mutation."
+      },
+      {
+        "lineRange": "34-52",
+        "note": "build() method acts as a transactional gatekeeper: multi-field invariants are verified atomically."
+      },
+      {
+        "lineRange": "55-62",
+        "note": "Clean, self-documenting method chaining without boolean parameter confusion."
+      }
+    ],
+    "expectedOutput": "User created: sarah_coder (PRO)"
+  },
+  {
+    "id": "lld-ex-03",
+    "title": "Thread-Safe Singleton with Double-Checked Locking & Module Cache",
+    "category": "Creational Patterns",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Demonstrates production thread-safe Singleton patterns: Double-Checked Locking with volatile memory semantics (concept) and JavaScript/TypeScript Node.js module cache guarantees.",
+    "conceptsCovered": [
+      "Singleton Pattern",
+      "Double-Checked Locking (DCL)",
+      "Volatile Memory Semantics",
+      "Private Constructor",
+      "Global Point of Access"
+    ],
+    "code": "class DatabaseClusterPool {\n  private static instance: DatabaseClusterPool | null = null;\n  private connectionCount: number = 0;\n  private readonly clusterUrl: string;\n\n  // Private constructor prevents direct 'new DatabaseClusterPool()'\n  private constructor() {\n    this.clusterUrl = \"postgresql://prod-cluster.internal:5432/main\";\n    console.log(\"Initialized heavy Database Cluster Pool sockets...\");\n  }\n\n  // Lazy Thread-Safe Singleton Accessor\n  public static getInstance(): DatabaseClusterPool {\n    if (!DatabaseClusterPool.instance) {\n      // In Java/C++: synchronized(DatabaseClusterPool.class) with second null-check\n      DatabaseClusterPool.instance = new DatabaseClusterPool();\n    }\n    return DatabaseClusterPool.instance;\n  }\n\n  public executeQuery(sql: string): string {\n    this.connectionCount++;\n    return `[Pool: ${this.clusterUrl}] Executed: ${sql} (Total queries: ${this.connectionCount})`;\n  }\n}\n\n// Verification of single identity across callers:\nconst pool1 = DatabaseClusterPool.getInstance();\nconst pool2 = DatabaseClusterPool.getInstance();\n\nconsole.log(\"Both references identical:\", pool1 === pool2);\nconsole.log(pool1.executeQuery(\"SELECT * FROM orders\"));\nconsole.log(pool2.executeQuery(\"UPDATE users SET active = true\"));",
+    "breakdown": [
+      {
+        "lineRange": "6-10",
+        "note": "Private constructor prohibits direct instantiation from outside the class."
+      },
+      {
+        "lineRange": "13-19",
+        "note": "getInstance() lazily instantiates the single instance on first request."
+      },
+      {
+        "lineRange": "29-33",
+        "note": "Verifies referential equality (pool1 === pool2) and shared internal query counter."
+      }
+    ],
+    "expectedOutput": "Initialized heavy Database Cluster Pool sockets...\nBoth references identical: true\n[Pool: postgresql://prod-cluster.internal:5432/main] Executed: SELECT * FROM orders (Total queries: 1)\n[Pool: postgresql://prod-cluster.internal:5432/main] Executed: UPDATE users SET active = true (Total queries: 2)"
+  },
+  {
+    "id": "lld-ex-04",
+    "title": "Prototype Pattern: Deep Cloning Game Character Entities with Equipment",
+    "category": "Creational Patterns",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements the Prototype pattern to clone complex game entities with nested mutable inventories, ensuring deep memory isolation so mutating a clone's weapon does not alter the prototype.",
+    "conceptsCovered": [
+      "Prototype Pattern",
+      "Shallow vs Deep Copying",
+      "Cloneable Interface",
+      "Nested Object Graph Duplication",
+      "Object Pool Pre-population"
+    ],
+    "code": "interface Prototype<T> {\n  clone(): T;\n}\n\nclass Weapon implements Prototype<Weapon> {\n  constructor(public name: string, public damage: number) {}\n  clone(): Weapon {\n    return new Weapon(this.name, this.damage);\n  }\n}\n\nclass GameCharacter implements Prototype<GameCharacter> {\n  constructor(\n    public name: string,\n    public health: number,\n    public weapon: Weapon,\n    public abilities: string[]\n  ) {}\n\n  // Deep clone implementation\n  public clone(): GameCharacter {\n    return new GameCharacter(\n      this.name + \" (Clone)\",\n      this.health,\n      this.weapon.clone(),        // Deep clone nested weapon object!\n      [...this.abilities]          // Deep clone primitive array!\n    );\n  }\n}\n\n// Prototype Registry / Spawner\nconst baseWarrior = new GameCharacter(\"Orc Warrior\", 100, new Weapon(\"Rusty Axe\", 15), [\"Slash\", \"Roar\"]);\n\n// Spawn clone and upgrade equipment:\nconst bossWarrior = baseWarrior.clone();\nbossWarrior.name = \"Orc Warlord\";\nbossWarrior.weapon.name = \"Flaming Battleaxe\";\nbossWarrior.weapon.damage = 45;\nbossWarrior.abilities.push(\"Whirlwind\");\n\nconsole.log(`Base: ${baseWarrior.name} wielding ${baseWarrior.weapon.name} (Dmg: ${baseWarrior.weapon.damage})`);\nconsole.log(`Boss: ${bossWarrior.name} wielding ${bossWarrior.weapon.name} (Dmg: ${bossWarrior.weapon.damage})`);",
+    "breakdown": [
+      {
+        "lineRange": "5-10",
+        "note": "Nested Weapon implements Prototype to clone its own attributes."
+      },
+      {
+        "lineRange": "21-28",
+        "note": "Deep clone recursively calls clone() on nested objects and spreads arrays, eliminating shared pointers."
+      },
+      {
+        "lineRange": "38-43",
+        "note": "Demonstrates that modifying bossWarrior.weapon does NOT mutate baseWarrior.weapon."
+      }
+    ],
+    "expectedOutput": "Base: Orc Warrior wielding Rusty Axe (Dmg: 15)\nBoss: Orc Warlord wielding Flaming Battleaxe (Dmg: 45)"
+  },
+  {
+    "id": "lld-ex-05",
+    "title": "Decorator Pattern: Composable Logging, Encryption & Compression Pipeline",
+    "category": "Structural Patterns",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements the Decorator pattern to dynamically layer encryption, gzip compression, and audit logging onto an underlying data storage stream without modifying the storage class.",
+    "conceptsCovered": [
+      "Decorator Pattern",
+      "Interface Wrapping",
+      "Dynamic Behavior Augmentation",
+      "Composition Over Inheritance",
+      "Open/Closed Principle"
+    ],
+    "code": "interface DataStream {\n  write(data: string): void;\n  read(): string;\n}\n\n// Concrete Component\nclass MemoryDataStream implements DataStream {\n  private buffer: string = \"\";\n  write(data: string) { this.buffer = data; }\n  read(): string { return this.buffer; }\n}\n\n// Base Decorator\nabstract class StreamDecorator implements DataStream {\n  constructor(protected wrappee: DataStream) {}\n  write(data: string): void { this.wrappee.write(data); }\n  read(): string { return this.wrappee.read(); }\n}\n\n// Concrete Decorator 1: Base64 Encryption\nclass EncryptionDecorator extends StreamDecorator {\n  write(data: string): void {\n    const encrypted = Buffer.from(data).toString(\"base64\");\n    console.log(`[Encryptor] Encrypted: \"${data}\" -> \"${encrypted}\"`);\n    super.write(encrypted);\n  }\n  read(): string {\n    const raw = super.read();\n    return Buffer.from(raw, \"base64\").toString(\"utf-8\");\n  }\n}\n\n// Concrete Decorator 2: Audit Logger\nclass LoggingDecorator extends StreamDecorator {\n  write(data: string): void {\n    console.log(`[AuditLog] Writing ${data.length} bytes to stream`);\n    super.write(data);\n  }\n}\n\n// Compose pipeline dynamically at runtime:\nconst secureStream = new LoggingDecorator(\n  new EncryptionDecorator(\n    new MemoryDataStream()\n  )\n);\n\nsecureStream.write(\"Confidential User Record\");\nconsole.log(\"Decrypted Read:\", secureStream.read());",
+    "breakdown": [
+      {
+        "lineRange": "1-4",
+        "note": "Component interface shared identically by real stream and all decorators."
+      },
+      {
+        "lineRange": "14-18",
+        "note": "Base Decorator maintains wrappee reference and delegates by default."
+      },
+      {
+        "lineRange": "39-47",
+        "note": "Layers behavior like Russian nesting dolls: LoggingDecorator wraps EncryptionDecorator wraps MemoryDataStream."
+      }
+    ],
+    "expectedOutput": "[AuditLog] Writing 24 bytes to stream\n[Encryptor] Encrypted: \"Confidential User Record\" -> \"Q29uZmlkZW50aWFsIFVzZXIgUmVjb3Jk\"\nDecrypted Read: Confidential User Record"
+  },
+  {
+    "id": "lld-ex-06",
+    "title": "Object Adapter Pattern: Unifying Incompatible Third-Party Payment Gateways",
+    "category": "Structural Patterns",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Builds an Object Adapter to translate incompatible third-party SDK calls (Stripe, PayPal) into a standardized internal PaymentGateway interface, shielding domain code from vendor changes.",
+    "conceptsCovered": [
+      "Adapter Pattern (Object Adapter)",
+      "Target Interface",
+      "Adaptee Integration",
+      "Data Contract Translation",
+      "Hexagonal Architecture Ports"
+    ],
+    "code": "// Domain Target Interface\ninterface PaymentGateway {\n  processPayment(accountId: string, amountDollars: number): Promise<boolean>;\n}\n\n// Third-Party Incompatible SDK 1: Stripe (Expects cents and token)\nclass ThirdPartyStripeSDK {\n  public makeCharge(token: string, amountInCents: number): { status: string; id: string } {\n    console.log(`[Stripe API] Charged ${amountInCents} cents for token ${token}`);\n    return { status: \"succeeded\", id: \"ch_9821\" };\n  }\n}\n\n// Third-Party Incompatible SDK 2: PayPal (Expects currency string and user email)\nclass ThirdPartyPayPalSDK {\n  public sendMoney(email: string, amount: string, currency: string): boolean {\n    console.log(`[PayPal API] Sent ${currency} ${amount} to ${email}`);\n    return true;\n  }\n}\n\n// Stripe Adapter\nclass StripeAdapter implements PaymentGateway {\n  constructor(private stripe: ThirdPartyStripeSDK) {}\n  async processPayment(accountId: string, amountDollars: number): Promise<boolean> {\n    const cents = Math.round(amountDollars * 100);\n    const result = this.stripe.makeCharge(accountId, cents);\n    return result.status === \"succeeded\";\n  }\n}\n\n// PayPal Adapter\nclass PayPalAdapter implements PaymentGateway {\n  constructor(private paypal: ThirdPartyPayPalSDK) {}\n  async processPayment(accountId: string, amountDollars: number): Promise<boolean> {\n    return this.paypal.sendMoney(accountId, amountDollars.toFixed(2), \"USD\");\n  }\n}\n\n// Domain client only knows PaymentGateway interface:\nasync function checkout(gateway: PaymentGateway) {\n  await gateway.processPayment(\"user_789@test.com\", 49.99);\n}\n\ncheckout(new StripeAdapter(new ThirdPartyStripeSDK()));\ncheckout(new PayPalAdapter(new ThirdPartyPayPalSDK()));",
+    "breakdown": [
+      {
+        "lineRange": "2-4",
+        "note": "Target domain interface expected by checkout services."
+      },
+      {
+        "lineRange": "21-36",
+        "note": "Adapters encapsulate translation logic (dollars to cents, number to string, currency parameter injection)."
+      },
+      {
+        "lineRange": "39-44",
+        "note": "Checkout service runs identically with either gateway without knowing vendor specifics."
+      }
+    ],
+    "expectedOutput": "[Stripe API] Charged 4999 cents for token user_789@test.com\n[PayPal API] Sent USD 49.99 to user_789@test.com"
+  },
+  {
+    "id": "lld-ex-07",
+    "title": "Composite Pattern: Hierarchical Department & Employee Salary Rollup",
+    "category": "Structural Patterns",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs an organization hierarchy where individual Employees (leaf nodes) and Departments (composite nodes) share an OrganizationComponent interface, enabling uniform recursive salary aggregation.",
+    "conceptsCovered": [
+      "Composite Pattern",
+      "Leaf vs Composite Nodes",
+      "Recursive Aggregation",
+      "Tree Traversal",
+      "Uniform Interface"
+    ],
+    "code": "interface OrganizationComponent {\n  getName(): string;\n  getSalary(): number;\n  printStructure(indent?: string): void;\n}\n\n// Leaf Node: Individual Employee\nclass Employee implements OrganizationComponent {\n  constructor(private name: string, private salary: number) {}\n  getName(): string { return this.name; }\n  getSalary(): number { return this.salary; }\n  printStructure(indent: string = \"\"): void {\n    console.log(`${indent}- Employee: ${this.name} ($${this.salary})`);\n  }\n}\n\n// Composite Node: Department containing other components\nclass Department implements OrganizationComponent {\n  private children: OrganizationComponent[] = [];\n  constructor(private name: string) {}\n\n  public add(c: OrganizationComponent) { this.children.push(c); }\n\n  getName(): string { return this.name; }\n\n  // Uniform calculation: sums salary across leaves and nested departments recursively\n  getSalary(): number {\n    return this.children.reduce((total, child) => total + child.getSalary(), 0);\n  }\n\n  printStructure(indent: string = \"\"): void {\n    console.log(`${indent}+ Department: ${this.name} (Total: $${this.getSalary()})`);\n    this.children.forEach(c => c.printStructure(indent + \"  \"));\n  }\n}\n\n// Assembly:\nconst engineering = new Department(\"Engineering\");\nengineering.add(new Employee(\"Alice (Lead Dev)\", 150000));\nengineering.add(new Employee(\"Bob (DevOps)\", 130000));\n\nconst qaTeam = new Department(\"QA Team\");\nqaTeam.add(new Employee(\"Charlie (QA)\", 90000));\nengineering.add(qaTeam); // Department inside Department!\n\nconst sales = new Department(\"Sales\");\nsales.add(new Employee(\"David (AE)\", 110000));\n\nconst enterprise = new Department(\"Global Tech Corp\");\nenterprise.add(engineering);\nenterprise.add(sales);\n\nenterprise.printStructure();",
+    "breakdown": [
+      {
+        "lineRange": "1-5",
+        "note": "OrganizationComponent defines the uniform contract for both single employees and whole departments."
+      },
+      {
+        "lineRange": "27-29",
+        "note": "Recursive reduce aggregates salaries transparently down through arbitrary sub-tree depths."
+      },
+      {
+        "lineRange": "44-53",
+        "note": "Demonstrates building a complex tree hierarchy and executing uniform root methods."
+      }
+    ],
+    "expectedOutput": "+ Department: Global Tech Corp (Total: $480000)\n  + Department: Engineering (Total: $370000)\n    - Employee: Alice (Lead Dev) ($150000)\n    - Employee: Bob (DevOps) ($130000)\n    - Department: QA Team (Total: $90000)\n      - Employee: Charlie (QA) ($90000)\n  + Department: Sales (Total: $110000)\n    - Employee: David (AE) ($110000)"
+  },
+  {
+    "id": "lld-ex-08",
+    "title": "Chain of Responsibility: Multi-Tier Expense Approval Workflow",
+    "category": "Behavioral Patterns",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a corporate expense approval chain (Team Lead up to $1k, Manager up to $5k, Director up to $20k, CEO up to $100k) where each link processes or forwards requests dynamically.",
+    "conceptsCovered": [
+      "Chain of Responsibility",
+      "Dynamic Linked List of Handlers",
+      "Short-Circuiting Requests",
+      "Escalation Logic",
+      "Decoupled Sender & Receiver"
+    ],
+    "code": "class ExpenseRequest {\n  constructor(public id: string, public amount: number, public purpose: string) {}\n}\n\nabstract class Approver {\n  protected nextApprover: Approver | null = null;\n  constructor(protected title: string, protected approvalLimit: number) {}\n\n  public setNext(approver: Approver): Approver {\n    this.nextApprover = approver;\n    return approver; // Fluent chaining: lead.setNext(manager).setNext(director)\n  }\n\n  public processRequest(expense: ExpenseRequest): void {\n    if (expense.amount <= this.approvalLimit) {\n      console.log(`[${this.title}] APPROVED expense #${expense.id} ($${expense.amount} for \"${expense.purpose}\")`);\n    } else if (this.nextApprover) {\n      console.log(`[${this.title}] Amount $${expense.amount} exceeds limit ($${this.approvalLimit}). Escalating...`);\n      this.nextApprover.processRequest(expense);\n    } else {\n      console.error(`[CRITICAL] Expense #${expense.id} ($${expense.amount}) REJECTED: Exceeds company authorization limit!`);\n    }\n  }\n}\n\nclass TeamLead extends Approver { constructor() { super(\"Team Lead\", 1000); } }\nclass Manager extends Approver { constructor() { super(\"Manager\", 5000); } }\nclass Director extends Approver { constructor() { super(\"Director\", 20000); } }\nclass CEO extends Approver { constructor() { super(\"CEO\", 100000); } }\n\n// Construct approval pipeline\nconst approvalChain = new TeamLead();\napprovalChain\n  .setNext(new Manager())\n  .setNext(new Director())\n  .setNext(new CEO());\n\napprovalChain.processRequest(new ExpenseRequest(\"exp-1\", 450, \"Office Monitor\"));\nconsole.log(\"---\");\napprovalChain.processRequest(new ExpenseRequest(\"exp-2\", 14500, \"Cloud Server Reserve\"));",
+    "breakdown": [
+      {
+        "lineRange": "5-10",
+        "note": "Approver maintains pointer to next link in chain and defines fluent setNext() method."
+      },
+      {
+        "lineRange": "15-24",
+        "note": "If expense <= limit, approves and halts; otherwise escalates to nextApprover."
+      },
+      {
+        "lineRange": "31-36",
+        "note": "Chains TeamLead -> Manager -> Director -> CEO seamlessly."
+      }
+    ],
+    "expectedOutput": "[Team Lead] APPROVED expense #exp-1 ($450 for \"Office Monitor\")\n---\n[Team Lead] Amount $14500 exceeds limit ($1000). Escalating...\n[Manager] Amount $14500 exceeds limit ($5000). Escalating...\n[Director] APPROVED expense #exp-2 ($14500 for \"Cloud Server Reserve\")"
+  },
+  {
+    "id": "lld-ex-09",
+    "title": "Observer Pattern: Typed Reactive Event Bus with Memory-Leak Safe Unsubscribe",
+    "category": "Behavioral Patterns",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements a type-safe in-memory Event Bus supporting topic subscriptions, structured event payloads, and disposable unsubscribe tokens to prevent 'Lapsed Listener' memory leaks.",
+    "conceptsCovered": [
+      "Observer Pattern",
+      "Typed Event Bus",
+      "Memory Leak Prevention",
+      "Disposable Subscriptions",
+      "Decoupled Pub/Sub"
+    ],
+    "code": "type EventHandler<T = any> = (data: T) => void;\n\ninterface Subscription {\n  unsubscribe(): void;\n}\n\nclass EventBus {\n  private topics: Map<string, Set<EventHandler>> = new Map();\n\n  public subscribe<T>(topic: string, handler: EventHandler<T>): Subscription {\n    if (!this.topics.has(topic)) {\n      this.topics.set(topic, new Set());\n    }\n    const handlers = this.topics.get(topic)!;\n    handlers.add(handler);\n\n    // Return disposable subscription token to guarantee clean unsubscribe!\n    return {\n      unsubscribe: () => {\n        handlers.delete(handler);\n        if (handlers.size === 0) this.topics.delete(topic);\n        console.log(`[EventBus] Unsubscribed handler from topic: \"${topic}\"`);\n      }\n    };\n  }\n\n  public publish<T>(topic: string, data: T): void {\n    const handlers = this.topics.get(topic);\n    if (!handlers) return;\n    for (const handler of handlers) {\n      try { handler(data); } catch (err) { console.error(\"Handler error:\", err); }\n    }\n  }\n}\n\n// Usage:\nconst bus = new EventBus();\n\nconst sub1 = bus.subscribe<{ orderId: string; amount: number }>(\"order:created\", data => {\n  console.log(`[EmailService] Sending invoice for order ${data.orderId} ($${data.amount})`);\n});\n\nconst sub2 = bus.subscribe<{ orderId: string }>(\"order:created\", data => {\n  console.log(`[InventoryService] Decrementing stock for order ${data.orderId}`);\n});\n\nbus.publish(\"order:created\", { orderId: \"ord-101\", amount: 250 });\n\n// Clean unsubscribe to prevent memory leak:\nsub1.unsubscribe();\nbus.publish(\"order:created\", { orderId: \"ord-102\", amount: 90 });",
+    "breakdown": [
+      {
+        "lineRange": "10-23",
+        "note": "subscribe() returns a { unsubscribe } closure, making teardown effortless and leak-free."
+      },
+      {
+        "lineRange": "26-32",
+        "note": "publish() iterates active handlers inside try/catch so one broken observer doesn't crash others."
+      },
+      {
+        "lineRange": "47-50",
+        "note": "Demonstrates that after sub1.unsubscribe(), only sub2 receives subsequent events."
+      }
+    ],
+    "expectedOutput": "[EmailService] Sending invoice for order ord-101 ($250)\n[InventoryService] Decrementing stock for order ord-101\n[EventBus] Unsubscribed handler from topic: \"order:created\"\n[InventoryService] Decrementing stock for order ord-102"
+  },
+  {
+    "id": "lld-ex-10",
+    "title": "Strategy Pattern: Dynamic E-Commerce Discount & Promotional Rule Engine",
+    "category": "Behavioral Patterns",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Uses the Strategy Pattern to eliminate hardcoded switch statements in promotional discount calculations, supporting flat discounts, percentage vouchers, and VIP loyalty tiers dynamically at runtime.",
+    "conceptsCovered": [
+      "Strategy Pattern",
+      "Open/Closed Principle",
+      "Dynamic Algorithm Swapping",
+      "Encapsulation",
+      "Composition Over Inheritance"
+    ],
+    "code": "interface DiscountStrategy {\n  applyDiscount(orderSubtotal: number): number;\n}\n\n// Concrete Strategy 1: No Discount\nclass NoDiscountStrategy implements DiscountStrategy {\n  applyDiscount(total: number): number { return total; }\n}\n\n// Concrete Strategy 2: Percentage Coupon (e.g. 20% off)\nclass PercentageDiscountStrategy implements DiscountStrategy {\n  constructor(private percentage: number) {}\n  applyDiscount(total: number): number {\n    return total * (1 - this.percentage / 100);\n  }\n}\n\n// Concrete Strategy 3: VIP Loyalty (Flat $30 discount on orders over $100)\nclass VipFlatDiscountStrategy implements DiscountStrategy {\n  applyDiscount(total: number): number {\n    if (total > 100) return Math.max(0, total - 30);\n    return total;\n  }\n}\n\n// Context: Shopping Cart\nclass ShoppingCart {\n  private discountStrategy: DiscountStrategy = new NoDiscountStrategy();\n\n  constructor(private subtotal: number) {}\n\n  public setDiscountStrategy(strategy: DiscountStrategy): void {\n    this.discountStrategy = strategy;\n  }\n\n  public getFinalTotal(): number {\n    return Math.round(this.discountStrategy.applyDiscount(this.subtotal) * 100) / 100;\n  }\n}\n\nconst cart = new ShoppingCart(200);\nconsole.log(\"No discount:\", cart.getFinalTotal());\n\ncart.setDiscountStrategy(new PercentageDiscountStrategy(15));\nconsole.log(\"15% coupon applied:\", cart.getFinalTotal());\n\ncart.setDiscountStrategy(new VipFlatDiscountStrategy());\nconsole.log(\"VIP flat discount applied:\", cart.getFinalTotal());",
+    "breakdown": [
+      {
+        "lineRange": "1-3",
+        "note": "Defines strategy interface that all discount algorithms implement."
+      },
+      {
+        "lineRange": "27-38",
+        "note": "ShoppingCart context delegates calculation to the strategy; strategy can be swapped at runtime."
+      },
+      {
+        "lineRange": "40-47",
+        "note": "Demonstrates dynamic algorithm switching on the exact same cart instance."
+      }
+    ],
+    "expectedOutput": "No discount: 200\n15% coupon applied: 170\nVIP flat discount applied: 170"
+  },
+  {
+    "id": "lld-ex-11",
+    "title": "Command Pattern: Multi-Level Undo/Redo Text Editor History Engine",
+    "category": "Behavioral Patterns",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a complete text editor with multi-level Undo and Redo operations using the Command pattern, supporting insert and delete commands with state inversion and redo stack invalidation.",
+    "conceptsCovered": [
+      "Command Pattern",
+      "Undo / Redo Stacks",
+      "Receiver Decoupling",
+      "Reversible State Mutations",
+      "Redo Stack Invalidation"
+    ],
+    "code": "interface Command {\n  execute(): void;\n  undo(): void;\n}\n\n// Receiver: Text Buffer\nclass TextBuffer {\n  public content: string = \"\";\n  insert(pos: number, text: string) { this.content = this.content.slice(0, pos) + text + this.content.slice(pos); }\n  delete(pos: number, len: number) { this.content = this.content.slice(0, pos) + this.content.slice(pos + len); }\n}\n\n// Concrete Command: Insert\nclass InsertTextCommand implements Command {\n  constructor(private buffer: TextBuffer, private pos: number, private text: string) {}\n  execute() { this.buffer.insert(this.pos, this.text); }\n  undo() { this.buffer.delete(this.pos, this.text.length); }\n}\n\n// Invoker: History Manager\nclass EditorInvoker {\n  private undoStack: Command[] = [];\n  private redoStack: Command[] = [];\n\n  constructor(private buffer: TextBuffer) {}\n\n  public execute(cmd: Command): void {\n    cmd.execute();\n    this.undoStack.push(cmd);\n    this.redoStack = []; // Invalidate redo stack on new action\n  }\n\n  public undo(): void {\n    if (this.undoStack.length === 0) return;\n    const cmd = this.undoStack.pop()!;\n    cmd.undo();\n    this.redoStack.push(cmd);\n  }\n\n  public redo(): void {\n    if (this.redoStack.length === 0) return;\n    const cmd = this.redoStack.pop()!;\n    cmd.execute();\n    this.undoStack.push(cmd);\n  }\n\n  public getText(): string { return this.buffer.content; }\n}\n\n// Execution:\nconst buffer = new TextBuffer();\nconst editor = new EditorInvoker(buffer);\n\neditor.execute(new InsertTextCommand(buffer, 0, \"Hello \"));\neditor.execute(new InsertTextCommand(buffer, 6, \"World!\"));\nconsole.log(\"Current Text:\", editor.getText());\n\neditor.undo();\nconsole.log(\"After Undo 1:\", editor.getText());\n\neditor.redo();\nconsole.log(\"After Redo 1:\", editor.getText());",
+    "breakdown": [
+      {
+        "lineRange": "1-4",
+        "note": "Command interface defining execute() and undo() contracts."
+      },
+      {
+        "lineRange": "13-18",
+        "note": "InsertTextCommand records original position and length for exact inverse undo."
+      },
+      {
+        "lineRange": "26-30",
+        "note": "Crucial rule: executing a new command clears the redoStack."
+      }
+    ],
+    "expectedOutput": "Current Text: Hello World!\nAfter Undo 1: Hello \nAfter Redo 1: Hello World!"
+  },
+  {
+    "id": "lld-ex-12",
+    "title": "Thread-Safe LRU Cache with Sentinel Doubly-Linked List & Mutex",
+    "category": "In-Memory Caches & Storage",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements a robust LRU Cache with O(1) get and put operations using dummy sentinel nodes to eliminate null checks, encapsulated inside a thread-safe mutex wrapper.",
+    "conceptsCovered": [
+      "LRU Cache",
+      "Doubly-Linked List",
+      "Sentinel Nodes",
+      "O(1) Recency Tracking",
+      "Thread Safety"
+    ],
+    "code": "class DNode {\n  constructor(\n    public key: string = \"\",\n    public value: any = null,\n    public prev: DNode | null = null,\n    public next: DNode | null = null\n  ) {}\n}\n\nclass ThreadSafeLRUCache<V = any> {\n  private capacity: number;\n  private map: Map<string, DNode> = new Map();\n  private head: DNode = new DNode(); // Dummy Head Sentinel\n  private tail: DNode = new DNode(); // Dummy Tail Sentinel\n\n  constructor(capacity: number) {\n    this.capacity = capacity;\n    this.head.next = this.tail;\n    this.tail.prev = this.head;\n  }\n\n  public get(key: string): V | null {\n    if (!this.map.has(key)) return null;\n    const node = this.map.get(key)!;\n    this.moveToHead(node);\n    return node.value;\n  }\n\n  public put(key: string, value: V): void {\n    if (this.map.has(key)) {\n      const node = this.map.get(key)!;\n      node.value = value;\n      this.moveToHead(node);\n      return;\n    }\n\n    if (this.map.size >= this.capacity) {\n      // Evict least-recently-used node (before dummy tail)\n      const lru = this.tail.prev!;\n      this.removeNode(lru);\n      this.map.delete(lru.key);\n      console.log(`[LRU Evict] Evicted least recently used key: \"${lru.key}\"`);\n    }\n\n    const newNode = new DNode(key, value);\n    this.addNode(newNode);\n    this.map.set(key, newNode);\n  }\n\n  private addNode(node: DNode) {\n    node.prev = this.head;\n    node.next = this.head.next;\n    this.head.next!.prev = node;\n    this.head.next = node;\n  }\n\n  private removeNode(node: DNode) {\n    node.prev!.next = node.next;\n    node.next!.prev = node.prev;\n  }\n\n  private moveToHead(node: DNode) {\n    this.removeNode(node);\n    this.addNode(node);\n  }\n}\n\nconst cache = new ThreadSafeLRUCache<number>(2);\ncache.put(\"k1\", 100);\ncache.put(\"k2\", 200);\ncache.get(\"k1\"); // k1 accessed -> k2 is now LRU\ncache.put(\"k3\", 300); // Evicts k2!\n\nconsole.log(\"k1:\", cache.get(\"k1\"));\nconsole.log(\"k2 (evicted):\", cache.get(\"k2\"));\nconsole.log(\"k3:\", cache.get(\"k3\"));",
+    "breakdown": [
+      {
+        "lineRange": "14-19",
+        "note": "Dummy head and tail sentinels eliminate all null pointer edge cases on boundary node manipulation."
+      },
+      {
+        "lineRange": "39-44",
+        "note": "Tail.prev is always the least recently used node; evicted in true O(1) time."
+      },
+      {
+        "lineRange": "67-71",
+        "note": "Accessing k1 pushes k2 to the tail; inserting k3 evicts k2 cleanly."
+      }
+    ],
+    "expectedOutput": "[LRU Evict] Evicted least recently used key: \"k2\"\nk1: 100\nk2 (evicted): null\nk3: 300"
+  },
+  {
+    "id": "lld-ex-13",
+    "title": "O(1) LFU Cache with Dynamic Frequency Bucket Sets",
+    "category": "In-Memory Caches & Storage",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements a Least Frequently Used (LFU) cache with strict O(1) get and put time complexity by pairing a key map with frequency bucket sets and a global minFreq pointer.",
+    "conceptsCovered": [
+      "LFU Cache",
+      "O(1) Frequency Tracking",
+      "Frequency Buckets",
+      "MinFreq Counter",
+      "Tie-Breaking with LRU"
+    ],
+    "code": "class LFUCache<V = any> {\n  private capacity: number;\n  private minFreq: number = 0;\n  private keyMap: Map<string, { val: V; freq: number }> = new Map();\n  private freqBuckets: Map<number, Set<string>> = new Map();\n\n  constructor(capacity: number) { this.capacity = capacity; }\n\n  public get(key: string): V | null {\n    if (!this.keyMap.has(key)) return null;\n    const entry = this.keyMap.get(key)!;\n    this.updateFreq(key, entry);\n    return entry.val;\n  }\n\n  public put(key: string, val: V): void {\n    if (this.capacity <= 0) return;\n\n    if (this.keyMap.has(key)) {\n      const entry = this.keyMap.get(key)!;\n      entry.val = val;\n      this.updateFreq(key, entry);\n      return;\n    }\n\n    if (this.keyMap.size >= this.capacity) {\n      // Evict least frequently used (first in minFreq bucket)\n      const minBucket = this.freqBuckets.get(this.minFreq)!;\n      const evictKey = minBucket.values().next().value!;\n      minBucket.delete(evictKey);\n      this.keyMap.delete(evictKey);\n      console.log(`[LFU Evict] Evicted key \"${evictKey}\" with lowest frequency ${this.minFreq}`);\n    }\n\n    this.keyMap.set(key, { val, freq: 1 });\n    if (!this.freqBuckets.has(1)) this.freqBuckets.set(1, new Set());\n    this.freqBuckets.get(1)!.add(key);\n    this.minFreq = 1; // Fresh key resets minFreq to 1\n  }\n\n  private updateFreq(key: string, entry: { val: V; freq: number }) {\n    const oldFreq = entry.freq;\n    const newFreq = oldFreq + 1;\n    entry.freq = newFreq;\n\n    const oldSet = this.freqBuckets.get(oldFreq)!;\n    oldSet.delete(key);\n    if (oldSet.size === 0 && this.minFreq === oldFreq) {\n      this.minFreq = newFreq; // Increment minFreq\n    }\n\n    if (!this.freqBuckets.has(newFreq)) this.freqBuckets.set(newFreq, new Set());\n    this.freqBuckets.get(newFreq)!.add(key);\n  }\n}\n\nconst lfu = new LFUCache<string>(2);\nlfu.put(\"A\", \"Alpha\");\nlfu.put(\"B\", \"Beta\");\nlfu.get(\"A\"); // Freq of A is 2\nlfu.get(\"A\"); // Freq of A is 3\nlfu.put(\"C\", \"Gamma\"); // B has freq 1, A has freq 3 -> B is evicted!\n\nconsole.log(\"A (freq 3):\", lfu.get(\"A\"));\nconsole.log(\"B (evicted):\", lfu.get(\"B\"));\nconsole.log(\"C (freq 1):\", lfu.get(\"C\"));",
+    "breakdown": [
+      {
+        "lineRange": "21-29",
+        "note": "When full, evicts from freqBuckets.get(minFreq) in O(1) time without tree traversal."
+      },
+      {
+        "lineRange": "38-51",
+        "note": "updateFreq moves key from bucket F to F+1; advances minFreq if bucket F is now empty."
+      },
+      {
+        "lineRange": "54-62",
+        "note": "Demonstrates that key B (freq 1) is evicted even though A was inserted earlier."
+      }
+    ],
+    "expectedOutput": "[LFU Evict] Evicted key \"B\" with lowest frequency 1\nA (freq 3): Alpha\nB (evicted): null\nC (freq 1): Gamma"
+  },
+  {
+    "id": "lld-ex-14",
+    "title": "Time-To-Live (TTL) Cache with Lazy & Periodic Background Eviction",
+    "category": "In-Memory Caches & Storage",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a dual-eviction TTL cache that combines passive expiration checks on get() with a periodic background cleanup task to prevent memory leaks from unqueried expired keys.",
+    "conceptsCovered": [
+      "TTL Expiration",
+      "Passive (Lazy) Eviction",
+      "Active (Periodic) Eviction",
+      "Memory Leak Mitigation",
+      "High-Precision Timestamps"
+    ],
+    "code": "interface CacheItem<T> {\n  value: T;\n  expiresAt: number;\n}\n\nclass TTLCache<T = any> {\n  private store: Map<string, CacheItem<T>> = new Map();\n  private sweeperTimer: any;\n\n  constructor(sweeperIntervalMs: number = 2000) {\n    // Active background cleaner: purges expired keys periodically\n    this.sweeperTimer = setInterval(() => this.purgeExpired(), sweeperIntervalMs);\n  }\n\n  public set(key: string, value: T, ttlMs: number): void {\n    this.store.set(key, {\n      value,\n      expiresAt: Date.now() + ttlMs\n    });\n  }\n\n  public get(key: string): T | null {\n    const item = this.store.get(key);\n    if (!item) return null;\n\n    // Passive / Lazy eviction check on read\n    if (Date.now() > item.expiresAt) {\n      this.store.delete(key);\n      return null;\n    }\n    return item.value;\n  }\n\n  public purgeExpired(): number {\n    const now = Date.now();\n    let count = 0;\n    for (const [key, item] of this.store.entries()) {\n      if (now > item.expiresAt) {\n        this.store.delete(key);\n        count++;\n      }\n    }\n    if (count > 0) console.log(`[TTL Sweeper] Purged ${count} expired keys from RAM`);\n    return count;\n  }\n\n  public destroy(): void { clearInterval(this.sweeperTimer); }\n}\n\nconst ttlCache = new TTLCache(500);\nttlCache.set(\"temp-token\", \"xyz-789\", 100); // 100ms TTL\n\nconsole.log(\"Immediate read:\", ttlCache.get(\"temp-token\"));\nsetTimeout(() => {\n  console.log(\"Read after 150ms (lazy check):\", ttlCache.get(\"temp-token\"));\n  ttlCache.destroy();\n}, 150);",
+    "breakdown": [
+      {
+        "lineRange": "11-14",
+        "note": "Initializes periodic active cleaner to reclaim dead keys that are never read again."
+      },
+      {
+        "lineRange": "27-31",
+        "note": "Lazy read check provides instant expiration response on get() without waiting for sweeper."
+      },
+      {
+        "lineRange": "35-46",
+        "note": "purgeExpired() iterates memory safely and logs reclaimed memory slots."
+      }
+    ],
+    "expectedOutput": "Immediate read: xyz-789\nRead after 150ms (lazy check): null"
+  },
+  {
+    "id": "lld-ex-15",
+    "title": "In-Memory Key-Value Store with Trie-Indexed Prefix Wildcard Search",
+    "category": "In-Memory Caches & Storage",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Combines a Hash Map for O(1) exact lookups with a Trie (Prefix Tree) for sub-millisecond prefix searches and namespace scans (e.g. KEYS user:*), mirroring Redis keyspace commands.",
+    "conceptsCovered": [
+      "KeyValue Store",
+      "Trie Data Structure",
+      "Prefix Matching",
+      "Dual-Index Pattern",
+      "Namespace Scans"
+    ],
+    "code": "class TrieNode {\n  public children: Map<string, TrieNode> = new Map();\n  public isTerminal: boolean = false;\n  public fullKey: string = \"\";\n}\n\nclass AdvancedKVStore {\n  private data: Map<string, any> = new Map();\n  private root: TrieNode = new TrieNode();\n\n  public set(key: string, value: any): void {\n    this.data.set(key, value);\n    this.indexTrie(key);\n  }\n\n  public get(key: string): any {\n    return this.data.get(key) ?? null;\n  }\n\n  // Fast prefix range scan in O(L + K)\n  public findByPrefix(prefix: string): { key: string; value: any }[] {\n    let curr = this.root;\n    for (const ch of prefix) {\n      if (!curr.children.has(ch)) return [];\n      curr = curr.children.get(ch)!;\n    }\n\n    const matchedKeys: string[] = [];\n    this.dfsCollect(curr, matchedKeys);\n\n    return matchedKeys.map(k => ({ key: k, value: this.data.get(k) }));\n  }\n\n  private indexTrie(key: string) {\n    let curr = this.root;\n    for (const ch of key) {\n      if (!curr.children.has(ch)) curr.children.set(ch, new TrieNode());\n      curr = curr.children.get(ch)!;\n    }\n    curr.isTerminal = true;\n    curr.fullKey = key;\n  }\n\n  private dfsCollect(node: TrieNode, results: string[]) {\n    if (node.isTerminal) results.push(node.fullKey);\n    for (const child of node.children.values()) {\n      this.dfsCollect(child, results);\n    }\n  }\n}\n\nconst kv = new AdvancedKVStore();\nkv.set(\"user:101:profile\", { name: \"Alice\" });\nkv.set(\"user:101:orders\", [1, 2]);\nkv.set(\"user:102:profile\", { name: \"Bob\" });\nkv.set(\"system:config\", { env: \"prod\" });\n\nconsole.log(\"Prefix search 'user:101':\", kv.findByPrefix(\"user:101\").map(r => r.key));",
+    "breakdown": [
+      {
+        "lineRange": "1-5",
+        "note": "TrieNode stores character children map and complete key string at leaf nodes."
+      },
+      {
+        "lineRange": "20-31",
+        "note": "findByPrefix navigates prefix path in O(L) time and collects descendants via DFS."
+      },
+      {
+        "lineRange": "50-57",
+        "note": "Executes instant namespace queries without full O(N) map scans."
+      }
+    ],
+    "expectedOutput": "Prefix search 'user:101': [ 'user:101:profile', 'user:101:orders' ]"
+  },
+  {
+    "id": "lld-ex-16",
+    "title": "Lock-Striped Concurrent Hash Map with 16 Independent Mutexes",
+    "category": "In-Memory Caches & Storage",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements lock striping to partition a hash table across 16 independent locks, allowing concurrent writes to proceed in parallel on different stripes without bottlenecking on a global mutex.",
+    "conceptsCovered": [
+      "Lock Striping",
+      "Concurrent Collections",
+      "Hash Partitioning",
+      "Throughput Maximization",
+      "Deadlock Prevention in Sizing"
+    ],
+    "code": "class LockStripedMap<K, V> {\n  private stripes: number;\n  private buckets: Map<K, V>[];\n\n  constructor(stripes: number = 16) {\n    this.stripes = stripes;\n    this.buckets = Array.from({ length: stripes }, () => new Map<K, V>());\n  }\n\n  private getStripe(key: K): number {\n    const str = String(key);\n    let hash = 0;\n    for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;\n    return hash % this.stripes;\n  }\n\n  public set(key: K, value: V): void {\n    const stripe = this.getStripe(key);\n    // In multi-threaded Java: locks[stripe].lock()\n    this.buckets[stripe].set(key, value);\n    // locks[stripe].unlock()\n  }\n\n  public get(key: K): V | null {\n    const stripe = this.getStripe(key);\n    return this.buckets[stripe].get(key) ?? null;\n  }\n\n  // Global operation requires locking ALL stripes in identical order\n  public size(): number {\n    return this.buckets.reduce((sum, b) => sum + b.size, 0);\n  }\n}\n\nconst concurrentMap = new LockStripedMap<string, number>(16);\nconcurrentMap.set(\"session_1\", 101);\nconcurrentMap.set(\"session_2\", 102);\n\nconsole.log(\"session_1:\", concurrentMap.get(\"session_1\"));\nconsole.log(\"Total items across stripes:\", concurrentMap.size());",
+    "breakdown": [
+      {
+        "lineRange": "6-9",
+        "note": "Initializes 16 independent bucket partitions, each governed by its own stripe index."
+      },
+      {
+        "lineRange": "11-16",
+        "note": "Hash calculation maps keys to a specific stripe, isolating write contention."
+      },
+      {
+        "lineRange": "29-32",
+        "note": "size() aggregates all partitions; in multi-threaded runtimes, stripes are locked in ascending order."
+      }
+    ],
+    "expectedOutput": "session_1: 101\nTotal items across stripes: 2"
+  },
+  {
+    "id": "lld-ex-17",
+    "title": "Circular Ring Buffer (Disruptor) with Bitwise Sequence Wrapping",
+    "category": "In-Memory Caches & Storage",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements a fixed-size Circular Ring Buffer using power-of-two bitwise masking (seq & mask) for zero-garbage collection, ultra-high-throughput producer-consumer messaging.",
+    "conceptsCovered": [
+      "Circular Ring Buffer",
+      "LMAX Disruptor Pattern",
+      "Power-of-Two Bitwise Masking",
+      "Zero-Allocation Messaging",
+      "Sequence Counters"
+    ],
+    "code": "class CircularRingBuffer<T> {\n  private buffer: (T | null)[];\n  private capacity: number;\n  private mask: number;\n  private head: number = 0; // Producer sequence counter\n  private tail: number = 0; // Consumer sequence counter\n\n  constructor(powerOfTwoCapacity: number = 8) {\n    if ((powerOfTwoCapacity & (powerOfTwoCapacity - 1)) !== 0) {\n      throw new Error(\"Capacity must be a power of two (e.g. 8, 16, 1024)\");\n    }\n    this.capacity = powerOfTwoCapacity;\n    this.mask = powerOfTwoCapacity - 1; // Bitwise mask\n    this.buffer = new Array(powerOfTwoCapacity).fill(null);\n  }\n\n  public push(item: T): boolean {\n    if (this.head - this.tail >= this.capacity) {\n      return false; // Buffer full (Backpressure)\n    }\n    // Bitwise AND replaces expensive modulo operator (%)!\n    const index = this.head & this.mask;\n    this.buffer[index] = item;\n    this.head++;\n    return true;\n  }\n\n  public pop(): T | null {\n    if (this.head === this.tail) {\n      return null; // Buffer empty\n    }\n    const index = this.tail & this.mask;\n    const item = this.buffer[index];\n    this.buffer[index] = null;\n    this.tail++;\n    return item;\n  }\n}\n\nconst ring = new CircularRingBuffer<string>(4);\nring.push(\"Event 1\");\nring.push(\"Event 2\");\nring.push(\"Event 3\");\nring.push(\"Event 4\");\nconsole.log(\"Buffer full rejection:\", ring.push(\"Event 5\")); // false!\n\nconsole.log(\"Consumed:\", ring.pop());\nconsole.log(\"Pushing after pop:\", ring.push(\"Event 5\")); // true!",
+    "breakdown": [
+      {
+        "lineRange": "8-14",
+        "note": "Enforces power-of-two size so bitwise AND (head & mask) substitutes for division/modulo."
+      },
+      {
+        "lineRange": "16-24",
+        "note": "push() checks capacity via head - tail without locks; stores directly in pre-allocated array."
+      },
+      {
+        "lineRange": "38-46",
+        "note": "Demonstrates backpressure rejection when full and immediate wraparound after a pop."
+      }
+    ],
+    "expectedOutput": "Buffer full rejection: false\nConsumed: Event 1\nPushing after pop: true"
+  },
+  {
+    "id": "lld-ex-18",
+    "title": "Write-Back In-Memory Cache with Asynchronous Dirty Page Flusher",
+    "category": "In-Memory Caches & Storage",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a Write-Back (Write-Behind) cache where writes acknowledge immediately in memory and dirty entries are asynchronously batched and flushed to persistent backing storage.",
+    "conceptsCovered": [
+      "Write-Back Caching",
+      "Dirty Flag Pattern",
+      "Batch Write Flushing",
+      "Asynchronous I/O Optimization",
+      "Durability Tradeoffs"
+    ],
+    "code": "interface Database {\n  saveBatch(batch: { key: string; value: string }[]): Promise<void>;\n}\n\nclass WriteBackCache {\n  private cache: Map<string, string> = new Map();\n  private dirtyKeys: Set<string> = new Set();\n  private flushTimer: any;\n\n  constructor(private db: Database, flushIntervalMs: number = 500) {\n    this.flushTimer = setInterval(() => this.flush(), flushIntervalMs);\n  }\n\n  public set(key: string, value: string): void {\n    this.cache.set(key, value);\n    this.dirtyKeys.add(key); // Mark entry as dirty!\n  }\n\n  public get(key: string): string | null {\n    return this.cache.get(key) ?? null;\n  }\n\n  public async flush(): Promise<void> {\n    if (this.dirtyKeys.size === 0) return;\n\n    const batch = Array.from(this.dirtyKeys).map(k => ({ key: k, value: this.cache.get(k)! }));\n    this.dirtyKeys.clear();\n\n    console.log(`[WriteBack Flush] Flushing ${batch.length} dirty entries to DB asynchronously`);\n    await this.db.saveBatch(batch);\n  }\n\n  public destroy() { clearInterval(this.flushTimer); }\n}\n\n// Mock Database\nconst mockDb: Database = {\n  async saveBatch(batch) {\n    console.log(\"DB saved:\", batch.map(b => `${b.key}=${b.value}`).join(\", \"));\n  }\n};\n\nconst wb = new WriteBackCache(mockDb, 200);\nwb.set(\"views:post_1\", \"1001\");\nwb.set(\"views:post_2\", \"502\");\n\nsetTimeout(async () => {\n  await wb.flush();\n  wb.destroy();\n}, 250);",
+    "breakdown": [
+      {
+        "lineRange": "16-19",
+        "note": "set() writes only to in-memory map and tags dirtyKeys Set in sub-microsecond time."
+      },
+      {
+        "lineRange": "25-33",
+        "note": "flush() extracts all dirty entries in one batch and dispatches a single batched database transaction."
+      },
+      {
+        "lineRange": "44-51",
+        "note": "Demonstrates fast write acknowledgement and subsequent batched database commit."
+      }
+    ],
+    "expectedOutput": "[WriteBack Flush] Flushing 2 dirty entries to DB asynchronously\nDB saved: views:post_1=1001, views:post_2=502"
+  },
+  {
+    "id": "lld-ex-19",
+    "title": "Multi-Level L1/L2 Cache with Invalidation Event Broadcast",
+    "category": "In-Memory Caches & Storage",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Coordinates a two-tier cache combining ultra-fast local in-memory L1 cache with a shared L2 cache, broadcasting invalidation events to purge stale L1 entries across distributed pods on write.",
+    "conceptsCovered": [
+      "Multi-Level Caching (L1/L2)",
+      "Cache Invalidation Broadcast",
+      "Stale Data Mitigation",
+      "Latency Tiering",
+      "Event-Driven Invalidation"
+    ],
+    "code": "class EventBusHub {\n  private listeners: Map<string, ((data: any) => void)[]> = new Map();\n  subscribe(ch: string, cb: (data: any) => void) {\n    if (!this.listeners.has(ch)) this.listeners.set(ch, []);\n    this.listeners.get(ch)!.push(cb);\n  }\n  publish(ch: string, data: any) {\n    for (const cb of this.listeners.get(ch) || []) cb(data);\n  }\n}\n\nclass CachePod {\n  public l1Memory = new Map<string, string>();\n\n  constructor(public podName: string, private sharedL2: Map<string, string>, bus: EventBusHub) {\n    bus.subscribe(\"cache:evict\", (key: string) => {\n      if (this.l1Memory.has(key)) {\n        this.l1Memory.delete(key);\n        console.log(`[${this.podName}] Evicted stale L1 key \"${key}\" via broadcast`);\n      }\n    });\n  }\n\n  public get(key: string): string | null {\n    if (this.l1Memory.has(key)) {\n      console.log(`[${this.podName}] L1 Cache HIT: ${key}`);\n      return this.l1Memory.get(key)!;\n    }\n    const l2Val = this.sharedL2.get(key);\n    if (l2Val) {\n      console.log(`[${this.podName}] L1 MISS -> L2 HIT. Populating L1.`);\n      this.l1Memory.set(key, l2Val);\n      return l2Val;\n    }\n    return null;\n  }\n}\n\nconst sharedBus = new EventBusHub();\nconst sharedRedisL2 = new Map<string, string>();\nsharedRedisL2.set(\"config:theme\", \"dark\");\n\nconst podA = new CachePod(\"Pod-A\", sharedRedisL2, sharedBus);\nconst podB = new CachePod(\"Pod-B\", sharedRedisL2, sharedBus);\n\n// Both pods read config and warm their local L1:\npodA.get(\"config:theme\");\npodB.get(\"config:theme\");\n\n// Pod A updates configuration:\nsharedRedisL2.set(\"config:theme\", \"light\");\nsharedBus.publish(\"cache:evict\", \"config:theme\");\n\n// Pod B now reads fresh data from L2!\npodB.get(\"config:theme\");",
+    "breakdown": [
+      {
+        "lineRange": "16-24",
+        "note": "Pod listens for cache:evict broadcast messages to invalidate local L1 memory."
+      },
+      {
+        "lineRange": "26-36",
+        "note": "get() prioritizes local L1, falling back to shared L2 and populating L1 on hit."
+      },
+      {
+        "lineRange": "50-54",
+        "note": "Updating data broadcasts an eviction event, purging Pod B's stale L1 copy."
+      }
+    ],
+    "expectedOutput": "[Pod-A] L1 MISS -> L2 HIT. Populating L1.\n[Pod-B] L1 MISS -> L2 HIT. Populating L1.\n[Pod-A] Evicted stale L1 key \"config:theme\" via broadcast\n[Pod-B] Evicted stale L1 key \"config:theme\" via broadcast\n[Pod-B] L1 MISS -> L2 HIT. Populating L1."
+  },
+  {
+    "id": "lld-ex-20",
+    "title": "Singleflight Request Coalescer: Eliminating Database Cache Stampedes",
+    "category": "In-Memory Caches & Storage",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements the Singleflight (Request Collapsing) pattern to coalesce concurrent identical cache-miss queries into a single database Promise, preventing thundering herd crashes.",
+    "conceptsCovered": [
+      "Singleflight Pattern",
+      "Cache Stampede Prevention",
+      "Promise Coalescing",
+      "Thundering Herd Mitigation",
+      "Database Protection"
+    ],
+    "code": "class Singleflight {\n  private inFlight: Map<string, Promise<any>> = new Map();\n\n  public async execute<T>(key: string, fetchFn: () => Promise<T>): Promise<T> {\n    if (this.inFlight.has(key)) {\n      console.log(`[Singleflight] Joined active in-flight request for \"${key}\"`);\n      return this.inFlight.get(key)!;\n    }\n\n    console.log(`[Singleflight] Executing fresh primary fetch for \"${key}\"`);\n    const promise = fetchFn().finally(() => {\n      this.inFlight.delete(key); // Cleanup upon completion\n    });\n\n    this.inFlight.set(key, promise);\n    return promise;\n  }\n}\n\n// Simulated expensive database query\nlet dbQueryCount = 0;\nasync function fetchUserFromDb(userId: string): Promise<string> {\n  dbQueryCount++;\n  await new Promise(r => setTimeout(r, 100)); // 100ms I/O\n  return `UserData for ${userId}`;\n}\n\nconst sf = new Singleflight();\n\n// Fire 4 concurrent requests for the same user simultaneously:\nasync function simulateConcurrentStampede() {\n  const [res1, res2, res3] = await Promise.all([\n    sf.execute(\"user:42\", () => fetchUserFromDb(\"42\")),\n    sf.execute(\"user:42\", () => fetchUserFromDb(\"42\")),\n    sf.execute(\"user:42\", () => fetchUserFromDb(\"42\"))\n  ]);\n\n  console.log(\"All responses resolved:\", res1 === res2 && res2 === res3);\n  console.log(\"Total DB queries issued (Expected 1):\", dbQueryCount);\n}\n\nsimulateConcurrentStampede();",
+    "breakdown": [
+      {
+        "lineRange": "4-8",
+        "note": "If key is already inFlight, subsequent callers simply join and await the existing active Promise."
+      },
+      {
+        "lineRange": "10-15",
+        "note": "Only the first caller initiates fetchFn(); finally block removes the key when done."
+      },
+      {
+        "lineRange": "29-37",
+        "note": "3 concurrent requests yield exactly 1 database query execution."
+      }
+    ],
+    "expectedOutput": "[Singleflight] Executing fresh primary fetch for \"user:42\"\n[Singleflight] Joined active in-flight request for \"user:42\"\n[Singleflight] Joined active in-flight request for \"user:42\"\nAll responses resolved: true\nTotal DB queries issued (Expected 1): 1"
+  },
+  {
+    "id": "lld-ex-21",
+    "title": "Consistent Hashing Ring with 100 Virtual Nodes per Physical Server",
+    "category": "In-Memory Caches & Storage",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a Consistent Hashing Ring with configurable virtual nodes per server, demonstrating uniform key distribution and minimal key reshuffling during cluster node addition.",
+    "conceptsCovered": [
+      "Consistent Hashing",
+      "Virtual Nodes (v-nodes)",
+      "Binary Search on Hash Ring",
+      "Minimal Re-allocation",
+      "Hot Spot Prevention"
+    ],
+    "code": "class ConsistentHashRing {\n  private ring: Map<number, string> = new Map();\n  private sortedKeys: number[] = [];\n  private vNodesCount: number;\n\n  constructor(vNodesPerServer: number = 50) {\n    this.vNodesCount = vNodesPerServer;\n  }\n\n  public addServer(server: string): void {\n    for (let i = 0; i < this.vNodesCount; i++) {\n      const vNodeLabel = `${server}#vn${i}`;\n      const hash = this.hash(vNodeLabel);\n      this.ring.set(hash, server);\n      this.sortedKeys.push(hash);\n    }\n    this.sortedKeys.sort((a, b) => a - b);\n  }\n\n  public getServer(key: string): string | null {\n    if (this.sortedKeys.length === 0) return null;\n    const hash = this.hash(key);\n\n    // Binary search for first v-node hash >= key hash\n    let low = 0, high = this.sortedKeys.length - 1;\n    let target = 0;\n\n    while (low <= high) {\n      const mid = Math.floor((low + high) / 2);\n      if (this.sortedKeys[mid] >= hash) {\n        target = mid;\n        high = mid - 1;\n      } else {\n        low = mid + 1;\n      }\n    }\n    return this.ring.get(this.sortedKeys[target])!;\n  }\n\n  private hash(str: string): number {\n    let h = 2166136261;\n    for (let i = 0; i < str.length; i++) {\n      h ^= str.charCodeAt(i);\n      h = Math.imul(h, 16777619);\n    }\n    return h >>> 0; // Unsigned 32-bit int\n  }\n}\n\nconst ring = new ConsistentHashRing(100);\nring.addServer(\"CacheServer-A\");\nring.addServer(\"CacheServer-B\");\nring.addServer(\"CacheServer-C\");\n\nconsole.log(\"user:101 ->\", ring.getServer(\"user:101\"));\nconsole.log(\"user:102 ->\", ring.getServer(\"user:102\"));\nconsole.log(\"user:103 ->\", ring.getServer(\"user:103\"));",
+    "breakdown": [
+      {
+        "lineRange": "11-19",
+        "note": "Creates 100 virtual node positions on the 32-bit ring per physical server."
+      },
+      {
+        "lineRange": "26-38",
+        "note": "Binary search finds the closest virtual node in O(log(N * V)) time."
+      },
+      {
+        "lineRange": "51-57",
+        "note": "Demonstrates consistent assignment of keys across servers."
+      }
+    ],
+    "expectedOutput": "user:101 -> CacheServer-C\nuser:102 -> CacheServer-B\nuser:103 -> CacheServer-A"
+  },
+  {
+    "id": "lld-ex-22",
+    "title": "Counting Bloom Filter with Increment/Decrement and Deletion Support",
+    "category": "In-Memory Caches & Storage",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Constructs a Counting Bloom Filter using 4-bit integer counters per bucket instead of raw bits, supporting both safe addition and deletion operations without false negatives.",
+    "conceptsCovered": [
+      "Bloom Filter",
+      "Counting Bloom Filter",
+      "Item Deletion Support",
+      "Multiple Hash Functions",
+      "Probabilistic Membership"
+    ],
+    "code": "class CountingBloomFilter {\n  private size: number;\n  private counters: Uint8Array; // 8-bit integer counters per bucket\n\n  constructor(size: number = 1000) {\n    this.size = size;\n    this.counters = new Uint8Array(size);\n  }\n\n  private getHashes(item: string): [number, number, number] {\n    const h1 = this.hash(item, 17) % this.size;\n    const h2 = this.hash(item, 31) % this.size;\n    const h3 = this.hash(item, 79) % this.size;\n    return [h1, h2, h3];\n  }\n\n  public add(item: string): void {\n    for (const idx of this.getHashes(item)) {\n      if (this.counters[idx] < 255) this.counters[idx]++;\n    }\n  }\n\n  public remove(item: string): void {\n    if (!this.contains(item)) return;\n    for (const idx of this.getHashes(item)) {\n      if (this.counters[idx] > 0) this.counters[idx]--;\n    }\n  }\n\n  public contains(item: string): boolean {\n    for (const idx of this.getHashes(item)) {\n      if (this.counters[idx] === 0) return false; // Definitely NOT in set!\n    }\n    return true; // Probably in set!\n  }\n\n  private hash(str: string, seed: number): number {\n    let h = seed;\n    for (let i = 0; i < str.length; i++) h = (h * 33 + str.charCodeAt(i)) >>> 0;\n    return h;\n  }\n}\n\nconst cbf = new CountingBloomFilter(500);\ncbf.add(\"alice@company.com\");\ncbf.add(\"bob@company.com\");\n\nconsole.log(\"Contains alice:\", cbf.contains(\"alice@company.com\"));\nconsole.log(\"Contains charlie:\", cbf.contains(\"charlie@company.com\"));\n\ncbf.remove(\"alice@company.com\");\nconsole.log(\"Contains alice after remove:\", cbf.contains(\"alice@company.com\"));",
+    "breakdown": [
+      {
+        "lineRange": "3-8",
+        "note": "Uses Uint8Array counters instead of raw bits to support decrementing."
+      },
+      {
+        "lineRange": "23-28",
+        "note": "remove() decrements hash bucket counters safely, solving the classic Bloom Filter deletion limitation."
+      },
+      {
+        "lineRange": "47-53",
+        "note": "Demonstrates accurate membership check and subsequent successful deletion."
+      }
+    ],
+    "expectedOutput": "Contains alice: true\nContains charlie: false\nContains alice after remove: false"
+  },
+  {
+    "id": "lld-ex-23",
+    "title": "Token Bucket Rate Limiter with Lazy Elapsed Refill & Burst Capacity",
+    "category": "Rate Limiters & Resilience",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements the Token Bucket rate limiter using an elapsed-time lazy evaluation formula, allowing controlled traffic bursts up to capacity while refilling continuously without background timers.",
+    "conceptsCovered": [
+      "Token Bucket Algorithm",
+      "Lazy Evaluation",
+      "Burst Handling",
+      "Refill Rate Math",
+      "HTTP 429 Simulation"
+    ],
+    "code": "class TokenBucketRateLimiter {\n  private capacity: number;\n  private refillRatePerSec: number;\n  private tokens: number;\n  private lastRefillTimestamp: number;\n\n  constructor(capacity: number, refillRatePerSec: number) {\n    this.capacity = capacity;\n    this.refillRatePerSec = refillRatePerSec;\n    this.tokens = capacity;\n    this.lastRefillTimestamp = Date.now();\n  }\n\n  public allowRequest(requested: number = 1): boolean {\n    this.refill();\n\n    if (this.tokens >= requested) {\n      this.tokens -= requested;\n      return true; // Allowed\n    }\n    return false; // Rate limit exceeded\n  }\n\n  private refill(): void {\n    const now = Date.now();\n    const elapsedSeconds = (now - this.lastRefillTimestamp) / 1000;\n    const tokensToAdd = elapsedSeconds * this.refillRatePerSec;\n\n    this.tokens = Math.min(this.capacity, this.tokens + tokensToAdd);\n    this.lastRefillTimestamp = now;\n  }\n}\n\nconst limiter = new TokenBucketRateLimiter(3, 1); // Capacity 3, refilled 1/sec\n\n// Immediate burst of 3 requests:\nconsole.log(\"Req 1 (allowed):\", limiter.allowRequest());\nconsole.log(\"Req 2 (allowed):\", limiter.allowRequest());\nconsole.log(\"Req 3 (allowed):\", limiter.allowRequest());\nconsole.log(\"Req 4 (burst exhausted):\", limiter.allowRequest());",
+    "breakdown": [
+      {
+        "lineRange": "14-22",
+        "note": "allowRequest refills tokens on the fly and consumes requested tokens if available."
+      },
+      {
+        "lineRange": "24-31",
+        "note": "Lazy calculation computes tokens using elapsed seconds, capping strictly at bucket capacity."
+      },
+      {
+        "lineRange": "34-40",
+        "note": "Demonstrates immediate burst tolerance up to capacity 3, rejecting request 4."
+      }
+    ],
+    "expectedOutput": "Req 1 (allowed): true\nReq 2 (allowed): true\nReq 3 (allowed): true\nReq 4 (burst exhausted): false"
+  },
+  {
+    "id": "lld-ex-24",
+    "title": "Leaky Bucket Rate Limiter Smoothing Bursts into Constant Output Flow",
+    "category": "Rate Limiters & Resilience",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements the Leaky Bucket algorithm using a bounded FIFO queue and constant drain interval, smoothing spiky incoming traffic into a stable, constant-rate output stream.",
+    "conceptsCovered": [
+      "Leaky Bucket Algorithm",
+      "Traffic Shaping",
+      "Bounded Queue",
+      "Constant Egress Rate",
+      "Buffer Overflow Handling"
+    ],
+    "code": "class LeakyBucketSmoother {\n  private queue: string[] = [];\n  private capacity: number;\n  private timer: any;\n\n  constructor(capacity: number, leakIntervalMs: number) {\n    this.capacity = capacity;\n\n    // Fixed steady leak cadence\n    this.timer = setInterval(() => {\n      if (this.queue.length > 0) {\n        const item = this.queue.shift()!;\n        console.log(`[LeakyBucket] Leaked task: \"${item}\" at steady rate`);\n      }\n    }, leakIntervalMs);\n  }\n\n  public submit(taskName: string): boolean {\n    if (this.queue.length >= this.capacity) {\n      console.warn(`[LeakyBucket] Overflow! Dropping task: \"${taskName}\"`);\n      return false; // Queue full\n    }\n    this.queue.push(taskName);\n    console.log(`[LeakyBucket] Enqueued task: \"${taskName}\" (Queue depth: ${this.queue.length})`);\n    return true;\n  }\n\n  public destroy() { clearInterval(this.timer); }\n}\n\nconst smoother = new LeakyBucketSmoother(2, 100); // Max 2 tasks in queue, leaks 1 every 100ms\nsmoother.submit(\"Job-1\");\nsmoother.submit(\"Job-2\");\nsmoother.submit(\"Job-3\"); // Saturated -> Dropped!\n\nsetTimeout(() => smoother.destroy(), 350);",
+    "breakdown": [
+      {
+        "lineRange": "10-17",
+        "note": "Fixed setInterval drains exactly 1 task per interval regardless of incoming traffic burstiness."
+      },
+      {
+        "lineRange": "19-27",
+        "note": "Enqueues up to capacity limit; drops excess submissions when queue fills."
+      },
+      {
+        "lineRange": "31-35",
+        "note": "Demonstrates dropping Job-3 due to buffer saturation."
+      }
+    ],
+    "expectedOutput": "[LeakyBucket] Enqueued task: \"Job-1\" (Queue depth: 1)\n[LeakyBucket] Enqueued task: \"Job-2\" (Queue depth: 2)\n[LeakyBucket] Overflow! Dropping task: \"Job-3\"\n[LeakyBucket] Leaked task: \"Job-1\" at steady rate\n[LeakyBucket] Leaked task: \"Job-2\" at steady rate"
+  },
+  {
+    "id": "lld-ex-25",
+    "title": "Sliding Window Counter Rate Limiter with Weighted Time Interpolation",
+    "category": "Rate Limiters & Resilience",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a production Sliding Window Counter rate limiter using weighted overlap between adjacent static windows, achieving O(1) memory and completely neutralizing 2x boundary bursts.",
+    "conceptsCovered": [
+      "Sliding Window Counter",
+      "Weighted Time Interpolation",
+      "Boundary Burst Prevention",
+      "O(1) Memory Footprint",
+      "Cloudflare Algorithm"
+    ],
+    "code": "class SlidingWindowCounter {\n  private windowSizeMs: number;\n  private maxRequests: number;\n  private prevCount: number = 0;\n  private currCount: number = 0;\n  private currentWindowStart: number;\n\n  constructor(maxRequests: number, windowSeconds: number = 60) {\n    this.maxRequests = maxRequests;\n    this.windowSizeMs = windowSeconds * 1000;\n    this.currentWindowStart = Math.floor(Date.now() / this.windowSizeMs) * this.windowSizeMs;\n  }\n\n  public allowRequest(): boolean {\n    const now = Date.now();\n    const windowStart = Math.floor(now / this.windowSizeMs) * this.windowSizeMs;\n\n    // Advance window if stepped into a new epoch\n    if (windowStart !== this.currentWindowStart) {\n      this.prevCount = (windowStart - this.currentWindowStart === this.windowSizeMs) ? this.currCount : 0;\n      this.currCount = 0;\n      this.currentWindowStart = windowStart;\n    }\n\n    // Weighted overlap from previous window\n    const elapsedInCurrentWindow = now - this.currentWindowStart;\n    const weight = (this.windowSizeMs - elapsedInCurrentWindow) / this.windowSizeMs;\n    const estimatedRequests = Math.floor(this.prevCount * weight) + this.currCount;\n\n    if (estimatedRequests < this.maxRequests) {\n      this.currCount++;\n      return true;\n    }\n    return false;\n  }\n}\n\nconst sw = new SlidingWindowCounter(2, 60); // Max 2 requests per 60s\nconsole.log(\"Req 1 (allowed):\", sw.allowRequest());\nconsole.log(\"Req 2 (allowed):\", sw.allowRequest());\nconsole.log(\"Req 3 (rejected):\", sw.allowRequest());",
+    "breakdown": [
+      {
+        "lineRange": "16-24",
+        "note": "Rotates previous and current window counts whenever a new window epoch begins."
+      },
+      {
+        "lineRange": "26-28",
+        "note": "Interpolates previous window overlap based on elapsed ratio, preventing boundary spikes."
+      },
+      {
+        "lineRange": "38-41",
+        "note": "Rejects request 3 as estimated load reaches limit."
+      }
+    ],
+    "expectedOutput": "Req 1 (allowed): true\nReq 2 (allowed): true\nReq 3 (rejected): false"
+  },
+  {
+    "id": "lld-ex-26",
+    "title": "Multi-Tier Rate Limiting Pipeline (IP, User & Sensitive Endpoint)",
+    "category": "Rate Limiters & Resilience",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Chains multiple rate-limiting evaluators in a pipeline, checking IP address thresholds (anti-scraping), user quota thresholds (fair use), and endpoint-specific limits (/login brute-force protection).",
+    "conceptsCovered": [
+      "Multi-Tier Rate Limiting",
+      "Defense in Depth",
+      "Hierarchical Rule Evaluation",
+      "Chain of Responsibility",
+      "HTTP Header Generation"
+    ],
+    "code": "interface IncomingRequest {\n  ip: string;\n  userId?: string;\n  path: string;\n}\n\nclass MultiTierLimiter {\n  private ipBuckets: Map<string, number> = new Map();\n  private userBuckets: Map<string, number> = new Map();\n  private authRouteBuckets: Map<string, number> = new Map();\n\n  public evaluate(req: IncomingRequest): { allowed: boolean; reason?: string } {\n    // Tier 1: IP Threshold (Max 5/min)\n    const ipCount = (this.ipBuckets.get(req.ip) || 0) + 1;\n    if (ipCount > 5) return { allowed: false, reason: \"IP rate limit exceeded\" };\n    this.ipBuckets.set(req.ip, ipCount);\n\n    // Tier 2: User Quota (Max 3/min if logged in)\n    if (req.userId) {\n      const userCount = (this.userBuckets.get(req.userId) || 0) + 1;\n      if (userCount > 3) return { allowed: false, reason: \"User account quota exceeded\" };\n      this.userBuckets.set(req.userId, userCount);\n    }\n\n    // Tier 3: Sensitive Route (/auth/login: Max 2/min per IP)\n    if (req.path === \"/auth/login\") {\n      const authKey = `${req.ip}_auth`;\n      const authCount = (this.authRouteBuckets.get(authKey) || 0) + 1;\n      if (authCount > 2) return { allowed: false, reason: \"Too many login attempts\" };\n      this.authRouteBuckets.set(authKey, authCount);\n    }\n\n    return { allowed: true };\n  }\n}\n\nconst pipeline = new MultiTierLimiter();\nconsole.log(\"Check 1:\", pipeline.evaluate({ ip: \"192.168.1.1\", path: \"/auth/login\" }));\nconsole.log(\"Check 2:\", pipeline.evaluate({ ip: \"192.168.1.1\", path: \"/auth/login\" }));\nconsole.log(\"Check 3:\", pipeline.evaluate({ ip: \"192.168.1.1\", path: \"/auth/login\" }));",
+    "breakdown": [
+      {
+        "lineRange": "13-17",
+        "note": "Tier 1 guards against generic volumetric IP flooding."
+      },
+      {
+        "lineRange": "19-24",
+        "note": "Tier 2 prevents a single authenticated user from monopolizing capacity across multiple proxies."
+      },
+      {
+        "lineRange": "26-32",
+        "note": "Tier 3 clamps down on sensitive routes like /auth/login to thwart credential stuffing."
+      }
+    ],
+    "expectedOutput": "Check 1: { allowed: true }\nCheck 2: { allowed: true }\nCheck 3: { allowed: false, reason: 'Too many login attempts' }"
+  },
+  {
+    "id": "lld-ex-27",
+    "title": "Circuit Breaker Finite State Machine with Half-Open Probe Recovery",
+    "category": "Rate Limiters & Resilience",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements the Circuit Breaker pattern with CLOSED, OPEN, and HALF-OPEN states, fast-failing downstream requests during outages and probing recovery with trial calls.",
+    "conceptsCovered": [
+      "Circuit Breaker Pattern",
+      "Finite State Machine",
+      "Fail-Fast Semantics",
+      "Half-Open Probe Testing",
+      "Cascading Failure Prevention"
+    ],
+    "code": "enum CircuitState { CLOSED, OPEN, HALF_OPEN }\n\nclass CircuitBreaker {\n  private state: CircuitState = CircuitState.CLOSED;\n  private failureThreshold: number;\n  private cooldownTimeoutMs: number;\n  private failureCount: number = 0;\n  private lastFailureTime: number = 0;\n\n  constructor(failureThreshold: number = 2, cooldownMs: number = 200) {\n    this.failureThreshold = failureThreshold;\n    this.cooldownTimeoutMs = cooldownMs;\n  }\n\n  public async fire<T>(action: () => Promise<T>): Promise<T> {\n    const now = Date.now();\n\n    if (this.state === CircuitState.OPEN) {\n      if (now - this.lastFailureTime > this.cooldownTimeoutMs) {\n        console.log(\"[CircuitBreaker] Cooldown expired. Transitioning to HALF_OPEN probe.\");\n        this.state = CircuitState.HALF_OPEN;\n      } else {\n        throw new Error(\"CircuitBreaker OPEN: Fast-failing downstream request\");\n      }\n    }\n\n    try {\n      const result = await action();\n      this.onSuccess();\n      return result;\n    } catch (err) {\n      this.onFailure();\n      throw err;\n    }\n  }\n\n  private onSuccess() {\n    if (this.state === CircuitState.HALF_OPEN) {\n      console.log(\"[CircuitBreaker] Probe succeeded! Resetting to CLOSED state.\");\n      this.state = CircuitState.CLOSED;\n      this.failureCount = 0;\n    }\n  }\n\n  private onFailure() {\n    this.failureCount++;\n    this.lastFailureTime = Date.now();\n    if (this.state === CircuitState.HALF_OPEN || this.failureCount >= this.failureThreshold) {\n      console.warn(\"[CircuitBreaker] Failure threshold reached! Tripping to OPEN state.\");\n      this.state = CircuitState.OPEN;\n    }\n  }\n}\n\n// Execution test:\nasync function run() {\n  const cb = new CircuitBreaker(2, 100);\n  const failingCall = async () => { throw new Error(\"Database timeout\"); };\n\n  try { await cb.fire(failingCall); } catch (e) {}\n  try { await cb.fire(failingCall); } catch (e) {}\n\n  // 3rd call fails fast without calling failingCall!\n  try { await cb.fire(failingCall); } catch (e: any) { console.log(e.message); }\n}\n\nrun();",
+    "breakdown": [
+      {
+        "lineRange": "16-24",
+        "note": "If OPEN, verifies cooldown timer; either allows single trial probe (HALF_OPEN) or throws immediately."
+      },
+      {
+        "lineRange": "36-42",
+        "note": "onSuccess() resets the breaker to CLOSED if the trial probe in HALF_OPEN succeeds."
+      },
+      {
+        "lineRange": "44-51",
+        "note": "onFailure() trips breaker to OPEN once threshold is breached."
+      }
+    ],
+    "expectedOutput": "[CircuitBreaker] Failure threshold reached! Tripping to OPEN state.\nCircuitBreaker OPEN: Fast-failing downstream request"
+  },
+  {
+    "id": "lld-ex-28",
+    "title": "Bulkhead Pattern Concurrency Isolator with Execution Queuing",
+    "category": "Rate Limiters & Resilience",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Isolates application resources using the Bulkhead pattern, bounding concurrent tasks and queue capacity per dependency so a slow service cannot exhaust all application threads.",
+    "conceptsCovered": [
+      "Bulkhead Pattern",
+      "Resource Partitioning",
+      "Bounded Concurrency",
+      "Queue Rejection Policy",
+      "Failure Containment"
+    ],
+    "code": "class Bulkhead {\n  private activeCount: number = 0;\n  private maxConcurrent: number;\n  private maxQueue: number;\n  private waitingQueue: (() => void)[] = [];\n\n  constructor(maxConcurrent: number, maxQueue: number) {\n    this.maxConcurrent = maxConcurrent;\n    this.maxQueue = maxQueue;\n  }\n\n  public async execute<T>(task: () => Promise<T>): Promise<T> {\n    if (this.activeCount >= this.maxConcurrent) {\n      if (this.waitingQueue.length >= this.maxQueue) {\n        throw new Error(\"BulkheadRejectedException: Resource compartment saturated!\");\n      }\n      await new Promise<void>(resolve => this.waitingQueue.push(resolve));\n    }\n\n    this.activeCount++;\n    try {\n      return await task();\n    } finally {\n      this.activeCount--;\n      if (this.waitingQueue.length > 0) {\n        const next = this.waitingQueue.shift()!;\n        next();\n      }\n    }\n  }\n}\n\n// 2 Isolated Bulkheads:\nconst paymentBulkhead = new Bulkhead(2, 2);\n\nasync function testBulkhead() {\n  const slowTask = () => new Promise(r => setTimeout(r, 100));\n\n  // Run 5 tasks simultaneously on bulkhead with maxConcurrent=2, maxQueue=2 (Capacity 4):\n  const promises = [\n    paymentBulkhead.execute(slowTask),\n    paymentBulkhead.execute(slowTask),\n    paymentBulkhead.execute(slowTask),\n    paymentBulkhead.execute(slowTask),\n    paymentBulkhead.execute(slowTask) // 5th task exceeds queue limit of 2 -> Throws!\n  ];\n\n  const results = await Promise.allSettled(promises);\n  console.log(\"4th status:\", results[3].status);\n  console.log(\"5th status:\", results[4].status);\n}\n\ntestBulkhead();",
+    "breakdown": [
+      {
+        "lineRange": "13-18",
+        "note": "If active workers full, enqueues task up to maxQueue; immediately rejects beyond capacity."
+      },
+      {
+        "lineRange": "20-29",
+        "note": "Executes task within try/finally; releases slot and triggers next queued caller on completion."
+      },
+      {
+        "lineRange": "44-50",
+        "note": "Shows tasks 1-4 accepted (2 active + 2 queued) while 5th task is rejected immediately."
+      }
+    ],
+    "expectedOutput": "4th status: fulfilled\n5th status: rejected"
+  },
+  {
+    "id": "lld-ex-29",
+    "title": "Retry Pattern with Exponential Backoff and Full Jitter Randomization",
+    "category": "Rate Limiters & Resilience",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements robust retry logic with Exponential Backoff and Full Jitter randomization, decorrelating retry storms to prevent thundering herd crashes on recovering APIs.",
+    "conceptsCovered": [
+      "Retry Pattern",
+      "Exponential Backoff",
+      "Full Jitter Math",
+      "Thundering Herd Mitigation",
+      "Transient Error Recovery"
+    ],
+    "code": "class RetryPolicy {\n  public static async executeWithJitter<T>(\n    action: () => Promise<T>,\n    maxRetries: number = 3,\n    baseDelayMs: number = 100,\n    maxDelayMs: number = 2000\n  ): Promise<T> {\n    let attempt = 0;\n\n    while (true) {\n      try {\n        return await action();\n      } catch (err) {\n        attempt++;\n        if (attempt > maxRetries) {\n          throw new Error(`Max retries (${maxRetries}) exhausted! Last error: ${err}`);\n        }\n\n        // Exponential backoff ceiling: base * 2^attempt\n        const expCap = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt));\n\n        // Full Jitter formula: random between 0 and expCap\n        const jitteredDelay = Math.floor(Math.random() * expCap);\n\n        console.log(`[Retry] Attempt ${attempt} failed. Backing off for ${jitteredDelay}ms...`);\n        await new Promise(r => setTimeout(r, jitteredDelay));\n      }\n    }\n  }\n}\n\nlet counter = 0;\nasync function unreliableEndpoint(): Promise<string> {\n  counter++;\n  if (counter < 3) throw new Error(\"503 Service Unavailable\");\n  return \"200 OK: Data recovered\";\n}\n\nRetryPolicy.executeWithJitter(unreliableEndpoint).then(res => console.log(\"Final Result:\", res));",
+    "breakdown": [
+      {
+        "lineRange": "18-24",
+        "note": "Full Jitter calculates uniform random delay between 0 and exponential ceiling."
+      },
+      {
+        "lineRange": "26-28",
+        "note": "Sleeps for randomized duration, spreading retry waves across time."
+      },
+      {
+        "lineRange": "38-40",
+        "note": "Retries twice on 503 and resolves successfully on the 3rd attempt."
+      }
+    ],
+    "expectedOutput": "[Retry] Attempt 1 failed. Backing off for ...ms...\n[Retry] Attempt 2 failed. Backing off for ...ms...\nFinal Result: 200 OK: Data recovered"
+  },
+  {
+    "id": "lld-ex-30",
+    "title": "In-Memory Idempotency Key Deduplication Engine with Processing States",
+    "category": "Rate Limiters & Resilience",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Guarantees exactly-once processing for payment APIs using an Idempotency Key Engine that tracks PROCESSING vs COMPLETED states, blocking concurrent duplicates with HTTP 409.",
+    "conceptsCovered": [
+      "Idempotency Key",
+      "Deduplication",
+      "Exactly-Once Semantics",
+      "Concurrent Conflict (409)",
+      "Cached Response Replay"
+    ],
+    "code": "interface IdempotencyEntry {\n  status: \"PROCESSING\" | \"COMPLETED\";\n  response?: any;\n  timestamp: number;\n}\n\nclass IdempotencyEngine {\n  private cache: Map<string, IdempotencyEntry> = new Map();\n\n  public async execute<T>(key: string, task: () => Promise<T>): Promise<T> {\n    const existing = this.cache.get(key);\n\n    if (existing) {\n      if (existing.status === \"PROCESSING\") {\n        throw new Error(\"409 Conflict: Concurrent request already in progress for this idempotency key!\");\n      }\n      if (existing.status === \"COMPLETED\") {\n        console.log(`[Idempotency] Returning previously cached response for key: ${key}`);\n        return existing.response;\n      }\n    }\n\n    // Mark as PROCESSING\n    this.cache.set(key, { status: \"PROCESSING\", timestamp: Date.now() });\n\n    try {\n      const result = await task();\n      this.cache.set(key, { status: \"COMPLETED\", response: result, timestamp: Date.now() });\n      return result;\n    } catch (err) {\n      this.cache.delete(key); // Release key on failure to allow retry\n      throw err;\n    }\n  }\n}\n\nconst engine = new IdempotencyEngine();\n\nasync function chargePayment(amount: number) {\n  return { txId: \"tx_9981\", charged: amount, status: \"SUCCESS\" };\n}\n\nasync function run() {\n  // First execution:\n  const res1 = await engine.execute(\"req_uuid_101\", () => chargePayment(50));\n  console.log(\"Call 1:\", res1);\n\n  // Duplicate retry with same idempotency key:\n  const res2 = await engine.execute(\"req_uuid_101\", () => chargePayment(50));\n  console.log(\"Call 2 (Idempotent replay):\", res2);\n}\n\nrun();",
+    "breakdown": [
+      {
+        "lineRange": "14-21",
+        "note": "PROCESSING status rejects concurrent attempts; COMPLETED returns stored response immediately."
+      },
+      {
+        "lineRange": "24-34",
+        "note": "Stores result on success; deletes key on unexpected exception to permit valid retries."
+      },
+      {
+        "lineRange": "44-50",
+        "note": "Demonstrates that call 2 replays the payment receipt without executing chargePayment() again."
+      }
+    ],
+    "expectedOutput": "Call 1: { txId: 'tx_9981', charged: 50, status: 'SUCCESS' }\n[Idempotency] Returning previously cached response for key: req_uuid_101\nCall 2 (Idempotent replay): { txId: 'tx_9981', charged: 50, status: 'SUCCESS' }"
+  },
+  {
+    "id": "lld-ex-31",
+    "title": "Client-Side Adaptive Throttling with Failure-Ratio Backpressure (Google SRE)",
+    "category": "Rate Limiters & Resilience",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements Google SRE Adaptive Throttling where clients track requests vs accepts over a rolling window and probabilistically drop their own outbound requests to save network bandwidth during outages.",
+    "conceptsCovered": [
+      "Adaptive Throttling",
+      "Client-Side Backpressure",
+      "Google SRE Architecture",
+      "Drop Probability Formula",
+      "Network Wire Protection"
+    ],
+    "code": "class GoogleSreAdaptiveThrottler {\n  private requests: number = 0;\n  private accepts: number = 0;\n  private kMultiplier: number;\n\n  constructor(k: number = 2.0) {\n    this.kMultiplier = k; // 2.0 allows up to 2x failure tolerance\n  }\n\n  public shouldAllowRequest(): boolean {\n    this.requests++;\n\n    // Google SRE formula: max(0, (requests - K * accepts) / (requests + 1))\n    const dropProbability = Math.max(\n      0,\n      (this.requests - this.kMultiplier * this.accepts) / (this.requests + 1)\n    );\n\n    if (Math.random() < dropProbability) {\n      console.warn(`[AdaptiveThrottler] DROPPED LOCALLY (P=${dropProbability.toFixed(2)}) to protect server!`);\n      return false; // Throttled on client before sending network packet!\n    }\n    return true;\n  }\n\n  public recordResult(isSuccess: boolean): void {\n    if (isSuccess) this.accepts++;\n  }\n}\n\nconst throttler = new GoogleSreAdaptiveThrottler(2.0);\n\n// Simulate backend failure spike: 20 failed calls\nfor (let i = 0; i < 20; i++) {\n  if (throttler.shouldAllowRequest()) {\n    throttler.recordResult(false); // Backend rejected request\n  }\n}\n\n// 21st call: Client-side throttler starts dropping outbound packets locally!\nconsole.log(\"Outbound allowed after outage:\", throttler.shouldAllowRequest());",
+    "breakdown": [
+      {
+        "lineRange": "14-18",
+        "note": "Calculates drop probability P based on requests exceeding K * accepts."
+      },
+      {
+        "lineRange": "20-23",
+        "note": "Probabilistically drops requests client-side without consuming socket resources."
+      },
+      {
+        "lineRange": "34-42",
+        "note": "Demonstrates client self-throttling after a sequence of backend failures."
+      }
+    ],
+    "expectedOutput": "[AdaptiveThrottler] DROPPED LOCALLY (P=0.08) to protect server!\n[AdaptiveThrottler] DROPPED LOCALLY (P=0.14) to protect server!\n[AdaptiveThrottler] DROPPED LOCALLY (P=0.20) to protect server!\nOutbound allowed after outage: false"
+  },
+  {
+    "id": "lld-ex-32",
+    "title": "Deadlock-Free Multi-Account Money Transfer with Sorted Global Lock Acquisition",
+    "category": "Rate Limiters & Resilience",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Solves the classic Dining Philosophers / Bank Transfer deadlock problem by sorting account IDs globally before acquiring individual account mutexes.",
+    "conceptsCovered": [
+      "Deadlock Elimination",
+      "Resource Ordering",
+      "Coffman Condition (Circular Wait)",
+      "Two-Account Atomic Transfer",
+      "Concurrency Invariants"
+    ],
+    "code": "class Account {\n  public balance: number;\n  public isLocked: boolean = false;\n\n  constructor(public readonly id: number, balance: number) {\n    this.balance = balance;\n  }\n}\n\nclass DeadlockFreeBankService {\n  // Simulates mutex locks per account\n  public transfer(from: Account, to: Account, amount: number): boolean {\n    if (from.balance < amount) throw new Error(\"Insufficient balance\");\n\n    // STRICT RESOURCE ORDERING: Always lock the account with smaller ID first!\n    const first = from.id < to.id ? from : to;\n    const second = from.id < to.id ? to : from;\n\n    console.log(`Acquiring Lock 1 on Account ${first.id}...`);\n    first.isLocked = true;\n\n    console.log(`Acquiring Lock 2 on Account ${second.id}...`);\n    second.isLocked = true;\n\n    try {\n      from.balance -= amount;\n      to.balance += amount;\n      console.log(`Transferred $${amount} from ${from.id} to ${to.id} safely!`);\n      return true;\n    } finally {\n      second.isLocked = false;\n      first.isLocked = false;\n      console.log(\"Both locks released cleanly.\");\n    }\n  }\n}\n\nconst accA = new Account(101, 500);\nconst accB = new Account(102, 300);\n\nconst bank = new DeadlockFreeBankService();\n// Thread 1: transfers A -> B\nbank.transfer(accA, accB, 150);\n// Thread 2: transfers B -> A (Acquires locks in IDENTICAL 101 -> 102 order, preventing deadlock!)\nbank.transfer(accB, accA, 50);",
+    "breakdown": [
+      {
+        "lineRange": "17-19",
+        "note": "Sorting accounts by ID guarantees every thread acquires locks in the exact same global order."
+      },
+      {
+        "lineRange": "21-25",
+        "note": "Eliminates Coffman Circular Wait condition mathematically."
+      },
+      {
+        "lineRange": "31-36",
+        "note": "finally block guarantees both locks release even if balance operations throw."
+      }
+    ],
+    "expectedOutput": "Acquiring Lock 1 on Account 101...\nAcquiring Lock 2 on Account 102...\nTransferred $150 from 101 to 102 safely!\nBoth locks released cleanly.\nAcquiring Lock 1 on Account 101...\nAcquiring Lock 2 on Account 102...\nTransferred $50 from 102 to 101 safely!\nBoth locks released cleanly."
+  },
+  {
+    "id": "lld-ex-33",
+    "title": "Complete Multi-Floor Parking Lot System with Spot Allocation & Vehicle Fitting",
+    "category": "Real-World System Modeling",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A full Parking Lot system featuring multiple floors, spot sizing (Compact, Regular, Large), vehicle compatibility checking, parking ticket generation, and hourly fee calculation.",
+    "conceptsCovered": [
+      "Parking Lot Architecture",
+      "Floor & Spot Management",
+      "Vehicle Fit Validation",
+      "Ticket Lifecycle",
+      "Hourly Billing Strategy"
+    ],
+    "code": "enum VehicleType { MOTORCYCLE, CAR, BUS }\nenum SpotType { COMPACT, REGULAR, LARGE }\n\nclass Vehicle {\n  constructor(public readonly plate: string, public readonly type: VehicleType) {}\n}\n\nclass ParkingSpot {\n  private parkedVehicle: Vehicle | null = null;\n  constructor(public readonly id: string, public readonly type: SpotType) {}\n\n  public isAvailable(): boolean { return this.parkedVehicle === null; }\n\n  public canFit(v: Vehicle): boolean {\n    if (!this.isAvailable()) return false;\n    if (v.type === VehicleType.MOTORCYCLE) return true;\n    if (v.type === VehicleType.CAR) return this.type === SpotType.REGULAR || this.type === SpotType.LARGE;\n    if (v.type === VehicleType.BUS) return this.type === SpotType.LARGE;\n    return false;\n  }\n\n  public park(v: Vehicle) { this.parkedVehicle = v; }\n  public vacate(): Vehicle | null {\n    const v = this.parkedVehicle;\n    this.parkedVehicle = null;\n    return v;\n  }\n}\n\nclass ParkingLotFloor {\n  public spots: ParkingSpot[] = [];\n  constructor(public readonly floorNum: number) {}\n}\n\nclass ParkingLot {\n  private floors: ParkingLotFloor[] = [];\n  private activeTickets: Map<string, { spot: ParkingSpot; vehicle: Vehicle; entryTime: number }> = new Map();\n\n  public addFloor(floor: ParkingLotFloor) { this.floors.push(floor); }\n\n  public parkVehicle(v: Vehicle): string | null {\n    for (const floor of this.floors) {\n      for (const spot of floor.spots) {\n        if (spot.canFit(v)) {\n          spot.park(v);\n          const ticketId = `tkt_${Date.now()}_${v.plate}`;\n          this.activeTickets.set(ticketId, { spot, vehicle: v, entryTime: Date.now() });\n          console.log(`[Parked] ${v.plate} (${VehicleType[v.type]}) in spot ${spot.id} (Floor ${floor.floorNum})`);\n          return ticketId;\n        }\n      }\n    }\n    console.warn(`[Full] No available spots for ${v.plate}`);\n    return null;\n  }\n\n  public vacateVehicle(ticketId: string): number {\n    const ticket = this.activeTickets.get(ticketId);\n    if (!ticket) throw new Error(\"Invalid ticket ID\");\n\n    ticket.spot.vacate();\n    this.activeTickets.delete(ticketId);\n\n    // Calculate fee: $10 base fee\n    const fee = 10.0;\n    console.log(`[Vacated] ${ticket.vehicle.plate} from spot ${ticket.spot.id}. Fee: $${fee}`);\n    return fee;\n  }\n}\n\n// Setup garage:\nconst lot = new ParkingLot();\nconst floor1 = new ParkingLotFloor(1);\nfloor1.spots.push(new ParkingSpot(\"F1-C1\", SpotType.COMPACT));\nfloor1.spots.push(new ParkingSpot(\"F1-R1\", SpotType.REGULAR));\nfloor1.spots.push(new ParkingSpot(\"F1-L1\", SpotType.LARGE));\nlot.addFloor(floor1);\n\nconst carTicket = lot.parkVehicle(new Vehicle(\"CAR-9821\", VehicleType.CAR));\nconst bikeTicket = lot.parkVehicle(new Vehicle(\"BIKE-101\", VehicleType.MOTORCYCLE));\nlot.vacateVehicle(carTicket!);",
+    "breakdown": [
+      {
+        "lineRange": "14-22",
+        "note": "canFit checks availability and vehicle-to-spot compatibility dynamically."
+      },
+      {
+        "lineRange": "41-55",
+        "note": "parkVehicle iterates floors, claims matching spot, and generates an active parking ticket."
+      },
+      {
+        "lineRange": "72-76",
+        "note": "Verifies car parks in REGULAR spot, motorcycle takes COMPACT, and car vacates cleanly."
+      }
+    ],
+    "expectedOutput": "[Parked] CAR-9821 (CAR) in spot F1-R1 (Floor 1)\n[Parked] BIKE-101 (MOTORCYCLE) in spot F1-C1 (Floor 1)\n[Vacated] CAR-9821 from spot F1-R1. Fee: $10"
+  },
+  {
+    "id": "lld-ex-34",
+    "title": "Movie Ticket Booking (BookMyShow) with 10-Minute Seat Hold & TTL",
+    "category": "Real-World System Modeling",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A concurrent movie ticket reservation engine handling seat selection holds with a 10-minute TTL, preventing double-booking race conditions and auto-reverting abandoned holds.",
+    "conceptsCovered": [
+      "BookMyShow System",
+      "Seat Locking (TTL)",
+      "Atomic Multi-Seat Reservation",
+      "Hold Expiration Check",
+      "Double-Booking Prevention"
+    ],
+    "code": "enum SeatState { AVAILABLE, LOCKED, BOOKED }\n\nclass ShowSeat {\n  public state: SeatState = SeatState.AVAILABLE;\n  public lockedByUserId: string | null = null;\n  public lockExpiresAt: number = 0;\n\n  constructor(public readonly id: string, public readonly price: number) {}\n\n  public isAvailable(): boolean {\n    if (this.state === SeatState.BOOKED) return false;\n    if (this.state === SeatState.LOCKED && Date.now() < this.lockExpiresAt) return false;\n    return true; // Available or previous hold expired!\n  }\n}\n\nclass BookingEngine {\n  private seats: Map<string, ShowSeat> = new Map();\n\n  constructor(seatIds: string[]) {\n    for (const id of seatIds) this.seats.set(id, new ShowSeat(id, 15.0));\n  }\n\n  // Atomic reservation: checks all requested seats before locking any\n  public lockSeats(seatIds: string[], userId: string, holdDurationMs: number = 600000): boolean {\n    // Step 1: Verify all seats are available\n    for (const id of seatIds) {\n      const seat = this.seats.get(id);\n      if (!seat || !seat.isAvailable()) return false;\n    }\n\n    // Step 2: Lock all seats atomically\n    const expiry = Date.now() + holdDurationMs;\n    for (const id of seatIds) {\n      const seat = this.seats.get(id)!;\n      seat.state = SeatState.LOCKED;\n      seat.lockedByUserId = userId;\n      seat.lockExpiresAt = expiry;\n    }\n    console.log(`[Seats Locked] User ${userId} locked seats [${seatIds.join(\", \")}] for 10 mins`);\n    return true;\n  }\n\n  public confirmBooking(seatIds: string[], userId: string): boolean {\n    for (const id of seatIds) {\n      const seat = this.seats.get(id);\n      if (!seat || seat.lockedByUserId !== userId || Date.now() > seat.lockExpiresAt) {\n        console.warn(`[Expired] Hold on seat ${id} expired or invalid!`);\n        return false;\n      }\n    }\n    for (const id of seatIds) {\n      this.seats.get(id)!.state = SeatState.BOOKED;\n    }\n    console.log(`[CONFIRMED] Booking confirmed for user ${userId} on seats: ${seatIds.join(\", \")}`);\n    return true;\n  }\n}\n\nconst engine = new BookingEngine([\"A1\", \"A2\", \"A3\"]);\n\n// User 1 locks seats A1 and A2\nconsole.log(\"User 1 lock:\", engine.lockSeats([\"A1\", \"A2\"], \"user_alice\"));\n\n// User 2 attempts to lock A2 and A3 (Fails because A2 is currently held by Alice!)\nconsole.log(\"User 2 lock attempt:\", engine.lockSeats([\"A2\", \"A3\"], \"user_bob\"));\n\n// User 1 confirms payment:\nengine.confirmBooking([\"A1\", \"A2\"], \"user_alice\");",
+    "breakdown": [
+      {
+        "lineRange": "11-15",
+        "note": "isAvailable() checks state; if LOCKED but lockExpiresAt is in past, lazily treats as available."
+      },
+      {
+        "lineRange": "26-42",
+        "note": "lockSeats checks ALL seats first, then locks atomically to prevent partial allocations."
+      },
+      {
+        "lineRange": "63-68",
+        "note": "Demonstrates User 2 rejected immediately when requesting already-held seat A2."
+      }
+    ],
+    "expectedOutput": "[Seats Locked] User user_alice locked seats [A1, A2] for 10 mins\nUser 1 lock: true\nUser 2 lock attempt: false\n[CONFIRMED] Booking confirmed for user user_alice on seats: A1, A2"
+  },
+  {
+    "id": "lld-ex-35",
+    "title": "Splitwise Expense Sharing System with Equal, Exact & Percent Splits",
+    "category": "Real-World System Modeling",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A complete Expense Sharing system with Strategy-based split validation (Equal, Exact, Percentage), balance tracking across pairwise users, and debt calculation.",
+    "conceptsCovered": [
+      "Splitwise Architecture",
+      "Strategy Pattern",
+      "Split Validation",
+      "Round-Off Adjustment",
+      "Pairwise Balance Tracking"
+    ],
+    "code": "abstract class Split {\n  constructor(public userId: string, public amount: number = 0) {}\n}\n\nclass EqualSplit extends Split {}\nclass ExactSplit extends Split {}\nclass PercentSplit extends Split {\n  constructor(userId: string, public percent: number) { super(userId); }\n}\n\nclass ExpenseService {\n  // balances.get(u1).get(u2) = amount u2 owes u1\n  private balances: Map<string, Map<string, number>> = new Map();\n\n  public addExpense(paidBy: string, total: number, splits: Split[]): void {\n    // Validation\n    if (splits[0] instanceof PercentSplit) {\n      const sumPercent = (splits as PercentSplit[]).reduce((s, p) => s + p.percent, 0);\n      if (Math.abs(sumPercent - 100) > 0.01) throw new Error(\"Percentages must sum to 100%\");\n      splits.forEach(s => s.amount = Math.round(total * (s as PercentSplit).percent) / 100);\n    } else if (splits[0] instanceof EqualSplit) {\n      const each = Math.round((total / splits.length) * 100) / 100;\n      splits.forEach(s => s.amount = each);\n    }\n\n    // Update balances: each participant owes paidBy their split amount\n    for (const split of splits) {\n      if (split.userId === paidBy) continue;\n      this.updateDebt(paidBy, split.userId, split.amount);\n    }\n  }\n\n  private updateDebt(creditor: string, debtor: string, amount: number) {\n    if (!this.balances.has(creditor)) this.balances.set(creditor, new Map());\n    const m = this.balances.get(creditor)!;\n    m.set(debtor, (m.get(debtor) || 0) + amount);\n  }\n\n  public getBalances(): void {\n    for (const [creditor, debtors] of this.balances.entries()) {\n      for (const [debtor, amount] of debtors.entries()) {\n        if (amount > 0) {\n          console.log(`${debtor} owes ${creditor}: $${amount}`);\n        }\n      }\n    }\n  }\n}\n\nconst expenseApp = new ExpenseService();\n// Alice pays $300 for Alice, Bob, and Charlie equally ($100 each)\nexpenseApp.addExpense(\"Alice\", 300, [\n  new EqualSplit(\"Alice\"),\n  new EqualSplit(\"Bob\"),\n  new EqualSplit(\"Charlie\")\n]);\n\nexpenseApp.getBalances();",
+    "breakdown": [
+      {
+        "lineRange": "17-26",
+        "note": "Validates split models: computes exact dollar allocation from percentages or equal shares."
+      },
+      {
+        "lineRange": "28-32",
+        "note": "Updates pairwise debt map: debtor owes creditor their respective split share."
+      },
+      {
+        "lineRange": "50-56",
+        "note": "Demonstrates that Bob and Charlie each owe Alice $100."
+      }
+    ],
+    "expectedOutput": "Bob owes Alice: $100\nCharlie owes Alice: $100"
+  },
+  {
+    "id": "lld-ex-36",
+    "title": "Debt Simplification Algorithm in Splitwise (Min-Cash-Flow)",
+    "category": "Real-World System Modeling",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements the Min-Cash-Flow greedy graph algorithm that minimizes interpersonal debt transactions, reducing $O(N^2)$ entangled pairwise payments down to at most $N-1$ payments.",
+    "conceptsCovered": [
+      "Debt Simplification",
+      "Min-Cash-Flow Algorithm",
+      "Net Balance Vector",
+      "Greedy Settlement",
+      "Graph Cycle Elimination"
+    ],
+    "code": "interface DirectDebt {\n  from: string;\n  to: string;\n  amount: number;\n}\n\nclass DebtSimplifier {\n  public static simplify(debts: DirectDebt[]): DirectDebt[] {\n    const netBalance: Map<string, number> = new Map();\n\n    // Step 1: Calculate net balance for each person\n    for (const d of debts) {\n      netBalance.set(d.from, (netBalance.get(d.from) || 0) - d.amount);\n      netBalance.set(d.to, (netBalance.get(d.to) || 0) + d.amount);\n    }\n\n    const debtors: { user: string; amount: number }[] = [];\n    const creditors: { user: string; amount: number }[] = [];\n\n    for (const [user, net] of netBalance.entries()) {\n      if (net < -0.01) debtors.push({ user, amount: -net });\n      else if (net > 0.01) creditors.push({ user, amount: net });\n    }\n\n    const settlements: DirectDebt[] = [];\n    let i = 0, j = 0;\n\n    // Step 2: Greedily settle maximum debtor with maximum creditor\n    while (i < debtors.length && j < creditors.length) {\n      const settled = Math.min(debtors[i].amount, creditors[j].amount);\n\n      settlements.push({\n        from: debtors[i].user,\n        to: creditors[j].user,\n        amount: Math.round(settled * 100) / 100\n      });\n\n      debtors[i].amount -= settled;\n      creditors[j].amount -= settled;\n\n      if (debtors[i].amount <= 0.01) i++;\n      if (creditors[j].amount <= 0.01) j++;\n    }\n\n    return settlements;\n  }\n}\n\n// Complex debt web: A owes B $40, B owes C $40, C owes A $20\nconst rawDebts: DirectDebt[] = [\n  { from: \"Alice\", to: \"Bob\", amount: 40 },\n  { from: \"Bob\", to: \"Charlie\", amount: 40 },\n  { from: \"Charlie\", to: \"Alice\", amount: 20 }\n];\n\nconst simplified = DebtSimplifier.simplify(rawDebts);\nconsole.log(\"Simplified Transactions:\");\nsimplified.forEach(s => console.log(`${s.from} pays ${s.to}: $${s.amount}`));",
+    "breakdown": [
+      {
+        "lineRange": "11-15",
+        "note": "Computes net balance: positive net is creditor, negative net is debtor."
+      },
+      {
+        "lineRange": "26-41",
+        "note": "Greedily cancels out largest debtor with largest creditor until all nets reach 0."
+      },
+      {
+        "lineRange": "52-54",
+        "note": "Reduces 3 circular transactions down to 1 direct payment: Alice pays Charlie $20."
+      }
+    ],
+    "expectedOutput": "Simplified Transactions:\nAlice pays Charlie: $20"
+  },
+  {
+    "id": "lld-ex-37",
+    "title": "Ride-Sharing Dispatcher (Uber) with Proximity Matching & Surge Pricing",
+    "category": "Real-World System Modeling",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A complete ride-hailing dispatcher that finds the nearest available driver within radius using Euclidean/Haversine approximations and calculates dynamic surge multipliers based on demand/supply.",
+    "conceptsCovered": [
+      "Uber Architecture",
+      "Proximity Matching",
+      "Surge Pricing Strategy",
+      "Trip Lifecycle State Machine",
+      "Driver Allocation"
+    ],
+    "code": "class GeoPoint {\n  constructor(public lat: number, public lon: number) {}\n  distanceKm(other: GeoPoint): number {\n    const dLat = this.lat - other.lat;\n    const dLon = this.lon - other.lon;\n    return Math.sqrt(dLat * dLat + dLon * dLon) * 111; // Approx km\n  }\n}\n\nclass Driver {\n  constructor(public id: string, public location: GeoPoint, public isAvailable: boolean = true) {}\n}\n\nclass UberDispatcher {\n  private drivers: Driver[] = [];\n\n  public registerDriver(d: Driver) { this.drivers.push(d); }\n\n  public matchNearestDriver(pickup: GeoPoint, maxRadiusKm: number = 10): Driver | null {\n    let nearest: Driver | null = null;\n    let minDistance = Infinity;\n\n    for (const d of this.drivers) {\n      if (!d.isAvailable) continue;\n      const dist = d.location.distanceKm(pickup);\n      if (dist <= maxRadiusKm && dist < minDistance) {\n        minDistance = dist;\n        nearest = d;\n      }\n    }\n    return nearest;\n  }\n\n  public calculateSurge(activeRiders: number, availableDrivers: number): number {\n    if (availableDrivers === 0) return 3.0; // Max surge cap\n    const ratio = activeRiders / availableDrivers;\n    if (ratio > 2.0) return 2.0; // 2x Surge\n    if (ratio > 1.2) return 1.5; // 1.5x Surge\n    return 1.0; // Normal fare\n  }\n}\n\nconst dispatcher = new UberDispatcher();\ndispatcher.registerDriver(new Driver(\"d1\", new GeoPoint(37.77, -122.41))); // 1km away\ndispatcher.registerDriver(new Driver(\"d2\", new GeoPoint(37.85, -122.45))); // 9km away\n\nconst pickup = new GeoPoint(37.78, -122.41);\nconst matched = dispatcher.matchNearestDriver(pickup);\nconst surge = dispatcher.calculateSurge(15, 5); // 15 riders, 5 drivers -> 3.0 ratio -> 2x Surge\n\nconsole.log(\"Matched Driver ID:\", matched?.id);\nconsole.log(\"Surge Multiplier:\", surge + \"x\");",
+    "breakdown": [
+      {
+        "lineRange": "1-7",
+        "note": "GeoPoint computes distance between GPS coordinates in kilometers."
+      },
+      {
+        "lineRange": "18-30",
+        "note": "matchNearestDriver scans nearby drivers within maxRadiusKm and picks minimum distance."
+      },
+      {
+        "lineRange": "32-38",
+        "note": "calculateSurge dynamically adjusts pricing multiplier based on local supply and demand."
+      }
+    ],
+    "expectedOutput": "Matched Driver ID: d1\nSurge Multiplier: 2x"
+  },
+  {
+    "id": "lld-ex-38",
+    "title": "Hotel Room Reservation System with Universal Date Overlap Detection",
+    "category": "Real-World System Modeling",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A hotel reservation manager enforcing room types, nightly rates, and the universal interval overlap condition (startA < endB && startB < endA) to prevent overlapping bookings.",
+    "conceptsCovered": [
+      "Hotel Reservation Architecture",
+      "Date Range Overlap Theorem",
+      "Room Inventory by Type",
+      "Booking Confirmation",
+      "Interval Validation"
+    ],
+    "code": "class DateRange {\n  constructor(public checkIn: Date, public checkOut: Date) {\n    if (checkIn >= checkOut) throw new Error(\"CheckIn must be strictly before CheckOut\");\n  }\n\n  // Universal Overlap Condition:\n  public overlaps(other: DateRange): boolean {\n    return this.checkIn < other.checkOut && other.checkIn < this.checkOut;\n  }\n}\n\nclass Room {\n  private bookings: DateRange[] = [];\n  constructor(public roomNumber: string, public type: \"DELUXE\" | \"SUITE\") {}\n\n  public isFree(range: DateRange): boolean {\n    return !this.bookings.some(b => b.overlaps(range));\n  }\n\n  public book(range: DateRange): boolean {\n    if (!this.isFree(range)) return false;\n    this.bookings.push(range);\n    return true;\n  }\n}\n\nconst suite101 = new Room(\"101\", \"SUITE\");\n\n// Reservation 1: Nov 10 to Nov 15\nconst booking1 = new DateRange(new Date(\"2026-11-10\"), new Date(\"2026-11-15\"));\nsuite101.book(booking1);\n\n// Reservation 2: Nov 12 to Nov 14 (Overlaps! Should fail)\nconst booking2 = new DateRange(new Date(\"2026-11-12\"), new Date(\"2026-11-14\"));\nconsole.log(\"Booking 2 (overlapping) success:\", suite101.book(booking2));\n\n// Reservation 3: Nov 15 to Nov 18 (Back-to-back checkout/checkin, valid! Should succeed)\nconst booking3 = new DateRange(new Date(\"2026-11-15\"), new Date(\"2026-11-18\"));\nconsole.log(\"Booking 3 (back-to-back) success:\", suite101.book(booking3));",
+    "breakdown": [
+      {
+        "lineRange": "6-8",
+        "note": "Universal overlap theorem: startA < endB && startB < endA handles all overlapping intervals."
+      },
+      {
+        "lineRange": "15-22",
+        "note": "isFree() checks requested range against all existing confirmed bookings."
+      },
+      {
+        "lineRange": "31-36",
+        "note": "Shows booking 2 rejected due to overlap, while booking 3 succeeds back-to-back."
+      }
+    ],
+    "expectedOutput": "Booking 2 (overlapping) success: false\nBooking 3 (back-to-back) success: true"
+  },
+  {
+    "id": "lld-ex-39",
+    "title": "Digital Wallet Double-Entry Accounting Ledger with Zero-Sum Guarantee",
+    "category": "Real-World System Modeling",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements fintech Double-Entry Bookkeeping for a Digital Wallet, generating matching Debit and Credit ledger entries for every transaction to guarantee an immutable audit trail.",
+    "conceptsCovered": [
+      "Double-Entry Bookkeeping",
+      "Fintech Ledger Architecture",
+      "Zero-Sum Invariant",
+      "Debit and Credit Pairs",
+      "Computed Balance Projections"
+    ],
+    "code": "enum EntryType { DEBIT, CREDIT }\n\nclass LedgerEntry {\n  constructor(\n    public accountId: string,\n    public type: EntryType,\n    public amountCents: number,\n    public timestamp: number = Date.now()\n  ) {}\n}\n\nclass AccountingJournal {\n  private entries: LedgerEntry[] = [];\n\n  // Atomic 2-Phase Transfer: exactly 1 DEBIT and 1 CREDIT\n  public transfer(fromAccount: string, toAccount: string, amountCents: number): void {\n    if (amountCents <= 0) throw new Error(\"Transfer amount must be positive\");\n\n    // Double-entry guarantee\n    const debit = new LedgerEntry(fromAccount, EntryType.DEBIT, amountCents);\n    const credit = new LedgerEntry(toAccount, EntryType.CREDIT, amountCents);\n\n    this.entries.push(debit, credit);\n    console.log(`[Ledger] Transfer $${amountCents / 100} recorded: DEBIT ${fromAccount}, CREDIT ${toAccount}`);\n  }\n\n  // Account balance = CREDITS minus DEBITS\n  public getBalance(accountId: string): number {\n    const cents = this.entries\n      .filter(e => e.accountId === accountId)\n      .reduce((bal, e) => e.type === EntryType.CREDIT ? bal + e.amountCents : bal - e.amountCents, 0);\n    return cents / 100;\n  }\n\n  // Auditor invariant: sum of all debits must equal sum of all credits\n  public verifyIntegrity(): boolean {\n    let debits = 0, credits = 0;\n    for (const e of this.entries) {\n      if (e.type === EntryType.DEBIT) debits += e.amountCents;\n      if (e.type === EntryType.CREDIT) credits += e.amountCents;\n    }\n    return debits === credits;\n  }\n}\n\nconst journal = new AccountingJournal();\njournal.transfer(\"SYSTEM_RESERVE\", \"user_alice\", 50000); // Alice deposits $500\njournal.transfer(\"user_alice\", \"user_bob\", 12500);       // Alice pays Bob $125\n\nconsole.log(\"Alice Balance: $\" + journal.getBalance(\"user_alice\"));\nconsole.log(\"Bob Balance: $\" + journal.getBalance(\"user_bob\"));\nconsole.log(\"Ledger Integrity Verified:\", journal.verifyIntegrity());",
+    "breakdown": [
+      {
+        "lineRange": "16-24",
+        "note": "transfer creates matching DEBIT and CREDIT records, guaranteeing money cannot vanish or duplicate."
+      },
+      {
+        "lineRange": "27-32",
+        "note": "Balance is computed on the fly from immutable journal history rather than mutating raw integers."
+      },
+      {
+        "lineRange": "35-42",
+        "note": "verifyIntegrity confirms debits === credits across the entire platform ledger."
+      }
+    ],
+    "expectedOutput": "[Ledger] Transfer $500 recorded: DEBIT SYSTEM_RESERVE, CREDIT user_alice\n[Ledger] Transfer $125 recorded: DEBIT user_alice, CREDIT user_bob\nAlice Balance: $375\nBob Balance: $125\nLedger Integrity Verified: true"
+  },
+  {
+    "id": "lld-ex-40",
+    "title": "Flash Sale Inventory Allocation Engine with In-Memory Atomic Decrement",
+    "category": "Real-World System Modeling",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Simulates high-velocity flash sale inventory management using in-memory atomic decrement operations, preventing overselling 100 iPhone units across thousands of concurrent buyers.",
+    "conceptsCovered": [
+      "Flash Sale Architecture",
+      "In-Memory Atomic Decrement",
+      "Overselling Prevention",
+      "High Concurrency",
+      "Fast Out-Of-Stock Rejection"
+    ],
+    "code": "class FlashSaleInventory {\n  private availableStock: number;\n  private allocatedOrders: Map<string, number> = new Map();\n\n  constructor(initialStock: number) {\n    this.availableStock = initialStock;\n  }\n\n  // Atomic decrement: returns true if stock claimed, false if sold out\n  public tryAllocate(orderId: string, quantity: number = 1): boolean {\n    if (this.availableStock >= quantity) {\n      this.availableStock -= quantity;\n      this.allocatedOrders.set(orderId, quantity);\n      return true; // Claimed successfully!\n    }\n    return false; // Sold out!\n  }\n\n  public getRemainingStock(): number { return this.availableStock; }\n}\n\nconst sale = new FlashSaleInventory(3); // Only 3 units available!\n\nconsole.log(\"Buyer 1 (order 101):\", sale.tryAllocate(\"ord-101\", 1));\nconsole.log(\"Buyer 2 (order 102):\", sale.tryAllocate(\"ord-102\", 1));\nconsole.log(\"Buyer 3 (order 103):\", sale.tryAllocate(\"ord-103\", 1));\nconsole.log(\"Buyer 4 (order 104 - sold out):\", sale.tryAllocate(\"ord-104\", 1));\nconsole.log(\"Remaining units:\", sale.getRemainingStock());",
+    "breakdown": [
+      {
+        "lineRange": "10-18",
+        "note": "tryAllocate decrements stock atomically; rejects instantly when remaining < requested."
+      },
+      {
+        "lineRange": "23-28",
+        "note": "Demonstrates 3 units claimed successfully while 4th buyer is rejected without overselling."
+      }
+    ],
+    "expectedOutput": "Buyer 1 (order 101): true\nBuyer 2 (order 102): true\nBuyer 3 (order 103): true\nBuyer 4 (order 104 - sold out): false\nRemaining units: 0"
+  },
+  {
+    "id": "lld-ex-41",
+    "title": "Complete Vending Machine State Machine with Coin Inventory & Change Dispenser",
+    "category": "Real-World System Modeling",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A complete Vending Machine implementation featuring the State Pattern (Idle, HasMoney, Dispensing, SoldOut) and an algorithmic cash inventory calculating exact change.",
+    "conceptsCovered": [
+      "Vending Machine Architecture",
+      "State Pattern",
+      "Cash Inventory & Change Dispenser",
+      "Product Stock Tracking",
+      "Cancellation & Refund Flow"
+    ],
+    "code": "interface VendingState {\n  insertMoney(amount: number): void;\n  selectProduct(code: string): void;\n  dispense(): void;\n  cancel(): void;\n}\n\nclass VendingMachine {\n  public balance: number = 0;\n  public inventory: Map<string, { price: number; stock: number }> = new Map();\n  public selectedProductCode: string | null = null;\n\n  public idleState!: VendingState;\n  public hasMoneyState!: VendingState;\n  public dispensingState!: VendingState;\n  public soldOutState!: VendingState;\n  private currentState!: VendingState;\n\n  constructor() {\n    this.idleState = new IdleState(this);\n    this.hasMoneyState = new HasMoneyState(this);\n    this.dispensingState = new DispensingState(this);\n    this.soldOutState = new SoldOutState(this);\n    this.currentState = this.idleState;\n\n    this.inventory.set(\"A1\", { price: 150, stock: 1 }); // Soda: $1.50\n  }\n\n  public setState(s: VendingState) { this.currentState = s; }\n  public insertMoney(amt: number) { this.currentState.insertMoney(amt); }\n  public selectProduct(code: string) { this.currentState.selectProduct(code); }\n  public dispense() { this.currentState.dispense(); }\n  public cancel() { this.currentState.cancel(); }\n}\n\nclass IdleState implements VendingState {\n  constructor(private m: VendingMachine) {}\n  insertMoney(amt: number) {\n    this.m.balance += amt;\n    console.log(`[Idle] Money inserted: $${amt / 100}. Total: $${this.m.balance / 100}`);\n    this.m.setState(this.m.hasMoneyState);\n  }\n  selectProduct() { console.log(\"Please insert money first\"); }\n  dispense() { console.log(\"Cannot dispense without payment\"); }\n  cancel() { console.log(\"No transaction to cancel\"); }\n}\n\nclass HasMoneyState implements VendingState {\n  constructor(private m: VendingMachine) {}\n  insertMoney(amt: number) { this.m.balance += amt; }\n  selectProduct(code: string) {\n    const item = this.m.inventory.get(code);\n    if (!item || item.stock <= 0) { console.log(\"Product unavailable\"); return; }\n    if (this.m.balance < item.price) { console.log(\"Insufficient balance\"); return; }\n\n    this.m.selectedProductCode = code;\n    this.m.setState(this.m.dispensingState);\n    this.m.dispense();\n  }\n  dispense() { console.log(\"Select a product\"); }\n  cancel() {\n    console.log(`Refunded: $${this.m.balance / 100}`);\n    this.m.balance = 0;\n    this.m.setState(this.m.idleState);\n  }\n}\n\nclass DispensingState implements VendingState {\n  constructor(private m: VendingMachine) {}\n  insertMoney() { console.log(\"Dispensing in progress\"); }\n  selectProduct() { console.log(\"Already dispensing\"); }\n  dispense() {\n    const item = this.m.inventory.get(this.m.selectedProductCode!)!;\n    item.stock--;\n    const change = this.m.balance - item.price;\n    console.log(`[Dispensed] Dropped item ${this.m.selectedProductCode}! Change returned: $${change / 100}`);\n    this.m.balance = 0;\n    this.m.selectedProductCode = null;\n    this.m.setState(this.m.idleState);\n  }\n  cancel() { console.log(\"Cannot cancel mid-dispense\"); }\n}\n\nclass SoldOutState implements VendingState {\n  constructor(private m: VendingMachine) {}\n  insertMoney() { console.log(\"Machine sold out\"); }\n  selectProduct() { console.log(\"Machine sold out\"); }\n  dispense() {}\n  cancel() {}\n}\n\nconst vm = new VendingMachine();\nvm.insertMoney(200); // Inserts $2.00\nvm.selectProduct(\"A1\"); // Buys $1.50 item -> Dispenes item & $0.50 change!",
+    "breakdown": [
+      {
+        "lineRange": "20-30",
+        "note": "Initializes all state objects with context reference and sets initial Idle state."
+      },
+      {
+        "lineRange": "67-78",
+        "note": "DispensingState decrements stock, calculates change, and transitions cleanly back to Idle."
+      },
+      {
+        "lineRange": "89-91",
+        "note": "Demonstrates inserting $2.00, purchasing $1.50 item, and receiving $0.50 change."
+      }
+    ],
+    "expectedOutput": "[Idle] Money inserted: $2. Total: $2\n[Dispensed] Dropped item A1! Change returned: $0.5"
+  },
+  {
+    "id": "lld-ex-42",
+    "title": "ATM System Architecture with Multi-Denomination Cash Dispenser Chain",
+    "category": "Real-World System Modeling",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds an ATM System using the Chain of Responsibility pattern for cascading cash dispensing ($100 -> $50 -> $20 -> $10 bills) with exact change verification.",
+    "conceptsCovered": [
+      "ATM Architecture",
+      "Chain of Responsibility",
+      "Cash Dispensing Logic",
+      "Multi-Denomination Bills",
+      "Transactional Rollback"
+    ],
+    "code": "abstract class CashDispenserLink {\n  protected nextLink: CashDispenserLink | null = null;\n  constructor(public readonly denomination: number, public availableNotes: number) {}\n\n  public setNext(next: CashDispenserLink): CashDispenserLink {\n    this.nextLink = next;\n    return next;\n  }\n\n  public dispense(amount: number): void {\n    const needed = Math.floor(amount / this.denomination);\n    const dispensed = Math.min(needed, this.availableNotes);\n    const remainder = amount - (dispensed * this.denomination);\n\n    this.availableNotes -= dispensed;\n    if (dispensed > 0) {\n      console.log(`[Dispense] Dispensed ${dispensed} x $${this.denomination} bills`);\n    }\n\n    if (remainder > 0) {\n      if (!this.nextLink) {\n        throw new Error(`ATM Error: Cannot dispense exact change! Remainder: $${remainder}`);\n      }\n      this.nextLink.dispense(remainder);\n    }\n  }\n}\n\nclass HundredDispenser extends CashDispenserLink { constructor(notes: number) { super(100, notes); } }\nclass FiftyDispenser extends CashDispenserLink { constructor(notes: number) { super(50, notes); } }\nclass TwentyDispenser extends CashDispenserLink { constructor(notes: number) { super(20, notes); } }\nclass TenDispenser extends CashDispenserLink { constructor(notes: number) { super(10, notes); } }\n\n// Construct ATM Dispenser Chain:\nconst atm = new HundredDispenser(5);\natm.setNext(new FiftyDispenser(5))\n   .setNext(new TwentyDispenser(10))\n   .setNext(new TenDispenser(20));\n\nconsole.log(\"Withdrawing $280:\");\natm.dispense(280);",
+    "breakdown": [
+      {
+        "lineRange": "10-25",
+        "note": "Dispenses up to availableNotes, passes remainder down to next denomination link."
+      },
+      {
+        "lineRange": "33-36",
+        "note": "Chains $100 -> $50 -> $20 -> $10 dispensers in descending order."
+      },
+      {
+        "lineRange": "38-40",
+        "note": "Withdraws $280 cleanly: 2x$100, 1x$50, 1x$20, 1x$10."
+      }
+    ],
+    "expectedOutput": "Withdrawing $280:\n[Dispense] Dispensed 2 x $100 bills\n[Dispense] Dispensed 1 x $50 bills\n[Dispense] Dispensed 1 x $20 bills\n[Dispense] Dispensed 1 x $10 bills"
+  },
+  {
+    "id": "lld-ex-43",
+    "title": "Tic-Tac-Toe O(1) Win Checking on NxN Grid with Integer Accumulators",
+    "category": "Games & Simulation",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Evaluates win conditions on an arbitrary NxN Tic-Tac-Toe grid in strict O(1) time using row, column, and diagonal integer accumulators (+1 for Player 1, -1 for Player 2).",
+    "conceptsCovered": [
+      "Tic-Tac-Toe Engine",
+      "O(1) Evaluation",
+      "Integer Accumulator Arrays",
+      "Diagonal Checks",
+      "Game State Management"
+    ],
+    "code": "class FastTicTacToe {\n  private n: number;\n  private rows: number[];\n  private cols: number[];\n  private diag: number = 0;\n  private antiDiag: number = 0;\n\n  constructor(n: number = 3) {\n    this.n = n;\n    this.rows = new Array(n).fill(0);\n    this.cols = new Array(n).fill(0);\n  }\n\n  // Returns 0: In progress, 1: Player 1 won, 2: Player 2 won\n  public move(r: number, c: number, player: 1 | 2): number {\n    const val = player === 1 ? 1 : -1;\n\n    this.rows[r] += val;\n    this.cols[c] += val;\n    if (r === c) this.diag += val;\n    if (r + c === this.n - 1) this.antiDiag += val;\n\n    const target = player === 1 ? this.n : -this.n;\n\n    // O(1) check\n    if (\n      this.rows[r] === target ||\n      this.cols[c] === target ||\n      this.diag === target ||\n      this.antiDiag === target\n    ) {\n      return player; // Winner!\n    }\n    return 0; // Ongoing\n  }\n}\n\nconst game = new FastTicTacToe(3);\ngame.move(0, 0, 1); // P1 moves (0,0)\ngame.move(0, 1, 2); // P2 moves (0,1)\ngame.move(1, 1, 1); // P1 moves (1,1)\ngame.move(0, 2, 2); // P2 moves (0,2)\nconst winner = game.move(2, 2, 1); // P1 moves (2,2) -> Completes diagonal!\n\nconsole.log(\"Winner (1=P1, 2=P2):\", winner);",
+    "breakdown": [
+      {
+        "lineRange": "16-20",
+        "note": "Updates row, col, and diagonal accumulators (+1 for P1, -1 for P2)."
+      },
+      {
+        "lineRange": "24-32",
+        "note": "Checks whether moved row, col, or diagonal reaches target (+3 or -3) in strict O(1) time."
+      },
+      {
+        "lineRange": "36-41",
+        "note": "P1 places on main diagonal (0,0), (1,1), and (2,2), winning instantly."
+      }
+    ],
+    "expectedOutput": "Winner (1=P1, 2=P2): 1"
+  },
+  {
+    "id": "lld-ex-44",
+    "title": "Chess Game Object Model with Board Spots and Knight Movement Validation",
+    "category": "Games & Simulation",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Designs an object-oriented Chess engine where Piece subclasses encapsulate their own geometric move validation rules, demonstrated through Knight L-shape jumping logic.",
+    "conceptsCovered": [
+      "Chess Architecture",
+      "Piece Abstraction",
+      "Knight Movement Geometry",
+      "Board Grid Representation",
+      "Move Validation"
+    ],
+    "code": "enum PieceColor { WHITE, BLACK }\n\ninterface Spot {\n  x: number; // 0 to 7\n  y: number; // 0 to 7\n}\n\nabstract class ChessPiece {\n  constructor(public readonly color: PieceColor) {}\n  abstract isValidMove(from: Spot, to: Spot, board: (ChessPiece | null)[][]): boolean;\n}\n\nclass Knight extends ChessPiece {\n  isValidMove(from: Spot, to: Spot, board: (ChessPiece | null)[][]): boolean {\n    const dx = Math.abs(from.x - to.x);\n    const dy = Math.abs(from.y - to.y);\n\n    // Knight moves in an L-shape: (2, 1) or (1, 2)\n    const isLShape = (dx === 1 && dy === 2) || (dx === 2 && dy === 1);\n    if (!isLShape) return false;\n\n    // Destination cannot contain friendly piece\n    const dest = board[to.x][to.y];\n    if (dest !== null && dest.color === this.color) return false;\n\n    return true; // Knight jumps over intermediate pieces!\n  }\n}\n\nclass Board {\n  public grid: (ChessPiece | null)[][] = Array.from({ length: 8 }, () => new Array(8).fill(null));\n}\n\nconst board = new Board();\nconst whiteKnight = new Knight(PieceColor.WHITE);\nboard.grid[1][0] = whiteKnight; // White Knight at b1 (1, 0)\n\n// Test Move 1: (1, 0) -> (2, 2) [dx=1, dy=2] -> Valid L-shape!\nconsole.log(\"Move to (2, 2) valid:\", whiteKnight.isValidMove({ x: 1, y: 0 }, { x: 2, y: 2 }, board.grid));\n\n// Test Move 2: (1, 0) -> (1, 3) [dx=0, dy=3] -> Invalid straight move!\nconsole.log(\"Move to (1, 3) valid:\", whiteKnight.isValidMove({ x: 1, y: 0 }, { x: 1, y: 3 }, board.grid));",
+    "breakdown": [
+      {
+        "lineRange": "13-27",
+        "note": "Knight evaluates L-shape trajectory (dx=1, dy=2 or dx=2, dy=1) and checks destination friendly fire."
+      },
+      {
+        "lineRange": "38-41",
+        "note": "Demonstrates valid L-jump returning true and invalid straight line returning false."
+      }
+    ],
+    "expectedOutput": "Move to (2, 2) valid: true\nMove to (1, 3) valid: false"
+  },
+  {
+    "id": "lld-ex-45",
+    "title": "Snake and Ladder Game with Unified Jumpers and Fair Turn Queue",
+    "category": "Games & Simulation",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Models Snake and Ladder by unifying snakes and ladders into generic Jumper obstacles (start -> end), rotating player turns using a FIFO circular queue.",
+    "conceptsCovered": [
+      "Snake and Ladder",
+      "Unified Jumper Modeling",
+      "Turn Queue Rotation",
+      "Boundary Win Validation",
+      "Game Loop Simulation"
+    ],
+    "code": "class Jumper {\n  constructor(public readonly start: number, public readonly end: number) {}\n}\n\nclass SnakeLadderGame {\n  private jumpers: Map<number, number> = new Map();\n  private turnQueue: { name: string; pos: number }[] = [];\n  public readonly winCell = 100;\n\n  constructor(snakes: Jumper[], ladders: Jumper[], players: string[]) {\n    for (const s of snakes) this.jumpers.set(s.start, s.end);\n    for (const l of ladders) this.jumpers.set(l.start, l.end);\n    this.turnQueue = players.map(name => ({ name, pos: 0 }));\n  }\n\n  public takeTurn(dice: number): string {\n    const player = this.turnQueue.shift()!;\n    let next = player.pos + dice;\n\n    if (next <= this.winCell) {\n      // Check for Snake or Ladder jumper\n      if (this.jumpers.has(next)) {\n        const target = this.jumpers.get(next)!;\n        const type = target > next ? \"Ladder\" : \"Snake\";\n        console.log(`[${player.name}] Hit a ${type}! ${next} -> ${target}`);\n        next = target;\n      }\n      player.pos = next;\n    }\n\n    if (player.pos === this.winCell) {\n      return `${player.name} WINS THE GAME!`;\n    }\n\n    this.turnQueue.push(player); // Re-enqueue for next round\n    return `${player.name} is now at cell ${player.pos}`;\n  }\n}\n\nconst game = new SnakeLadderGame(\n  [new Jumper(14, 7)],   // Snake: 14 -> 7\n  [new Jumper(4, 25)],   // Ladder: 4 -> 25\n  [\"Alice\", \"Bob\"]\n);\n\nconsole.log(game.takeTurn(4));  // Alice rolls 4 -> hits ladder 4 -> 25!\nconsole.log(game.takeTurn(5));  // Bob rolls 5 -> cell 5",
+    "breakdown": [
+      {
+        "lineRange": "1-3",
+        "note": "Jumper abstraction unifies snakes and ladders into start -> end coordinates."
+      },
+      {
+        "lineRange": "21-29",
+        "note": "Applies jumper dynamically if landing cell matches map key."
+      },
+      {
+        "lineRange": "44-46",
+        "note": "Alice lands on 4, climbing ladder to cell 25."
+      }
+    ],
+    "expectedOutput": "[Alice] Hit a Ladder! 4 -> 25\nAlice is now at cell 25\nBob is now at cell 5"
+  },
+  {
+    "id": "lld-ex-46",
+    "title": "Connect Four with Vertical Gravity Drop and 4-Directional Streak Checking",
+    "category": "Games & Simulation",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Models the Connect Four board with gravity drop (finding lowest available row in column) and evaluates victory by inspecting 4 directional vectors from the placed chip in O(1) time.",
+    "conceptsCovered": [
+      "Connect Four",
+      "Gravity Simulation",
+      "Directional Vectors",
+      "Bidirectional Streak Count",
+      "Grid Boundaries"
+    ],
+    "code": "class ConnectFourEngine {\n  public grid: number[][] = Array.from({ length: 6 }, () => new Array(7).fill(0));\n\n  public drop(col: number, player: number): { row: number; won: boolean } {\n    if (col < 0 || col >= 7 || this.grid[0][col] !== 0) throw new Error(\"Column full or invalid\");\n\n    // Gravity: find lowest open row\n    let row = 5;\n    while (row >= 0 && this.grid[row][col] !== 0) row--;\n\n    this.grid[row][col] = player;\n    const won = this.checkWin(row, col, player);\n    return { row, won };\n  }\n\n  private checkWin(r: number, c: number, p: number): boolean {\n    const vectors = [[0, 1], [1, 0], [1, 1], [1, -1]]; // H, V, D1, D2\n    for (const [dr, dc] of vectors) {\n      let count = 1;\n      count += this.countStreak(r, c, dr, dc, p);\n      count += this.countStreak(r, c, -dr, -dc, p);\n      if (count >= 4) return true;\n    }\n    return false;\n  }\n\n  private countStreak(r: number, c: number, dr: number, dc: number, p: number): number {\n    let streak = 0, currR = r + dr, currC = c + dc;\n    while (currR >= 0 && currR < 6 && currC >= 0 && currC < 7 && this.grid[currR][currC] === p) {\n      streak++;\n      currR += dr;\n      currC += dc;\n    }\n    return streak;\n  }\n}\n\nconst c4 = new ConnectFourEngine();\nc4.drop(0, 1);\nc4.drop(1, 1);\nc4.drop(2, 1);\nconst res = c4.drop(3, 1); // 4th chip in a row horizontally!\n\nconsole.log(\"Connect Four won on 4th drop:\", res.won);",
+    "breakdown": [
+      {
+        "lineRange": "7-11",
+        "note": "Gravity drop scans from bottom row (5) upward until an empty cell is found."
+      },
+      {
+        "lineRange": "17-25",
+        "note": "Vector traversal checks horizontal, vertical, and both diagonals forward and backward."
+      },
+      {
+        "lineRange": "38-42",
+        "note": "Demonstrates horizontal 4-in-a-row victory."
+      }
+    ],
+    "expectedOutput": "Connect Four won on 4th drop: true"
+  },
+  {
+    "id": "lld-ex-47",
+    "title": "2048 Game Grid Row Compression & Merge using Matrix Transposition",
+    "category": "Games & Simulation",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements the core sliding and merging logic of 2048 by defining a single slideRowLeft function and using matrix transposition and reversal to handle all 4 directions with zero code duplication.",
+    "conceptsCovered": [
+      "2048 Game Engine",
+      "Row Compression & Merge",
+      "Matrix Transposition",
+      "DRY Principle",
+      "Array Reversal"
+    ],
+    "code": "class Engine2048 {\n  // Core logic: slides non-zeros to left, merges adjacent equal pairs once\n  public static slideLeft(row: number[]): number[] {\n    const nonZero = row.filter(n => n !== 0);\n    const merged: number[] = [];\n\n    for (let i = 0; i < nonZero.length; i++) {\n      if (i < nonZero.length - 1 && nonZero[i] === nonZero[i + 1]) {\n        merged.push(nonZero[i] * 2);\n        i++; // Skip merged sibling\n      } else {\n        merged.push(nonZero[i]);\n      }\n    }\n    while (merged.length < row.length) merged.push(0);\n    return merged;\n  }\n\n  public static slideRight(row: number[]): number[] {\n    return this.slideLeft([...row].reverse()).reverse();\n  }\n\n  public static transpose(grid: number[][]): number[][] {\n    return grid[0].map((_, col) => grid.map(row => row[col]));\n  }\n}\n\n// Test row slide and merge:\nconst row = [2, 2, 4, 8];\nconsole.log(\"Row [2, 2, 4, 8] slide Left:\", Engine2048.slideLeft(row));\nconsole.log(\"Row [2, 2, 4, 8] slide Right:\", Engine2048.slideRight(row));",
+    "breakdown": [
+      {
+        "lineRange": "3-16",
+        "note": "slideLeft compacts non-zeros, merges adjacent equals once, and pads with zeros."
+      },
+      {
+        "lineRange": "18-20",
+        "note": "slideRight simply reverses row, applies slideLeft, and reverses back."
+      },
+      {
+        "lineRange": "27-29",
+        "note": "Shows [2, 2, 4, 8] merging into [4, 4, 8, 0] on Left, and [0, 4, 4, 8] on Right."
+      }
+    ],
+    "expectedOutput": "Row [2, 2, 4, 8] slide Left: [ 4, 4, 8, 0 ]\nRow [2, 2, 4, 8] slide Right: [ 0, 4, 4, 8 ]"
+  },
+  {
+    "id": "lld-ex-48",
+    "title": "Card Deck with Fisher-Yates Shuffling & Dynamic Blackjack Ace Hand Scoring",
+    "category": "Games & Simulation",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Models an unbiased Fisher-Yates 52-card deck and a Blackjack hand evaluation engine that dynamically downgrades Ace values from 11 to 1 to prevent busting.",
+    "conceptsCovered": [
+      "Deck of Cards",
+      "Fisher-Yates Shuffling",
+      "Blackjack Hand Scoring",
+      "Dynamic Ace Adjustment",
+      "Immutability"
+    ],
+    "code": "enum Suit { HEARTS, DIAMONDS, CLUBS, SPADES }\n\nclass Card {\n  constructor(public readonly suit: Suit, public readonly value: number, public readonly name: string) {}\n}\n\nclass Deck {\n  private cards: Card[] = [];\n\n  constructor() {\n    for (const suit of [Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS, Suit.SPADES]) {\n      for (let v = 2; v <= 10; v++) this.cards.push(new Card(suit, v, String(v)));\n      this.cards.push(new Card(suit, 10, \"Jack\"), new Card(suit, 10, \"Queen\"), new Card(suit, 10, \"King\"));\n      this.cards.push(new Card(suit, 11, \"Ace\"));\n    }\n  }\n\n  // Unbiased O(N) Fisher-Yates shuffle\n  public shuffle(): void {\n    for (let i = this.cards.length - 1; i > 0; i--) {\n      const j = Math.floor(Math.random() * (i + 1));\n      [this.cards[i], this.cards[j]] = [this.cards[j], this.cards[i]];\n    }\n  }\n}\n\nclass BlackjackHand {\n  public cards: Card[] = [];\n\n  public add(c: Card) { this.cards.push(c); }\n\n  public getScore(): number {\n    let total = this.cards.reduce((sum, c) => sum + c.value, 0);\n    let aces = this.cards.filter(c => c.name === \"Ace\").length;\n\n    // Dynamically adjust Ace from 11 to 1 if score > 21\n    while (total > 21 && aces > 0) {\n      total -= 10;\n      aces--;\n    }\n    return total;\n  }\n}\n\nconst hand = new BlackjackHand();\nhand.add(new Card(Suit.SPADES, 11, \"Ace\"));\nhand.add(new Card(Suit.HEARTS, 11, \"Ace\")); // Two Aces = 22 -> 1 Ace converts to 1 -> Total = 12!\nhand.add(new Card(Suit.CLUBS, 9, \"9\"));     // Total = 12 + 9 = 21 (Blackjack!)\n\nconsole.log(\"Evaluated Hand Score (Expected 21):\", hand.getScore());",
+    "breakdown": [
+      {
+        "lineRange": "18-23",
+        "note": "Fisher-Yates swaps cards[i] with random index [0..i] in O(N) time with zero statistical bias."
+      },
+      {
+        "lineRange": "31-41",
+        "note": "Aces count as 11 until hand exceeds 21, subtracting 10 per Ace to avoid busting."
+      },
+      {
+        "lineRange": "44-48",
+        "note": "Demonstrates Ace + Ace + 9 evaluating to 21 rather than busting at 31."
+      }
+    ],
+    "expectedOutput": "Evaluated Hand Score (Expected 21): 21"
+  },
+  {
+    "id": "lld-ex-49",
+    "title": "In-Memory Pub/Sub Message Broker with Partition Hashing and Consumer Groups",
+    "category": "Infrastructure & Messaging",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Designs a Kafka-inspired in-memory Pub-Sub broker with partitioned topic message logs, partition key hashing, and consumer groups that track committed offsets independently.",
+    "conceptsCovered": [
+      "Pub/Sub Broker",
+      "Topic Partitions",
+      "Consumer Groups",
+      "Offset Tracking",
+      "Partition Key Hashing"
+    ],
+    "code": "class BrokerMessage {\n  constructor(public offset: number, public payload: any) {}\n}\n\nclass PartitionTopic {\n  public partitions: BrokerMessage[][] = [];\n\n  constructor(public readonly name: string, numPartitions: number = 2) {\n    this.partitions = Array.from({ length: numPartitions }, () => []);\n  }\n\n  public publish(partitionKey: string, payload: any): { partition: number; offset: number } {\n    let hash = 0;\n    for (let i = 0; i < partitionKey.length; i++) hash = (hash * 31 + partitionKey.charCodeAt(i)) >>> 0;\n    const pIdx = hash % this.partitions.length;\n\n    const p = this.partitions[pIdx];\n    const offset = p.length;\n    p.push(new BrokerMessage(offset, payload));\n    return { partition: pIdx, offset };\n  }\n}\n\nclass ConsumerGroup {\n  private offsets: Map<number, number> = new Map(); // partition -> offset\n\n  constructor(public readonly groupName: string) {}\n\n  public poll(topic: PartitionTopic, partition: number): BrokerMessage | null {\n    const currentOffset = this.offsets.get(partition) || 0;\n    const p = topic.partitions[partition];\n\n    if (currentOffset < p.length) {\n      const msg = p[currentOffset];\n      this.offsets.set(partition, currentOffset + 1); // Commit offset\n      return msg;\n    }\n    return null;\n  }\n}\n\nconst topic = new PartitionTopic(\"orders\", 2);\ntopic.publish(\"order_981\", { item: \"Laptop\", amount: 1200 });\ntopic.publish(\"order_982\", { item: \"Mouse\", amount: 25 });\n\nconst billingGroup = new ConsumerGroup(\"billing\");\nconst msg = billingGroup.poll(topic, 0) || billingGroup.poll(topic, 1);\nconsole.log(\"Billing processed message:\", msg?.payload);",
+    "breakdown": [
+      {
+        "lineRange": "12-21",
+        "note": "Hashes partitionKey to route message deterministically to a specific partition queue."
+      },
+      {
+        "lineRange": "29-39",
+        "note": "poll() reads message at current offset and increments the committed offset pointer."
+      },
+      {
+        "lineRange": "43-47",
+        "note": "Demonstrates partitioned publish and consumer group polling."
+      }
+    ],
+    "expectedOutput": "Billing processed message: { item: 'Laptop', amount: 1200 }"
+  },
+  {
+    "id": "lld-ex-50",
+    "title": "In-Memory Logging Framework with Log Levels, Appenders & Formatters",
+    "category": "Infrastructure & Messaging",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs a Log4j-style logging framework with customizable LogLevels, pluggable Appenders (Console, InMemoryBuffer), and structured JSON vs Plaintext formatters.",
+    "conceptsCovered": [
+      "Logging Framework",
+      "Log Levels (DEBUG to ERROR)",
+      "Appender Hierarchy",
+      "Strategy Formatters",
+      "Threshold Filtering"
+    ],
+    "code": "enum LogLevel { DEBUG = 1, INFO = 2, WARN = 3, ERROR = 4 }\n\ninterface LogFormatter {\n  format(level: LogLevel, msg: string, time: number): string;\n}\n\nclass JsonFormatter implements LogFormatter {\n  format(level: LogLevel, msg: string, time: number): string {\n    return JSON.stringify({ timestamp: new Date(time).toISOString(), level: LogLevel[level], message: msg });\n  }\n}\n\ninterface LogAppender {\n  append(formattedMessage: string): void;\n}\n\nclass ConsoleAppender implements LogAppender {\n  append(msg: string) { console.log(msg); }\n}\n\nclass CustomLogger {\n  private appenders: LogAppender[] = [];\n\n  constructor(private minLevel: LogLevel, private formatter: LogFormatter) {}\n\n  public addAppender(appender: LogAppender) { this.appenders.push(appender); }\n\n  public log(level: LogLevel, message: string): void {\n    if (level < this.minLevel) return; // Drop messages below active threshold\n    const formatted = this.formatter.format(level, message, Date.now());\n    for (const app of this.appenders) app.append(formatted);\n  }\n\n  public debug(msg: string) { this.log(LogLevel.DEBUG, msg); }\n  public info(msg: string) { this.log(LogLevel.INFO, msg); }\n  public error(msg: string) { this.log(LogLevel.ERROR, msg); }\n}\n\nconst logger = new CustomLogger(LogLevel.INFO, new JsonFormatter());\nlogger.addAppender(new ConsoleAppender());\n\nlogger.debug(\"This debug trace is dropped!\"); // Below INFO threshold\nlogger.info(\"Application gateway online\");",
+    "breakdown": [
+      {
+        "lineRange": "7-11",
+        "note": "JsonFormatter outputs structured telemetry payloads."
+      },
+      {
+        "lineRange": "27-31",
+        "note": "Fast filter check (level < minLevel) drops unwanted debug logs in O(1) time without formatting string allocations."
+      },
+      {
+        "lineRange": "38-42",
+        "note": "Demonstrates debug trace ignored while info message formats and outputs cleanly."
+      }
+    ],
+    "expectedOutput": "{\"timestamp\":\"2026-11-04T18:40:00.000Z\",\"level\":\"INFO\",\"message\":\"Application gateway online\"}"
+  },
+  {
+    "id": "lld-ex-51",
+    "title": "Scheduled Task Engine with Min-Heap Priority Queue & Worker Pool",
+    "category": "Infrastructure & Messaging",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements an in-memory task scheduler that orders jobs by execution timestamp in a Min-Heap, non-blockingly executing due tasks while supporting recurring intervals.",
+    "conceptsCovered": [
+      "Task Scheduler",
+      "Min-Heap Priority Queue",
+      "Non-Blocking Execution",
+      "Recurring Tasks",
+      "Worker Pool Dispatch"
+    ],
+    "code": "class TaskJob {\n  constructor(\n    public name: string,\n    public runAt: number,\n    public action: () => void,\n    public intervalMs: number = 0\n  ) {}\n}\n\nclass TaskSchedulerEngine {\n  private heap: TaskJob[] = [];\n\n  public schedule(name: string, delayMs: number, action: () => void, intervalMs: number = 0): void {\n    const job = new TaskJob(name, Date.now() + delayMs, action, intervalMs);\n    this.heap.push(job);\n    this.heap.sort((a, b) => a.runAt - b.runAt); // Maintain min-heap order\n  }\n\n  public tick(): void {\n    const now = Date.now();\n    while (this.heap.length > 0 && this.heap[0].runAt <= now) {\n      const job = this.heap.shift()!;\n      console.log(`[Scheduler] Dispatched task \"${job.name}\"`);\n      job.action();\n\n      // If recurring, reschedule for next epoch\n      if (job.intervalMs > 0) {\n        job.runAt = now + job.intervalMs;\n        this.heap.push(job);\n        this.heap.sort((a, b) => a.runAt - b.runAt);\n      }\n    }\n  }\n}\n\nconst scheduler = new TaskSchedulerEngine();\nscheduler.schedule(\"SyncTelemetry\", 50, () => console.log(\"Telemetry synced!\"));\nscheduler.schedule(\"Heartbeat\", 100, () => console.log(\"Heartbeat alive!\"), 100);\n\nsetTimeout(() => scheduler.tick(), 60);",
+    "breakdown": [
+      {
+        "lineRange": "13-17",
+        "note": "Maintains tasks ordered by earliest execution timestamp."
+      },
+      {
+        "lineRange": "19-32",
+        "note": "tick() pops and dispatches all tasks whose runAt <= now, re-enqueuing recurring tasks."
+      },
+      {
+        "lineRange": "35-39",
+        "note": "Schedules one-off and recurring tasks, testing dispatch."
+      }
+    ],
+    "expectedOutput": "[Scheduler] Dispatched task \"SyncTelemetry\"\nTelemetry synced!"
+  },
+  {
+    "id": "lld-ex-52",
+    "title": "Clean Architecture Hexagonal Domain Model with Aggregate Root & Ports",
+    "category": "Architecture & Clean Code",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Assembles a pure Clean Architecture domain model with an Order Aggregate Root, Value Objects, Domain Events, and Dependency Inversion Ports completely isolated from external frameworks.",
+    "conceptsCovered": [
+      "Clean Architecture",
+      "Hexagonal (Ports & Adapters)",
+      "Aggregate Root",
+      "Value Objects",
+      "Dependency Inversion Principle"
+    ],
+    "code": "// 1. PURE DOMAIN: Immutable Value Object\nclass Money {\n  constructor(public readonly amountCents: number, public readonly currency: string = \"USD\") {\n    if (amountCents < 0) throw new Error(\"Amount cannot be negative\");\n    Object.freeze(this);\n  }\n}\n\n// 2. DOMAIN EVENT\nclass OrderPlacedEvent {\n  constructor(public readonly orderId: string, public readonly totalCents: number) {}\n}\n\n// 3. AGGREGATE ROOT\nclass OrderAggregate {\n  private items: { sku: string; price: Money }[] = [];\n  public events: any[] = [];\n\n  constructor(public readonly orderId: string) {}\n\n  public addItem(sku: string, price: Money): void {\n    this.items.push({ sku, price });\n  }\n\n  public place(): void {\n    if (this.items.length === 0) throw new Error(\"Cannot place empty order\");\n    const total = this.items.reduce((sum, i) => sum + i.price.amountCents, 0);\n    this.events.push(new OrderPlacedEvent(this.orderId, total));\n    console.log(`[Domain] Order ${this.orderId} placed. Total: $${total / 100}`);\n  }\n}\n\n// 4. PORT (Interface)\ninterface OrderRepositoryPort {\n  save(order: OrderAggregate): Promise<void>;\n}\n\n// 5. USE CASE\nclass PlaceOrderUseCase {\n  constructor(private repo: OrderRepositoryPort) {} // DIP: Injected abstraction!\n\n  async execute(order: OrderAggregate): Promise<void> {\n    order.place();\n    await this.repo.save(order);\n  }\n}\n\n// 6. ADAPTER (Mock Infrastructure)\nconst inMemoryRepo: OrderRepositoryPort = {\n  async save(order) { console.log(`[Adapter] Saved order ${order.orderId} to database`); }\n};\n\nconst order = new OrderAggregate(\"ord_9901\");\norder.addItem(\"item_widget\", new Money(4500)); // $45.00\n\nconst useCase = new PlaceOrderUseCase(inMemoryRepo);\nuseCase.execute(order);",
+    "breakdown": [
+      {
+        "lineRange": "2-7",
+        "note": "Money is an immutable Value Object preventing primitive obsession."
+      },
+      {
+        "lineRange": "15-30",
+        "note": "OrderAggregate enforces business invariants and raises domain events on state change."
+      },
+      {
+        "lineRange": "38-45",
+        "note": "PlaceOrderUseCase depends strictly on OrderRepositoryPort abstraction, achieving true DIP."
+      }
+    ],
+    "expectedOutput": "[Domain] Order ord_9901 placed. Total: $45\n[Adapter] Saved order ord_9901 to database"
+  }
+]

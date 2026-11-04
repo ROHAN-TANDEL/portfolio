@@ -1,0 +1,1469 @@
+[
+  {
+    "id": "docker-ex-01",
+    "title": "Multi-Stage Production Node.js App with BuildKit Cache Mounts & Distroless Execution",
+    "category": "Dockerfile & BuildKit",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Demonstrates an enterprise-ready Node.js multi-stage build that caches npm packages across builds via cache mounts, builds TypeScript artifacts, and runs on a Google Distroless runtime with zero shell or package manager vulnerabilities.",
+    "conceptsCovered": [
+      "Multi-stage builds",
+      "RUN --mount=type=cache",
+      "Distroless images (gcr.io/distroless/nodejs20-debian12)",
+      "Non-root execution (USER nonroot)",
+      "Layer minimization"
+    ],
+    "code": "# syntax=docker/dockerfile:1.7\n# Stage 1: Dependency resolution and caching\nFROM node:20-alpine AS deps\nWORKDIR /app\nCOPY package.json package-lock.json ./\nRUN --mount=type=cache,target=/root/.npm \\\n    npm ci --omit=dev\n\n# Stage 2: Compilation & building\nFROM node:20-alpine AS builder\nWORKDIR /app\nCOPY package.json package-lock.json ./\nRUN --mount=type=cache,target=/root/.npm \\\n    npm ci\nCOPY tsconfig.json ./\nCOPY src ./src\nRUN npm run build\n\n# Stage 3: Minimal production distroless runtime\nFROM gcr.io/distroless/nodejs20-debian12:nonroot AS runner\nWORKDIR /app\nENV NODE_ENV=production\nCOPY --from=deps /app/node_modules ./node_modules\nCOPY --from=builder /app/dist ./dist\nCOPY package.json ./\n\nUSER nonroot:nonroot\nEXPOSE 3000\nCMD [\"dist/main.js\"]",
+    "breakdown": [
+      {
+        "lineRange": "1-7",
+        "note": "Syntax directive enables BuildKit 1.7 features. Cache mount retains npm cache across rebuilds without bloating layers."
+      },
+      {
+        "lineRange": "9-17",
+        "note": "Builder stage installs full devDependencies and compiles TypeScript into Javascript."
+      },
+      {
+        "lineRange": "19-29",
+        "note": "Distroless runtime eliminates shell, package managers, and root user, slashing CVE attack surface by 95%."
+      }
+    ],
+    "expectedOutput": "[+] Building 4.8s (13/13) FINISHED\n => [internal] load build definition from Dockerfile\n => [deps 3/3] RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev\n => [builder 4/4] RUN npm run build\n => [runner 3/4] COPY --from=deps /app/node_modules ./node_modules\n => [runner 4/4] COPY --from=builder /app/dist ./dist\n => exporting to image (Size: 142MB)"
+  },
+  {
+    "id": "docker-ex-02",
+    "title": "High-Performance Go Microservice Scratch Container with CA Certificates & Non-Root User",
+    "category": "Dockerfile & BuildKit",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Compiles a completely static, stripped Go binary with CGO disabled and bundles it into an empty 'FROM scratch' container along with TLS certificates and an unprivileged user passwd file, resulting in an image under 15MB.",
+    "conceptsCovered": [
+      "FROM scratch image",
+      "CGO_ENABLED=0 static compilation",
+      "CA certificates copying",
+      "/etc/passwd unprivileged user trick",
+      "Binary stripping (-ldflags '-s -w')"
+    ],
+    "code": "# syntax=docker/dockerfile:1.7\n# Stage 1: Build static Go binary\nFROM golang:1.22-alpine AS builder\nWORKDIR /src\n\n# Install CA certificates & create unprivileged user\nRUN apk add --no-cache ca-certificates && \\\n    adduser -D -u 10001 -g appuser appuser\n\nCOPY go.mod go.sum ./\nRUN --mount=type=cache,target=/go/pkg/mod \\\n    go mod download\n\nCOPY . .\nRUN --mount=type=cache,target=/go/pkg/mod \\\n    --mount=type=cache,target=/root/.cache/go-build \\\n    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \\\n    go build -ldflags=\"-s -w -extldflags '-static'\" -o /bin/api ./cmd/server\n\n# Stage 2: Ultimate minimal runtime from scratch\nFROM scratch\nWORKDIR /\nCOPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/\nCOPY --from=builder /etc/passwd /etc/passwd\nCOPY --from=builder /bin/api /bin/api\n\nUSER 10001:10001\nEXPOSE 8080\nENTRYPOINT [\"/bin/api\"]",
+    "breakdown": [
+      {
+        "lineRange": "5-8",
+        "note": "Prepares CA certificates for HTTPS requests and creates user 10001 in /etc/passwd before moving to scratch."
+      },
+      {
+        "lineRange": "14-19",
+        "note": "Builds with CGO_ENABLED=0 and strips debugging symbols (-s -w) with Go module and build cache mounts."
+      },
+      {
+        "lineRange": "21-29",
+        "note": "scratch has no OS, no shell, no libraries. Copying the binary, certs, and passwd creates a secure ~12MB image."
+      }
+    ],
+    "expectedOutput": "REPOSITORY       TAG      IMAGE ID       CREATED          SIZE\nbilling-service  latest   8b12f483c0aa   12 seconds ago   14.8MB"
+  },
+  {
+    "id": "docker-ex-03",
+    "title": "Multi-Stage Python FastAPI with Virtualenv Extraction and Security Hardening",
+    "category": "Dockerfile & BuildKit",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a production Python FastAPI service using an isolated builder virtualenv to compile C-extensions (like asyncpg, cryptography), then copies only the clean /opt/venv into an unprivileged slim runner.",
+    "conceptsCovered": [
+      "Virtualenv isolation pattern",
+      "pip cache mount",
+      "Unprivileged user creation",
+      "Tini init process integration",
+      "PYTHONUNBUFFERED and PYTHONDONTWRITEBYTECODE"
+    ],
+    "code": "# syntax=docker/dockerfile:1.7\n# Stage 1: Build wheel dependencies\nFROM python:3.12-slim AS builder\nWORKDIR /app\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n    gcc build-essential libpq-dev \\\n    && rm -rf /var/lib/apt/lists/*\n\nRUN python -m venv /opt/venv\nENV PATH=\"/opt/venv/bin:$PATH\"\n\nCOPY requirements.txt .\nRUN --mount=type=cache,target=/root/.cache/pip \\\n    pip install --no-compile -r requirements.txt\n\n# Stage 2: Lean runtime\nFROM python:3.12-slim AS runner\nWORKDIR /app\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n    libpq5 curl tini \\\n    && rm -rf /var/lib/apt/lists/* && \\\n    groupadd -r appgroup -g 1001 && \\\n    useradd -r -u 1001 -g appgroup -s /sbin/nologin appuser\n\nENV PATH=\"/opt/venv/bin:$PATH\" \\\n    PYTHONUNBUFFERED=1 \\\n    PYTHONDONTWRITEBYTECODE=1\n\nCOPY --from=builder /opt/venv /opt/venv\nCOPY --chown=appuser:appgroup ./app ./app\n\nUSER 1001:1001\nEXPOSE 8000\n\nENTRYPOINT [\"/usr/bin/tini\", \"--\"]\nCMD [\"uvicorn\", \"app.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\", \"--workers\", \"4\"]",
+    "breakdown": [
+      {
+        "lineRange": "6-15",
+        "note": "Installs compilers in builder only. Virtual environment /opt/venv contains compiled binaries without keeping gcc in runtime."
+      },
+      {
+        "lineRange": "20-25",
+        "note": "Installs only runtime dynamic libraries (libpq5), tini for signal handling, and creates unprivileged appuser."
+      },
+      {
+        "lineRange": "32-37",
+        "note": "Runs as non-root user (1001), routes signals through tini to avoid zombie worker processes."
+      }
+    ],
+    "expectedOutput": "Successfully installed fastapi-0.111.0 pydantic-2.7.1 uvicorn-0.30.0\nStep 14/14 : CMD [\"uvicorn\", \"app.main:app\", ...]\nImage size reduced from 892MB to 168MB."
+  },
+  {
+    "id": "docker-ex-04",
+    "title": "Secure Private Git Repository Cloning via BuildKit SSH Mount",
+    "category": "Dockerfile & BuildKit",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Clones private GitHub/GitLab enterprise repositories during Docker build without exposing developer SSH private keys or persisting tokens inside any intermediate image layer.",
+    "conceptsCovered": [
+      "RUN --mount=type=ssh",
+      "ssh-agent socket forwarding",
+      "ssh-keyscan for known_hosts",
+      "Zero private key persistence",
+      "docker build --ssh default"
+    ],
+    "code": "# syntax=docker/dockerfile:1.7\nFROM alpine:3.20 AS builder\n\nRUN apk add --no-cache git openssh-client\n\n# Pre-populate known hosts to prevent MITM prompt\nRUN mkdir -p -m 0700 ~/.ssh && \\\n    ssh-keyscan github.com >> ~/.ssh/known_hosts\n\nWORKDIR /workspace\n\n# Mount host ssh agent into build container\nRUN --mount=type=ssh \\\n    git clone git@github.com:enterprise-org/proprietary-sdk.git ./sdk && \\\n    cd ./sdk && git log -1 --oneline\n\nFROM alpine:3.20 AS final\nWORKDIR /app\nCOPY --from=builder /workspace/sdk/dist ./lib\n# Zero SSH credentials or private git history exist in this image!\nCMD [\"echo\", \"SDK ready\"]",
+    "breakdown": [
+      {
+        "lineRange": "6-8",
+        "note": "Safely registers GitHub's public host key fingerprint to avoid interactive host verification failure."
+      },
+      {
+        "lineRange": "12-14",
+        "note": "--mount=type=ssh forwards local ssh-agent socket. The private key never enters the container filesystem."
+      },
+      {
+        "lineRange": "16-20",
+        "note": "Final image copies only build artifacts, ensuring zero git tokens or commit trees leak into production."
+      }
+    ],
+    "expectedOutput": "# Execute with:\n$ eval $(ssh-agent) && ssh-add ~/.ssh/id_ed25519\n$ docker build --ssh default -t my-app .\n[+] Building 2.1s (7/7) FINISHED\n => [builder 3/3] RUN --mount=type=ssh git clone git@github.com...\n => Cloning into './sdk'...\n => b87f1a9 chore: release proprietary v2.4.0"
+  },
+  {
+    "id": "docker-ex-05",
+    "title": "Injecting Private Package Registry Credentials via BuildKit Secret Mounts",
+    "category": "Dockerfile & BuildKit",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Installs private npm/pip dependencies using BuildKit secrets mounted as temporary files into RAM (/run/secrets), leaving zero trace in Docker history or layer metadata.",
+    "conceptsCovered": [
+      "RUN --mount=type=secret",
+      "Private registry auth (.npmrc / pip.conf)",
+      "Zero secret leakage in docker history",
+      "docker build --secret id=...",
+      "Layer hygiene"
+    ],
+    "code": "# syntax=docker/dockerfile:1.7\nFROM node:20-alpine AS installer\nWORKDIR /app\n\nCOPY package.json package-lock.json ./\n\n# Mount secret file temporarily during RUN; never copied into layer\nRUN --mount=type=secret,id=npmrc,target=/root/.npmrc \\\n    --mount=type=cache,target=/root/.npm \\\n    npm ci --omit=dev\n\nFROM node:20-alpine AS runner\nWORKDIR /app\nCOPY --from=installer /app/node_modules ./node_modules\nCOPY . .\nUSER node\nCMD [\"node\", \"server.js\"]",
+    "breakdown": [
+      {
+        "lineRange": "7-10",
+        "note": "--mount=type=secret exposes secret only to this RUN command in tmpfs. Once command finishes, secret vanishes."
+      },
+      {
+        "lineRange": "12-16",
+        "note": "docker history will show the command line without the secret contents, preventing token theft from registry scans."
+      }
+    ],
+    "expectedOutput": "# Execute with:\n$ docker build --secret id=npmrc,src=.npmrc.private -t secure-api .\n$ docker history secure-api:latest | grep npmrc\n# Result: Secrets are completely absent from layer blobs!"
+  },
+  {
+    "id": "docker-ex-06",
+    "title": "Multi-Stage Rust Binary Compilation Using cargo-chef for Lightning Build Caching",
+    "category": "Dockerfile & BuildKit",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Uses cargo-chef to calculate dependency manifests for Rust projects, allowing crates to be compiled and cached in Docker layers so code changes only recompile user code in seconds rather than minutes.",
+    "conceptsCovered": [
+      "cargo-chef prepare & cook",
+      "Rust layer caching strategy",
+      "Debian bookworm-slim vs scratch",
+      "Binary optimization via lld linker",
+      "Build acceleration"
+    ],
+    "code": "# syntax=docker/dockerfile:1.7\nFROM lukemathwalker/cargo-chef:latest-rust-1.80-alpine AS chef\nWORKDIR /app\n\nFROM chef AS planner\nCOPY . .\nRUN cargo chef prepare --recipe-path recipe.json\n\nFROM chef AS builder\nCOPY --from=planner /app/recipe.json recipe.json\n# Cook dependencies: layers are cached as long as Cargo.lock is unchanged!\nRUN --mount=type=cache,target=/usr/local/cargo/registry \\\n    --mount=type=cache,target=/usr/local/cargo/git \\\n    cargo chef cook --release --recipe-path recipe.json\n\n# Build actual application\nCOPY . .\nRUN cargo build --release --bin backend\n\n# Runtime container\nFROM alpine:3.20 AS runner\nRUN apk add --no-cache libgcc\nCOPY --from=builder /app/target/release/backend /usr/local/bin/backend\nUSER 1000:1000\nCMD [\"/usr/local/bin/backend\"]",
+    "breakdown": [
+      {
+        "lineRange": "5-8",
+        "note": "Planner generates recipe.json containing only dependency graph signatures without any source code."
+      },
+      {
+        "lineRange": "10-16",
+        "note": "cargo chef cook pre-builds all external crates. This massive layer is 100% cached until Cargo.lock changes."
+      },
+      {
+        "lineRange": "18-26",
+        "note": "Compiles only local src code in seconds, copying final binary to minimal Alpine runtime."
+      }
+    ],
+    "expectedOutput": "[+] Building 3.2s (15/15) FINISHED\n => [builder 2/2] RUN cargo chef cook --release --recipe-path recipe.json => CACHED\n => [builder 4/4] RUN cargo build --release --bin backend 2.8s\n => Binary compiled in 3s instead of 180s on cached dependencies!"
+  },
+  {
+    "id": "docker-ex-07",
+    "title": "Spring Boot Layered JAR Containerization for Optimal Docker Layer Reuse",
+    "category": "Dockerfile & BuildKit",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Extracts a Spring Boot fat JAR into 4 distinct layers (dependencies, spring-boot-loader, snapshot-dependencies, application) so frequent application updates only invalidate a few kilobytes of image layers.",
+    "conceptsCovered": [
+      "Layered JAR extraction (-Djarmode=layertools)",
+      "Layer order optimization",
+      "Eclipse Temurin JRE Alpine",
+      "JVM container ergonomics (UseContainerSupport)",
+      "Unprivileged user security"
+    ],
+    "code": "# syntax=docker/dockerfile:1.7\nFROM eclipse-temurin:21-jre-alpine AS extractor\nWORKDIR /extracted\nARG JAR_FILE=target/*.jar\nCOPY ${JAR_FILE} app.jar\nRUN java -Djarmode=layertools -jar app.jar extract\n\nFROM eclipse-temurin:21-jre-alpine AS runner\nWORKDIR /app\nRUN addgroup -S spring && adduser -S spring -G spring\n\n# Copy layers from least frequently changed to most frequently changed\nCOPY --from=extractor /extracted/dependencies/ ./\nCOPY --from=extractor /extracted/spring-boot-loader/ ./\nCOPY --from=extractor /extracted/snapshot-dependencies/ ./\nCOPY --from=extractor /extracted/application/ ./\n\nUSER spring:spring\nEXPOSE 8080\n\nENTRYPOINT [\"java\", \"-XX:+UseContainerSupport\", \"-XX:MaxRAMPercentage=75.0\", \"org.springframework.boot.loader.launch.JarLauncher\"]",
+    "breakdown": [
+      {
+        "lineRange": "1-6",
+        "note": "Uses layertools to decompose monolithic fat JAR into distinct cacheable layer slices."
+      },
+      {
+        "lineRange": "12-16",
+        "note": "Copies third-party dependencies first (rarely changed), then internal application code last (changes every commit)."
+      },
+      {
+        "lineRange": "18-21",
+        "note": "Runs as unprivileged spring user with dynamic memory sizing relative to container cgroup limits."
+      }
+    ],
+    "expectedOutput": "Pushing layer 1 (dependencies): 180MB -> Layer already exists\nPushing layer 2 (loader): 240KB -> Layer already exists\nPushing layer 3 (app): 14KB -> Pushed in 0.1s!\nDeployment bandwidth slashed by 99%!"
+  },
+  {
+    "id": "docker-ex-08",
+    "title": "Production-Grade Healthcheck Script with Dynamic Endpoint Fallback & Retries",
+    "category": "Dockerfile & BuildKit",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements a robust POSIX shell healthcheck script within Docker that handles transient network blips, checks dependent services, and fails cleanly without masking zombie processes.",
+    "conceptsCovered": [
+      "HEALTHCHECK instruction syntax",
+      "--interval, --timeout, --start-period, --retries",
+      "curl vs wget POSIX fallback",
+      "Exit codes (0=healthy, 1=unhealthy, 2=reserved)",
+      "Startup grace periods"
+    ],
+    "code": "# syntax=docker/dockerfile:1.7\nFROM alpine:3.20\nRUN apk add --no-cache curl jq\n\nWORKDIR /app\nCOPY healthcheck.sh /usr/local/bin/healthcheck.sh\nRUN chmod +x /usr/local/bin/healthcheck.sh\n\n# Embedded Dockerfile HEALTHCHECK configuration\nHEALTHCHECK --interval=15s \\\n            --timeout=3s \\\n            --start-period=30s \\\n            --retries=3 \\\n            CMD [\"/usr/local/bin/healthcheck.sh\"]\n\n# --- content of healthcheck.sh ---\n# #!/bin/sh\n# set -eo pipefail\n# STATUS_URL=\"http://127.0.0.1:8080/health/liveness\"\n# \n# RESPONSE=$(curl -fsS -m 2 \"$STATUS_URL\" 2>/dev/null) || exit 1\n# \n# IS_READY=$(echo \"$RESPONSE\" | jq -r '.status')\n# if [ \"$IS_READY\" = \"UP\" ]; then\n#   exit 0\n# else\n#   exit 1\n# fi",
+    "breakdown": [
+      {
+        "lineRange": "8-13",
+        "note": "Configures healthcheck cadence: checks every 15s, gives 30s warmup before marking unhealthy, allows 3 retries."
+      },
+      {
+        "lineRange": "16-25",
+        "note": "healthcheck.sh queries local loopback with a strict 2s curl timeout and checks JSON response status."
+      }
+    ],
+    "expectedOutput": "$ docker inspect --format='{{json .State.Health}}' web-container | jq .\n{\n  \"Status\": \"healthy\",\n  \"FailingStreak\": 0,\n  \"Log\": [\n    {\n      \"Start\": \"2026-11-04T10:00:00Z\",\n      \"End\": \"2026-11-04T10:00:00.120Z\",\n      \"ExitCode\": 0,\n      \"Output\": \"\"\n    }\n  ]\n}"
+  },
+  {
+    "id": "docker-ex-09",
+    "title": "Container PID 1 Entrypoint Shell Script with Trap Signal Forwarding & Tini Execution",
+    "category": "Dockerfile & BuildKit",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Constructs an entrypoint script that handles runtime configuration substitution, dynamic migration checks, and uses exec to replace the shell process so SIGTERM reaches the real application.",
+    "conceptsCovered": [
+      "exec form vs shell form",
+      "Entrypoint wrapping pattern",
+      "Signal trap and forwarding",
+      "exec \"$@\" PID replacement",
+      "Running database migrations on boot"
+    ],
+    "code": "# syntax=docker/dockerfile:1.7\nFROM debian:bookworm-slim\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n    tini gosu ca-certificates \\\n    && rm -rf /var/lib/apt/lists/*\n\nCOPY entrypoint.sh /entrypoint.sh\nRUN chmod +x /entrypoint.sh\n\nENTRYPOINT [\"/usr/bin/tini\", \"--\", \"/entrypoint.sh\"]\nCMD [\"my-app\", \"--config\", \"/etc/app.conf\"]\n\n# --- content of entrypoint.sh ---\n# #!/usr/bin/env bash\n# set -Eeuo pipefail\n# \n# echo \"Executing pre-start environmental validation...\"\n# if [ -z \"${DATABASE_URL:-}\" ]; then\n#     echo \"Error: DATABASE_URL environment variable is required.\" >&2\n#     exit 1\n# fi\n# \n# echo \"Pre-flight checks passed. Switching process to: $@\"\n# # Crucial: 'exec' replaces shell PID so signals route directly to cmd!\n# exec \"$@\"",
+    "breakdown": [
+      {
+        "lineRange": "8-10",
+        "note": "tini sits as PID 1 to reap zombies, executing /entrypoint.sh before handing control to the CMD."
+      },
+      {
+        "lineRange": "15-22",
+        "note": "entrypoint.sh performs idempotent preflight validations, secret decryption, or migrations."
+      },
+      {
+        "lineRange": "23-25",
+        "note": "exec \"$@\" replaces the bash subshell with the target binary, preserving signal propagation."
+      }
+    ],
+    "expectedOutput": "$ docker run --rm -e DATABASE_URL=\"postgres://user:pass@db:5432/app\" my-image\nExecuting pre-start environmental validation...\nPre-flight checks passed. Switching process to: my-app --config /etc/app.conf\n[INFO] my-app initialized on PID 2 (tini PID 1)"
+  },
+  {
+    "id": "docker-ex-10",
+    "title": "Bit-for-Bit Deterministic Reproducible Docker Image via SOURCE_DATE_EPOCH",
+    "category": "Dockerfile & BuildKit",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Configures BuildKit and the compiler to use fixed timestamps and reproducible layer creation so rebuilding the same git commit on different machines generates the exact same image SHA256 digest.",
+    "conceptsCovered": [
+      "Reproducible builds",
+      "SOURCE_DATE_EPOCH standardization",
+      "Tar mtime clamping",
+      "Cryptographic provenance & attestations",
+      "docker buildx build --provenance"
+    ],
+    "code": "# syntax=docker/dockerfile:1.7\nFROM alpine:3.20 AS builder\nARG SOURCE_DATE_EPOCH=1700000000\nWORKDIR /app\n\n# Ensure file creation times and sorting are uniform\nCOPY . .\nRUN find . -exec touch -d @${SOURCE_DATE_EPOCH} {} +\n\nFROM alpine:3.20 AS runner\nARG SOURCE_DATE_EPOCH=1700000000\nWORKDIR /app\nCOPY --from=builder /app /app\n\n# Build invocation command:\n# docker buildx build \\\n#   --build-arg SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct) \\\n#   --output type=docker,rewrite-timestamp=true \\\n#   -t reproducible-app:v1 .",
+    "breakdown": [
+      {
+        "lineRange": "2-7",
+        "note": "Build argument SOURCE_DATE_EPOCH clamps file timestamps across intermediate layers."
+      },
+      {
+        "lineRange": "14-19",
+        "note": "BuildKit 1.7 rewrite-timestamp clamps tarball mtimes, yielding identical layer checksums."
+      }
+    ],
+    "expectedOutput": "$ docker buildx build --build-arg SOURCE_DATE_EPOCH=1700000000 ...\nDigest: sha256:d5f2a1b9c7e8419b...\n# Rebuilt on Machine B:\nDigest: sha256:d5f2a1b9c7e8419b... (100% Bit-for-bit identical!)"
+  },
+  {
+    "id": "docker-ex-11",
+    "title": "Production Multi-Stage Frontend (Vite/React) with Nginx Alpine and Security Headers",
+    "category": "Dockerfile & BuildKit",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Compiles a modern Vite/React single-page application and serves it via Nginx Alpine configured with SPA client-side routing fallback, gzip compression, and HTTP security headers.",
+    "conceptsCovered": [
+      "Vite production build",
+      "Nginx Alpine SPA try_files directive",
+      "Gzip and brotli static compression",
+      "Security headers (CSP, X-Frame-Options)",
+      "Unprivileged Nginx (nginxinc/nginx-unprivileged)"
+    ],
+    "code": "# syntax=docker/dockerfile:1.7\n# Stage 1: Build static assets\nFROM node:20-alpine AS builder\nWORKDIR /app\nCOPY package*.json ./\nRUN --mount=type=cache,target=/root/.npm npm ci\nCOPY . .\nRUN npm run build\n\n# Stage 2: Serve via unprivileged Nginx\nFROM nginxinc/nginx-unprivileged:alpine-slim AS runner\nCOPY --from=builder /app/dist /usr/share/nginx/html\n\n# Custom hardened Nginx configuration\nCOPY <<'EOF' /etc/nginx/conf.d/default.conf\nserver {\n    listen 8080;\n    server_name localhost;\n    root /usr/share/nginx/html;\n    index index.html;\n\n    # Security headers\n    add_header X-Frame-Options \"DENY\" always;\n    add_header X-Content-Type-Options \"nosniff\" always;\n    add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;\n\n    # Gzip compression\n    gzip on;\n    gzip_types text/plain text/css application/javascript application/json image/svg+xml;\n\n    location / {\n        try_files $uri $uri/ /index.html;\n    }\n\n    location ~* .(?:css|js|jpg|jpeg|gif|png|ico|svg|woff2)$ {\n        expires 1y;\n        add_header Cache-Control \"public, immutable\";\n    }\n}\nEOF\n\nEXPOSE 8080\nCMD [\"nginx\", \"-g\", \"daemon off;\"]",
+    "breakdown": [
+      {
+        "lineRange": "2-7",
+        "note": "Builds production JS/CSS bundles using cached dependencies."
+      },
+      {
+        "lineRange": "10-13",
+        "note": "Runs as non-root user 'nginx' on port 8080 (unprivileged ports > 1024)."
+      },
+      {
+        "lineRange": "29-35",
+        "note": "try_files handles client-side React Router navigation while static assets receive aggressive 1-year cache headers."
+      }
+    ],
+    "expectedOutput": "$ curl -I http://localhost:8080\nHTTP/1.1 200 OK\nX-Frame-Options: DENY\nX-Content-Type-Options: nosniff\nCache-Control: public, immutable"
+  },
+  {
+    "id": "docker-ex-12",
+    "title": "Custom User-Defined Bridge Network with Static IP and Network Aliasing",
+    "category": "Networking & DNS",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Creates a dedicated Docker bridge network with defined subnets and gateways, then attaches containers with static IP addresses and custom network aliases for predictable service discovery.",
+    "conceptsCovered": [
+      "docker network create --subnet",
+      "Static IP assignment (--ip)",
+      "Network aliases (--network-alias)",
+      "Automatic DNS resolution",
+      "Network isolation"
+    ],
+    "code": "#!/usr/bin/env bash\nset -euo pipefail\n\n# 1. Create a custom bridge network with custom subnet & gateway\ndocker network create \\\n  --driver bridge \\\n  --subnet 172.28.0.0/16 \\\n  --ip-range 172.28.5.0/24 \\\n  --gateway 172.28.0.1 \\\n  tier-app-net\n\n# 2. Launch database container with static IP and network alias\ndocker run -d \\\n  --name prod-postgres \\\n  --network tier-app-net \\\n  --ip 172.28.5.10 \\\n  --network-alias db.internal \\\n  -e POSTGRES_PASSWORD=secret \\\n  postgres:16-alpine\n\n# 3. Launch application resolving database via alias\ndocker run --rm \\\n  --network tier-app-net \\\n  curlimages/curl:8.7.1 \\\n  nslookup db.internal",
+    "breakdown": [
+      {
+        "lineRange": "5-10",
+        "note": "Defines explicit CIDR block 172.28.0.0/16 and restricts DHCP allocation pool to 172.28.5.0/24."
+      },
+      {
+        "lineRange": "13-19",
+        "note": "Assigns static IP 172.28.5.10 and registers 'db.internal' in Docker's 127.0.0.11 embedded DNS server."
+      },
+      {
+        "lineRange": "22-25",
+        "note": "Queries the alias from another container on the same network to verify name resolution."
+      }
+    ],
+    "expectedOutput": "Server:    127.0.0.11\nAddress 1: 127.0.0.11\nName:      db.internal\nAddress 1: 172.28.5.10 prod-postgres.tier-app-net"
+  },
+  {
+    "id": "docker-ex-13",
+    "title": "High-Throughput Host Network Mode for Low-Latency In-Memory Caches",
+    "category": "Networking & DNS",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Bypasses Docker's virtual bridge and iptables NAT overhead by attaching a high-throughput Redis instance directly to the host's network namespace for maximum packet performance.",
+    "conceptsCovered": [
+      "--network host",
+      "Bypassing iptables NAT",
+      "Zero network latency overhead",
+      "Port conflict implications",
+      "High performance networking"
+    ],
+    "code": "# Launch Redis directly on host network interface (Linux)\ndocker run -d \\\n  --name redis-host-net \\\n  --network host \\\n  --restart unless-stopped \\\n  redis:7.2-alpine \\\n  redis-server --protected-mode no --port 6379\n\n# Verification: redis-cli connects directly to host 127.0.0.1 without port mapping\nredis-cli -p 6379 ping\n\n# Check network namespace identity (Process matches host netns inode)\nCONTAINER_PID=$(docker inspect --format '{{.State.Pid}}' redis-host-net)\nls -l /proc/1/ns/net /proc/${CONTAINER_PID}/ns/net",
+    "breakdown": [
+      {
+        "lineRange": "2-7",
+        "note": "--network host disables the veth pair. The container shares host interfaces (eth0, lo) directly."
+      },
+      {
+        "lineRange": "10-14",
+        "note": "Inspects network namespace inodes: /proc/1/ns/net and container's ns/net will match identically."
+      }
+    ],
+    "expectedOutput": "PONG\nlrwxrwxrwx 1 root root 0 net:[4026531992] /proc/1/ns/net\nlrwxrwxrwx 1 root root 0 net:[4026531992] /proc/12938/ns/net"
+  },
+  {
+    "id": "docker-ex-14",
+    "title": "Macvlan Network Attaching Containers Directly to Physical Local Area Network",
+    "category": "Networking & DNS",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Configures a Macvlan network driver so containers get their own physical MAC addresses and routable IP addresses directly on the corporate or home LAN subnet.",
+    "conceptsCovered": [
+      "docker network create -d macvlan",
+      "Parent interface binding (-o parent=eth0)",
+      "Dedicated MAC address per container",
+      "Promiscuous mode routing",
+      "Legacy service integration"
+    ],
+    "code": "#!/usr/bin/env bash\n# 1. Create Macvlan network bound to host physical interface (e.g. eth0)\ndocker network create -d macvlan \\\n  --subnet=192.168.1.0/24 \\\n  --gateway=192.168.1.1 \\\n  --ip-range=192.168.1.192/27 \\\n  -o parent=eth0 \\\n  lan-macvlan\n\n# 2. Run container with routable LAN IP\ndocker run -d \\\n  --name legacy-telephony \\\n  --network lan-macvlan \\\n  --ip=192.168.1.195 \\\n  --mac-address=02:42:c0:a8:01:c3 \\\n  alpine:3.20 sleep 3600\n\n# 3. Test LAN ping from an external machine on 192.168.1.0/24:\n# ping 192.168.1.195 (responds directly as physical LAN node!)",
+    "breakdown": [
+      {
+        "lineRange": "3-8",
+        "note": "Binds Docker virtual MAC sub-interfaces directly onto physical parent eth0 with dedicated IP pool."
+      },
+      {
+        "lineRange": "11-16",
+        "note": "Container appears as an independent physical hardware device to external LAN routers and switches."
+      }
+    ],
+    "expectedOutput": "$ ping -c 3 192.168.1.195\n64 bytes from 192.168.1.195: icmp_seq=1 ttl=64 time=0.412 ms\n64 bytes from 192.168.1.195: icmp_seq=2 ttl=64 time=0.380 ms\n--- 192.168.1.195 ping statistics ---\n3 packets transmitted, 3 received, 0% packet loss"
+  },
+  {
+    "id": "docker-ex-15",
+    "title": "Communicating with Host Services via host.docker.internal Across Linux and Mac",
+    "category": "Networking & DNS",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Enables containers running on both Linux and macOS/Windows to seamlessly access services listening on the developer's host machine (like local databases or mocks) via host.docker.internal.",
+    "conceptsCovered": [
+      "--add-host host.docker.internal:host-gateway",
+      "Docker Desktop vs Linux Docker Engine differences",
+      "Local developer workflow",
+      "Accessing host database ports"
+    ],
+    "code": "# On Linux, host.docker.internal is not added by default.\n# Use --add-host to map it to host-gateway dynamically:\n\ndocker run --rm -it \\\n  --add-host host.docker.internal:host-gateway \\\n  curlimages/curl:8.7.1 \\\n  http://host.docker.internal:5432\n\n# In docker-compose.yaml:\n# services:\n#   api:\n#     image: my-api:latest\n#     extra_hosts:\n#       - \"host.docker.internal:host-gateway\"\n#     environment:\n#       - DB_HOST=host.docker.internal",
+    "breakdown": [
+      {
+        "lineRange": "4-7",
+        "note": "--add-host dynamically resolves the host's docker0 bridge IP (e.g. 172.17.0.1) inside Linux containers."
+      },
+      {
+        "lineRange": "10-16",
+        "note": "Compose extra_hosts configures the DNS entry across all developer workstations cross-platform."
+      }
+    ],
+    "expectedOutput": "* Trying 172.17.0.1:5432...\n* Connected to host.docker.internal (172.17.0.1) port 5432\n* Connection established to host database!"
+  },
+  {
+    "id": "docker-ex-16",
+    "title": "Multi-Host Overlay Network with IPSec Encryption across Distributed Daemons",
+    "category": "Networking & DNS",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Initializes a Docker Swarm manager and creates an encrypted multi-host overlay network using AES-GCM IPSec encapsulation to protect inter-container traffic across physical data centers.",
+    "conceptsCovered": [
+      "docker network create -d overlay",
+      "--opt encrypted (IPSec ESP)",
+      "VXLAN encapsulation (UDP 4789)",
+      "Overlay mesh routing",
+      "Multi-host cross-node security"
+    ],
+    "code": "#!/usr/bin/env bash\n# 1. Initialize Swarm control plane\ndocker swarm init --advertise-addr 192.168.10.50\n\n# 2. Create secure encrypted overlay network\ndocker network create \\\n  --driver overlay \\\n  --opt encrypted \\\n  --subnet 10.0.9.0/24 \\\n  --attachable \\\n  secure-payment-mesh\n\n# 3. Attach services across multiple physical worker nodes\ndocker service create \\\n  --name order-processor \\\n  --network secure-payment-mesh \\\n  --replicas 4 \\\n  payment-service:v2.1\n\n# All traffic between workers on UDP 4789 is encrypted via kernel IPSec!",
+    "breakdown": [
+      {
+        "lineRange": "2-3",
+        "note": "Initializes swarm cluster to enable the gossip protocol and distributed service discovery."
+      },
+      {
+        "lineRange": "6-11",
+        "note": "--opt encrypted triggers Linux kernel IPSec tunnel mode on VXLAN packets between hosts."
+      },
+      {
+        "lineRange": "14-18",
+        "note": "Services communicate across data centers as if connected to the same local switch with automatic AES encryption."
+      }
+    ],
+    "expectedOutput": "Network secure-payment-mesh created with ID: v8u91ks81b\nService order-processor converged across 4 nodes.\nIPSec security association verified on port 4789."
+  },
+  {
+    "id": "docker-ex-17",
+    "title": "Air-Gapped Backend Tier Using Internal Bridge Network (internal: true)",
+    "category": "Networking & DNS",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs an isolated database network tier that completely blocks external default gateway routing and internet access, preventing unauthorized outbound data exfiltration.",
+    "conceptsCovered": [
+      "docker network create --internal",
+      "Zero default gateway injection",
+      "Blocking data exfiltration",
+      "Multi-homed application container",
+      "Security zones"
+    ],
+    "code": "#!/usr/bin/env bash\n# 1. Create public gateway network (has internet access)\ndocker network create public-edge-net\n\n# 2. Create strictly internal network (NO default gateway, NO WAN access)\ndocker network create --internal private-db-net\n\n# 3. Database attached ONLY to private network\ndocker run -d \\\n  --name isolated-postgres \\\n  --network private-db-net \\\n  -e POSTGRES_PASSWORD=topsecret \\\n  postgres:16-alpine\n\n# 4. API Gateway attached to BOTH networks (can bridge traffic)\ndocker run -d \\\n  --name backend-api \\\n  --network public-edge-net \\\n  my-api:latest\ndocker network connect private-db-net backend-api\n\n# 5. Verify isolated database cannot reach the internet:\ndocker exec isolated-postgres ping -c 1 8.8.8.8 || echo \"BLOCKED (No route to host)\"",
+    "breakdown": [
+      {
+        "lineRange": "5-6",
+        "note": "--internal instructs Docker NOT to configure an iptables MASQUERADE rule or default gateway."
+      },
+      {
+        "lineRange": "9-13",
+        "note": "Database container is physically unreachable from the public internet and cannot make outbound connections."
+      },
+      {
+        "lineRange": "16-20",
+        "note": "backend-api acts as a secure bastion by multi-homing onto both networks."
+      }
+    ],
+    "expectedOutput": "ping: connect: Network is unreachable\nBLOCKED (No route to host)\nDatabase successfully air-gapped from internet!"
+  },
+  {
+    "id": "docker-ex-18",
+    "title": "Debugging Embedded Docker DNS (127.0.0.11) and Overriding Upstream Resolvers",
+    "category": "Networking & DNS",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Diagnoses container DNS latency and lookup failures, inspecting internal iptables DNAT rules routing to 127.0.0.11, and overrides fallback nameservers via container flags.",
+    "conceptsCovered": [
+      "Embedded DNS 127.0.0.11",
+      "--dns and --dns-search flags",
+      "/etc/resolv.conf inspection",
+      "dig and nslookup inside containers",
+      "Resolving slow DNS query timeouts"
+    ],
+    "code": "# Launch container with explicit upstream DNS and search domains\ndocker run --rm -it \\\n  --name dns-troubleshooter \\\n  --dns 1.1.1.1 \\\n  --dns 8.8.8.8 \\\n  --dns-search corporate.internal \\\n  --dns-opt timeout:2 \\\n  --dns-opt attempts:2 \\\n  alpine:3.20 sh -c '\n    echo \"=== Container /etc/resolv.conf ===\"\n    cat /etc/resolv.conf\n    echo \"=== Testing DNS Resolution ===\"\n    apk add --no-cache bind-tools >/dev/null 2>&1\n    dig +short google.com\n'",
+    "breakdown": [
+      {
+        "lineRange": "4-8",
+        "note": "Overrides host DNS resolvers with Cloudflare/Google public DNS and sets strict timeout limits."
+      },
+      {
+        "lineRange": "10-15",
+        "note": "Reads dynamically generated resolv.conf and performs authoritative lookup with dig."
+      }
+    ],
+    "expectedOutput": "=== Container /etc/resolv.conf ===\nnameserver 127.0.0.11\nsearch corporate.internal\noptions timeout:2 attempts:2 ndots:0\n\n=== Testing DNS Resolution ===\n142.250.190.46"
+  },
+  {
+    "id": "docker-ex-19",
+    "title": "Zero-Downtime Blue/Green Container Traffic Shifting via Dynamic Nginx Upstream",
+    "category": "Networking & DNS",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Executes a zero-downtime deployment by spinning up a new 'green' container version alongside 'blue', verifying health, and atomically reloading Nginx proxy upstreams.",
+    "conceptsCovered": [
+      "Blue/Green deployment architecture",
+      "Atomic Nginx configuration reload (nginx -s reload)",
+      "Zero-downtime rolling cutover",
+      "Health validation before traffic swap",
+      "Automated rollback script"
+    ],
+    "code": "#!/usr/bin/env bash\nset -euo pipefail\n\nACTIVE_COLOR=$(docker ps --filter \"name=app-\" --format \"{{.Names}}\" | grep -oE \"blue|green\" || echo \"blue\")\nTARGET_COLOR=$([ \"$ACTIVE_COLOR\" = \"blue\" ] && echo \"green\" || echo \"blue\")\nTARGET_PORT=$([ \"$TARGET_COLOR\" = \"blue\" ] && echo \"8001\" || echo \"8002\")\n\necho \"Current active: $ACTIVE_COLOR. Deploying: $TARGET_COLOR on port $TARGET_PORT\"\n\n# 1. Start new version container\ndocker run -d --name \"app-$TARGET_COLOR\" --network app-net -p \"$TARGET_PORT:8080\" my-app:v2\n\n# 2. Wait for healthcheck to pass\necho \"Waiting for $TARGET_COLOR to become healthy...\"\ndocker run --rm --network app-net curlimages/curl:8.7.1 \\\n  --retry 10 --retry-connrefused --retry-delay 2 -s \"http://app-$TARGET_COLOR:8080/health\"\n\n# 3. Atomically update Nginx reverse proxy configuration\ndocker exec nginx-lb sh -c \"\ncat <<EOF > /etc/nginx/conf.d/upstream.conf\nupstream backend {\n    server app-$TARGET_COLOR:8080;\n}\nEOF\nnginx -s reload\n\"\n\necho \"Traffic shifted to $TARGET_COLOR! Terminating old $ACTIVE_COLOR...\"\ndocker stop \"app-$ACTIVE_COLOR\" && docker rm \"app-$ACTIVE_COLOR\"",
+    "breakdown": [
+      {
+        "lineRange": "4-6",
+        "note": "Calculates target color and isolated internal port dynamically."
+      },
+      {
+        "lineRange": "14-17",
+        "note": "Polls new target container health endpoint to ensure readiness before shifting any production traffic."
+      },
+      {
+        "lineRange": "20-27",
+        "note": "Overwrites upstream conf and sends SIGHUP to master Nginx worker to switch traffic with zero dropped TCP packets."
+      }
+    ],
+    "expectedOutput": "Current active: blue. Deploying: green on port 8002\nWaiting for green to become healthy...\n{\"status\":\"healthy\"}\n2026/11/04 10:30:15 [notice] 1#1: signal 1 (SIGHUP) received, reconfiguring\nTraffic shifted to green! Terminating old blue..."
+  },
+  {
+    "id": "docker-ex-20",
+    "title": "Inspecting Container iptables Rules & Preventing UFW/Firewall Bypass",
+    "category": "Networking & DNS",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Inspects how Docker manipulates the PREROUTING and DOCKER iptables chains, and configures the host daemon with iptables: false or DOCKER-USER rules to prevent bypassing host firewalls.",
+    "conceptsCovered": [
+      "DOCKER and DOCKER-USER iptables chains",
+      "UFW bypass vulnerability fix",
+      "iptables -t nat -L -n -v",
+      "/etc/docker/daemon.json iptables flag",
+      "Firewall rule ordering"
+    ],
+    "code": "#!/usr/bin/env bash\n# 1. Inspect existing Docker NAT forwarding rules on host\nsudo iptables -t nat -L DOCKER -n -v --line-numbers\n\n# 2. Protect host by injecting rules into DOCKER-USER chain\n# (The DOCKER-USER chain is evaluated BEFORE Docker's own rules)\n\n# Block all external access to container port 5432 except from trusted office subnet:\nsudo iptables -I DOCKER-USER -i eth0 -p tcp --dport 5432 -j DROP\nsudo iptables -I DOCKER-USER -i eth0 -s 203.0.113.0/24 -p tcp --dport 5432 -j ACCEPT\n\n# 3. View DOCKER-USER chain to verify defense in depth\nsudo iptables -S DOCKER-USER",
+    "breakdown": [
+      {
+        "lineRange": "3-4",
+        "note": "Displays the automated DNAT port redirection rules created by the Docker daemon."
+      },
+      {
+        "lineRange": "8-11",
+        "note": "DOCKER-USER chain is guaranteed not to be overwritten by Docker. Injecting DROP and subnet rules locks down public exposure."
+      }
+    ],
+    "expectedOutput": "-P DOCKER-USER - [0:0]\n-A DOCKER-USER -s 203.0.113.0/24 -i eth0 -p tcp -m tcp --dport 5432 -j ACCEPT\n-A DOCKER-USER -i eth0 -p tcp -m tcp --dport 5432 -j DROP\n-A DOCKER-USER -j RETURN"
+  },
+  {
+    "id": "docker-ex-21",
+    "title": "Routing All Container Traffic Through a Dedicated WireGuard Sidecar",
+    "category": "Networking & DNS",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Chains a web scraper or microservice to a WireGuard VPN container using container networking mode (--network container:<name>), forcing all egress through an encrypted tunnel.",
+    "conceptsCovered": [
+      "--network container:<target>",
+      "Sidecar network proxying",
+      "Egress VPN routing",
+      "Shared localhost loopback",
+      "Public IP masking"
+    ],
+    "code": "#!/usr/bin/env bash\n# 1. Start the WireGuard VPN client container\ndocker run -d \\\n  --name vpn-sidecar \\\n  --cap-add=NET_ADMIN \\\n  --device /dev/net/tun \\\n  -v /etc/wireguard/wg0.conf:/config/wg0.conf:ro \\\n  linuxserver/wireguard:latest\n\n# 2. Start application container sharing the VPN's network namespace\ndocker run --rm \\\n  --name web-crawler \\\n  --network container:vpn-sidecar \\\n  curlimages/curl:8.7.1 \\\n  curl -s https://ifconfig.me/ip\n\n# web-crawler shares vpn-sidecar's localhost and IP interfaces directly!",
+    "breakdown": [
+      {
+        "lineRange": "3-8",
+        "note": "VPN client initializes tun interface and connects to remote gateway with NET_ADMIN capability."
+      },
+      {
+        "lineRange": "11-15",
+        "note": "--network container:vpn-sidecar attaches curl directly into the VPN container's netns."
+      },
+      {
+        "lineRange": "17-18",
+        "note": "Egress traffic routes over the VPN tunnel; ifconfig.me sees the WireGuard server's public IP."
+      }
+    ],
+    "expectedOutput": "198.51.100.42\n# Output matches remote VPN exit node IP instead of host public IP!"
+  },
+  {
+    "id": "docker-ex-22",
+    "title": "Live Packet Sniffing via Ephemeral Netshoot Container Attached to Target Netns",
+    "category": "Networking & DNS",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Troubleshoots mysterious network drops and latency by joining an ephemeral Nicolaka Netshoot diagnostic container to a live production container's network namespace to run tcpdump and netstat.",
+    "conceptsCovered": [
+      "Ephemeral diagnostic container",
+      "tcpdump inside container netns",
+      "nicolaka/netshoot toolkit",
+      "Analyzing TLS handshakes and RST packets",
+      "Zero production container modification"
+    ],
+    "code": "# Attach netshoot toolkit directly into target production container netns\ndocker run --rm -it \\\n  --network container:production-api \\\n  --cap-add=NET_ADMIN \\\n  nicolaka/netshoot \\\n  tcpdump -nn -vv -i any port 8080 or port 5432 -c 5\n\n# Or inspect live TCP connection table:\n# docker run --rm --network container:production-api nicolaka/netshoot ss -tulpn",
+    "breakdown": [
+      {
+        "lineRange": "2-6",
+        "note": "Attaches netshoot into production-api netns without restarting it or installing diagnostic tools in prod."
+      },
+      {
+        "lineRange": "7-8",
+        "note": "Runs tcpdump to capture the first 5 TCP packets arriving at ports 8080 or 5432."
+      }
+    ],
+    "expectedOutput": "tcpdump: listening on any, link-type LINUX_SLL\n10:35:01.120 IP 172.28.0.5.49812 > 172.28.0.10.8080: Flags [S], seq 381921\n10:35:01.121 IP 172.28.0.10.8080 > 172.28.0.5.49812: Flags [S.], ack 381922\n10:35:01.122 IP 172.28.0.5.49812 > 172.28.0.10.8080: Flags [.], ack 1\n5 packets captured"
+  },
+  {
+    "id": "docker-ex-23",
+    "title": "Named Volume with Custom Device Mount Options (XFS / ext4 flags)",
+    "category": "Storage & Volumes",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Creates a Docker named volume with low-level Linux mount options (noatime, nodiratime) to optimize database I/O performance on dedicated disk partitions.",
+    "conceptsCovered": [
+      "docker volume create --opt",
+      "Filesystem mount flags (noatime)",
+      "Bypassing metadata write amplification",
+      "Volume driver options",
+      "Production database tuning"
+    ],
+    "code": "#!/usr/bin/env bash\n# Create optimized volume targeting dedicated NVMe partition with noatime\ndocker volume create \\\n  --driver local \\\n  --opt type=ext4 \\\n  --opt device=/dev/nvme0n1p2 \\\n  --opt o=noatime,nodiratime,data=ordered \\\n  postgres-highperf-data\n\n# Inspect created volume options\ndocker volume inspect postgres-highperf-data\n\n# Launch database using the optimized block volume\ndocker run -d \\\n  --name db-master \\\n  -v postgres-highperf-data:/var/lib/postgresql/data \\\n  -e POSTGRES_PASSWORD=secret \\\n  postgres:16-alpine",
+    "breakdown": [
+      {
+        "lineRange": "2-7",
+        "note": "Creates local volume with custom filesystem driver options. noatime eliminates timestamp writes on every read operation."
+      },
+      {
+        "lineRange": "13-17",
+        "note": "Postgres data folder mounts directly onto high-speed dedicated block storage with optimized mount options."
+      }
+    ],
+    "expectedOutput": "[\n  {\n    \"CreatedAt\": \"2026-11-04T10:40:00Z\",\n    \"Driver\": \"local\",\n    \"Name\": \"postgres-highperf-data\",\n    \"Options\": {\n      \"device\": \"/dev/nvme0n1p2\",\n      \"o\": \"noatime,nodiratime,data=ordered\",\n      \"type\": \"ext4\"\n    },\n    \"Scope\": \"local\"\n  }\n]"
+  },
+  {
+    "id": "docker-ex-24",
+    "title": "Resolving Host Volume Permission Denied (EACCES) via gosu User Step-Down",
+    "category": "Storage & Volumes",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Solves the notorious host-container UID mismatch where host bind mounts fail with EACCES permission denied, using gosu to dynamically chown mountpoints on boot and step down to unprivileged execution.",
+    "conceptsCovered": [
+      "UID/GID synchronization",
+      "EACCES Permission Denied resolution",
+      "gosu vs sudo step-down",
+      "Dynamic chown on mount",
+      "Container security entrypoint"
+    ],
+    "code": "# Dockerfile\nFROM debian:bookworm-slim\nRUN apt-get update && apt-get install -y --no-install-recommends gosu \\\n    && rm -rf /var/lib/apt/lists/*\n\nRUN useradd -u 1000 -m -s /bin/bash appuser\n\nCOPY entrypoint.sh /entrypoint.sh\nRUN chmod +x /entrypoint.sh\n\nENTRYPOINT [\"/entrypoint.sh\"]\nCMD [\"node\", \"app.js\"]\n\n# --- content of entrypoint.sh ---\n# #!/bin/sh\n# set -e\n# USER_ID=${LOCAL_UID:-1000}\n# GROUP_ID=${LOCAL_GID:-1000}\n# \n# # Adjust appuser UID/GID to match host user dynamically\n# usermod -u \"$USER_ID\" appuser 2>/dev/null\n# groupmod -g \"$GROUP_ID\" appuser 2>/dev/null\n# \n# chown -R appuser:appuser /app/data\n# \n# # Execute CMD as appuser via gosu (without retaining root privileges)\n# exec gosu appuser \"$@\"",
+    "breakdown": [
+      {
+        "lineRange": "2-7",
+        "note": "Installs gosu, a lightweight Go utility that steps down privileges without the signal-swallowing baggage of sudo/su."
+      },
+      {
+        "lineRange": "17-27",
+        "note": "entrypoint reads host LOCAL_UID/LOCAL_GID, aligns container user IDs, fixes volume ownership, and executes as appuser."
+      }
+    ],
+    "expectedOutput": "$ docker run -e LOCAL_UID=$(id -u) -e LOCAL_GID=$(id -g) -v $(pwd)/data:/app/data my-app\nAdjusting user permissions to match host UID 1001...\nFilesystem synced. Stepping down to user appuser.\n[node] Application started without EACCES errors!"
+  },
+  {
+    "id": "docker-ex-25",
+    "title": "Hot Reloading Development Environment with Bind Mount and node_modules Volume Mask",
+    "category": "Storage & Volumes",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Configures live hot-reloading for local Node/React development by bind-mounting host source files while masking node_modules with an anonymous container volume so host OS differences don't break native packages.",
+    "conceptsCovered": [
+      "Bind mount source code (-v $(pwd):/app)",
+      "Anonymous volume masking (-v /app/node_modules)",
+      "Vite / Webpack hot module replacement (HMR)",
+      "CHOKIDAR_USEPOLLING file watching",
+      "Developer environment ergonomics"
+    ],
+    "code": "# docker-compose.dev.yaml\nservices:\n  frontend:\n    build:\n      context: .\n      dockerfile: Dockerfile.dev\n    ports:\n      - \"5173:5173\"\n    environment:\n      - NODE_ENV=development\n      # Polling fixes file change events on Windows / macOS Docker Desktop\n      - CHOKIDAR_USEPOLLING=true\n      - WATCHPACK_POLLING=true\n    volumes:\n      # Bind mount host directory for live code editing\n      - .:/app\n      # Anonymous volume masks container node_modules, protecting native compiled binaries!\n      - /app/node_modules\n    command: npm run dev -- --host 0.0.0.0",
+    "breakdown": [
+      {
+        "lineRange": "9-13",
+        "note": "Enables polling flags for file watchers so inotify events traverse virtualization boundaries on macOS and Windows."
+      },
+      {
+        "lineRange": "14-19",
+        "note": "Bind mounts host files, but mounts an anonymous volume at /app/node_modules, preventing host node_modules from overwriting container Linux binaries."
+      }
+    ],
+    "expectedOutput": "$ docker compose -f docker-compose.dev.yaml up\n[+] Running 1/1\n ✔ Container frontend-1  Created\n  VITE v5.2.0  ready in 180 ms\n  ➜  Local:   http://localhost:5173/\n[hmr] /app/src/App.tsx changed, reloading page in 12ms..."
+  },
+  {
+    "id": "docker-ex-26",
+    "title": "Automated Cold Backup of Production Named Volume to Compressed Tarball",
+    "category": "Storage & Volumes",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Performs a safe, non-destructive backup of a production database volume by mounting it read-only into an ephemeral Alpine container and streaming a compressed tar.gz to the host filesystem.",
+    "conceptsCovered": [
+      "Ephemeral container backup pattern",
+      "Read-only volume mount (:ro)",
+      "tar cvzf streaming",
+      "Automated timestamped backups",
+      "Zero backup agent installation"
+    ],
+    "code": "#!/usr/bin/env bash\nset -euo pipefail\n\nBACKUP_DIR=\"/var/backups/docker\"\nTIMESTAMP=$(date +\"%Y%m%d_%H%M%S\")\nVOLUME_NAME=\"postgres-production-data\"\nARCHIVE_NAME=\"${VOLUME_NAME}_${TIMESTAMP}.tar.gz\"\n\nmkdir -p \"$BACKUP_DIR\"\n\necho \"Backing up volume '$VOLUME_NAME' to $BACKUP_DIR/$ARCHIVE_NAME...\"\n\n# Ephemeral Alpine container mounts source volume read-only and streams tar to host\ndocker run --rm \\\n  -v \"${VOLUME_NAME}:/source:ro\" \\\n  -v \"${BACKUP_DIR}:/backup\" \\\n  alpine:3.20 \\\n  tar -czf \"/backup/${ARCHIVE_NAME}\" -C /source .\n\necho \"Backup completed successfully!\"\nls -lh \"$BACKUP_DIR/$ARCHIVE_NAME\"",
+    "breakdown": [
+      {
+        "lineRange": "12-18",
+        "note": "Uses a temporary Alpine container with the target volume mounted read-only (:ro) to prevent accidental mutation during archiving."
+      },
+      {
+        "lineRange": "19-21",
+        "note": "Outputs a portable gzip archive directly to host backup directory."
+      }
+    ],
+    "expectedOutput": "Backing up volume 'postgres-production-data' to /var/backups/docker/postgres-production-data_20261104_104500.tar.gz...\nBackup completed successfully!\n-rw-r--r-- 1 root root 842M Nov  4 10:45 postgres-production-data_20261104_104500.tar.gz"
+  },
+  {
+    "id": "docker-ex-27",
+    "title": "Restoring Named Volume from Compressed Tarball to Fresh Container",
+    "category": "Storage & Volumes",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Restores an archived database or file volume from a compressed tarball into a brand new named Docker volume using an ephemeral utility container.",
+    "conceptsCovered": [
+      "docker volume create",
+      "Restoring data with tar -xzf",
+      "Ephemeral restoration container",
+      "Disaster recovery runbook",
+      "Volume integrity verification"
+    ],
+    "code": "#!/usr/bin/env bash\nset -euo pipefail\n\nARCHIVE_PATH=\"/var/backups/docker/postgres-production-data_20261104_104500.tar.gz\"\nTARGET_VOLUME=\"postgres-restored-data\"\n\n# 1. Create fresh target volume\ndocker volume create \"$TARGET_VOLUME\"\n\n# 2. Extract backup tarball into target volume mountpoint\necho \"Restoring data from $ARCHIVE_PATH into $TARGET_VOLUME...\"\ndocker run --rm \\\n  -v \"$ARCHIVE_PATH:/backup/archive.tar.gz:ro\" \\\n  -v \"$TARGET_VOLUME:/destination\" \\\n  alpine:3.20 \\\n  tar -xzf /backup/archive.tar.gz -C /destination\n\n# 3. Verify directory contents\ndocker run --rm -v \"$TARGET_VOLUME:/data:ro\" alpine:3.20 ls -la /data",
+    "breakdown": [
+      {
+        "lineRange": "6-8",
+        "note": "Allocates a pristine named volume."
+      },
+      {
+        "lineRange": "10-16",
+        "note": "Runs an ephemeral Alpine worker that uncompresses the archive directly into the newly created volume."
+      },
+      {
+        "lineRange": "18-19",
+        "note": "Runs a read-only verification check to confirm restored files are intact."
+      }
+    ],
+    "expectedOutput": "Restoring data from /var/backups/docker/postgres... into postgres-restored-data...\ntotal 56\ndrwx------ 19 999 999  4096 Nov  4 10:45 .\ndrwxr-xr-x  1 root root  4096 Nov  4 10:46 ..\n-rw-------  1 999 999     3 Nov  4 10:45 PG_VERSION\ndrwx------  5 999 999  4096 Nov  4 10:45 base\ndrwx------  2 999 999  4096 Nov  4 10:45 global\nVolume restored and verified!"
+  },
+  {
+    "id": "docker-ex-28",
+    "title": "Ultra-Fast In-Memory Cache and Secret Storage via tmpfs Mounts",
+    "category": "Storage & Volumes",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Mounts temporary volatile memory (RAM) directly into container paths via tmpfs, guaranteeing sub-millisecond I/O for caches and ensuring decrypted secrets are never written to physical disk.",
+    "conceptsCovered": [
+      "--tmpfs flag syntax",
+      "Mounting RAM storage (size, mode)",
+      "Zero disk persistence for secrets",
+      "High performance volatile caching",
+      "Preventing flash storage wear"
+    ],
+    "code": "# Launch container with a 256MB RAM-backed tmpfs mount for sensitive cache\ndocker run -d \\\n  --name fast-worker \\\n  --tmpfs /dev/shm:rw,noexec,nosuid,size=256m \\\n  --mount type=tmpfs,destination=/app/cache,tmpfs-size=512M,tmpfs-mode=1770 \\\n  my-worker:latest\n\n# Verify tmpfs mount inside the container\ndocker exec fast-worker df -h /app/cache\n\n# When fast-worker is stopped, all in-memory data evaporates immediately!",
+    "breakdown": [
+      {
+        "lineRange": "2-6",
+        "note": "--mount type=tmpfs creates an isolated RAM filesystem with size restrictions (512MB) and permissions (1770)."
+      },
+      {
+        "lineRange": "8-9",
+        "note": "df -h verifies that /app/cache is mounted on tmpfs and backed entirely by host RAM."
+      }
+    ],
+    "expectedOutput": "Filesystem      Size  Used Avail Use% Mounted on\ntmpfs           512M     0  512M   0% /app/cache"
+  },
+  {
+    "id": "docker-ex-29",
+    "title": "Read-Only Root Filesystem with Selective Writable tmpfs Locations",
+    "category": "Storage & Volumes",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Hardens production containers by mounting the root filesystem as strictly read-only (--read-only), whitelisting only designated scratch directories (/tmp, /run) as tmpfs.",
+    "conceptsCovered": [
+      "--read-only root filesystem",
+      "Immutable container runtime",
+      "Preventing malware persistence",
+      "Selective tmpfs whitelisting",
+      "CIS Docker Benchmark compliance"
+    ],
+    "code": "# Run production web server with 100% immutable root filesystem\ndocker run -d \\\n  --name hardened-api \\\n  --read-only \\\n  --tmpfs /tmp:rw,noexec,nosuid,size=64m \\\n  --tmpfs /run:rw,noexec,nosuid,size=16m \\\n  --tmpfs /var/log:rw,noexec,nosuid,size=32m \\\n  -p 8080:8080 \\\n  my-api:latest\n\n# Verify write prevention:\ndocker exec hardened-api touch /usr/local/bin/malware || echo \"SUCCESS: Write blocked!\"",
+    "breakdown": [
+      {
+        "lineRange": "2-7",
+        "note": "--read-only blocks writes to the rootfs overlay. tmpfs mounts provide ephemeral scratchpads for /tmp and /run."
+      },
+      {
+        "lineRange": "11-12",
+        "note": "Attempts by attackers or unauthorized processes to modify binaries fail with Read-only file system errors."
+      }
+    ],
+    "expectedOutput": "touch: cannot touch '/usr/local/bin/malware': Read-only file system\nSUCCESS: Write blocked!\nContainer is fully hardened against disk tampering."
+  },
+  {
+    "id": "docker-ex-30",
+    "title": "Multi-Container Read-Only Volume Sharing for Static Asset Distribution",
+    "category": "Storage & Volumes",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Shares a single volume containing compiled static assets or model weights across multiple application containers with strict read-only (:ro) enforcement to prevent cross-container contamination.",
+    "conceptsCovered": [
+      "Shared volume pattern",
+      "Read-only mount flag (:ro)",
+      "Zero duplicate asset storage",
+      "Cross-service data distribution",
+      "Write prevention"
+    ],
+    "code": "#!/usr/bin/env bash\n# 1. Create shared asset volume\ndocker volume create shared-static-assets\n\n# 2. Ingest static assets once using a publisher container\ndocker run --rm \\\n  -v shared-static-assets:/assets \\\n  builder-image:latest \\\n  cp -r /dist/* /assets/\n\n# 3. Mount into 3 replica web servers as strictly read-only (:ro)\nfor i in 1 2 3; do\n  docker run -d \\\n    --name \"web-worker-$i\" \\\n    -v shared-static-assets:/usr/share/nginx/html:ro \\\n    nginx:alpine\ndone\n\n# Verify web-worker-1 cannot delete or write to the shared assets\ndocker exec web-worker-1 rm -f /usr/share/nginx/html/index.html || echo \"PASS: Read-only protected!\"",
+    "breakdown": [
+      {
+        "lineRange": "2-3",
+        "note": "Creates central shared volume."
+      },
+      {
+        "lineRange": "6-9",
+        "note": "Builder writes assets once into the volume."
+      },
+      {
+        "lineRange": "12-18",
+        "note": "Multiple worker containers mount the same volume with :ro, saving disk space and ensuring consistency."
+      }
+    ],
+    "expectedOutput": "rm: can't remove '/usr/share/nginx/html/index.html': Read-only file system\nPASS: Read-only protected!\nShared volume served across 3 containers with zero write vulnerability."
+  },
+  {
+    "id": "docker-ex-31",
+    "title": "Auditing Container Disk Usage, Reclaiming Dangling Volumes, and Volume Pruning",
+    "category": "Storage & Volumes",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Inspects detailed Docker disk utilization breakdown across images, containers, and local volumes, identifying and purging orphaned storage using safety filters.",
+    "conceptsCovered": [
+      "docker system df & docker system df -v",
+      "docker volume ls -qf dangling=true",
+      "docker volume prune --filter",
+      "Disk space reclamation",
+      "Preventing /var/lib/docker exhaustion"
+    ],
+    "code": "#!/usr/bin/env bash\n# 1. Inspect exact disk consumption by subsystem\ndocker system df\n\n# 2. List all dangling (orphaned) volumes not attached to any container\necho \"=== Dangling Volumes ===\"\ndocker volume ls -f dangling=true\n\n# 3. Dry-run / audit volumes older than 7 days\n# Prune only unused volumes created more than 168 hours ago:\ndocker volume prune -f --filter \"label!=keep\" --filter \"until=168h\"\n\n# 4. Check reclaimed disk space\ndocker system df",
+    "breakdown": [
+      {
+        "lineRange": "2-3",
+        "note": "docker system df outputs clear utilization figures for Images, Containers, Local Volumes, and Build Cache."
+      },
+      {
+        "lineRange": "6-7",
+        "note": "dangling=true isolates volumes left behind after container deletion."
+      },
+      {
+        "lineRange": "10-11",
+        "note": "Prunes orphaned volumes while respecting safety filters (retention period and exemption labels)."
+      }
+    ],
+    "expectedOutput": "TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE\nImages          18        4         4.12GB    3.15GB (76%)\nContainers      4         4         12.4MB    0B (0%)\nLocal Volumes   32        3         18.9GB    16.2GB (85%)\nBuild Cache     42        0         6.8GB     6.8GB\n\nDeleted Volumes:\nb94a8c91d7...\nTotal reclaimed space: 16.2GB"
+  },
+  {
+    "id": "docker-ex-32",
+    "title": "Mounting Remote NFS Network Share Directly into Docker via NFS Volume Driver",
+    "category": "Storage & Volumes",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Configures Docker to mount an enterprise Network File System (NFSv4) export directly as a container volume without requiring manual host fstab configuration.",
+    "conceptsCovered": [
+      "NFSv4 volume driver",
+      "docker volume create --opt type=nfs",
+      "nfsvers=4 and nolock options",
+      "Centralized shared file storage",
+      "Cluster-wide persistent storage"
+    ],
+    "code": "#!/usr/bin/env bash\n# Create a Docker volume that mounts an external NFS export directly\ndocker volume create \\\n  --driver local \\\n  --opt type=nfs \\\n  --opt o=addr=192.168.1.100,rw,nfsvers=4,rsize=1048576,wsize=1048576,hard,timeo=600 \\\n  --opt device=:/srv/nfs/media \\\n  enterprise-nfs-media\n\n# Launch media server mounting the NFS volume\ndocker run -d \\\n  --name media-server \\\n  -v enterprise-nfs-media:/data:ro \\\n  -p 8080:80 \\\n  nginx:alpine\n\n# The container streams files directly from the enterprise storage array!",
+    "breakdown": [
+      {
+        "lineRange": "2-8",
+        "note": "Uses Docker's built-in local driver with type=nfs and NFSv4 transmission parameters."
+      },
+      {
+        "lineRange": "10-15",
+        "note": "Binds the remote network share into /data inside the container transparently."
+      }
+    ],
+    "expectedOutput": "Volume 'enterprise-nfs-media' created.\nmedia-server successfully started and connected to NFS export :/srv/nfs/media!"
+  },
+  {
+    "id": "docker-ex-33",
+    "title": "Production Full-Stack Microservices Architecture with Docker Compose",
+    "category": "Docker Compose & Orchestration",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Defines an enterprise-grade multi-tier stack combining a Next.js/React frontend, Node/Go REST API, Redis cache, PostgreSQL cluster, and Caddy reverse proxy with automated TLS certificates.",
+    "conceptsCovered": [
+      "Multi-tier service topologies",
+      "Network segregation (public vs data)",
+      "Caddy reverse proxy automatic TLS",
+      "Named volumes for database persistence",
+      "Resource limits in Compose"
+    ],
+    "code": "services:\n  caddy:\n    image: caddy:2.8-alpine\n    restart: always\n    ports:\n      - \"80:80\"\n      - \"443:443\"\n    volumes:\n      - ./Caddyfile:/etc/caddy/Caddyfile:ro\n      - caddy_data:/data\n      - caddy_config:/config\n    networks:\n      - public-net\n    depends_on:\n      - api\n      - web\n\n  web:\n    image: my-frontend:latest\n    restart: unless-stopped\n    expose:\n      - \"3000\"\n    networks:\n      - public-net\n\n  api:\n    image: my-backend:latest\n    restart: unless-stopped\n    expose:\n      - \"8080\"\n    environment:\n      - DATABASE_URL=postgres://app:secret@postgres:5432/appdb\n      - REDIS_URL=redis://redis:6379\n    networks:\n      - public-net\n      - backend-net\n    depends_on:\n      - postgres\n      - redis\n\n  postgres:\n    image: postgres:16-alpine\n    restart: unless-stopped\n    environment:\n      POSTGRES_DB: appdb\n      POSTGRES_USER: app\n      POSTGRES_PASSWORD: secret\n    volumes:\n      - pgdata:/var/lib/postgresql/data\n    networks:\n      - backend-net\n\n  redis:\n    image: redis:7.2-alpine\n    restart: unless-stopped\n    networks:\n      - backend-net\n\nnetworks:\n  public-net:\n    driver: bridge\n  backend-net:\n    internal: true\n\nvolumes:\n  pgdata:\n  caddy_data:\n  caddy_config:",
+    "breakdown": [
+      {
+        "lineRange": "2-16",
+        "note": "Caddy provides automated HTTPS, terminating TLS and proxying traffic to web and api."
+      },
+      {
+        "lineRange": "27-41",
+        "note": "API connects to public-net (for ingress from Caddy) and backend-net (to reach database)."
+      },
+      {
+        "lineRange": "56-62",
+        "note": "backend-net is marked internal: true, completely blocking database and cache from internet access."
+      }
+    ],
+    "expectedOutput": "[+] Running 5/5\n ✔ Network compose_public-net   Created\n ✔ Network compose_backend-net  Created\n ✔ Volume \"compose_pgdata\"      Created\n ✔ Container compose-postgres-1 Started\n ✔ Container compose-redis-1    Started\n ✔ Container compose-api-1      Started\n ✔ Container compose-web-1      Started\n ✔ Container compose-caddy-1    Started"
+  },
+  {
+    "id": "docker-ex-34",
+    "title": "Deterministic Startup Ordering with depends_on condition: service_healthy",
+    "category": "Docker Compose & Orchestration",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Guarantees that database migrations and API workers only start after PostgreSQL and Redis are 100% initialized and accepting TCP connections, eliminating race conditions on boot.",
+    "conceptsCovered": [
+      "depends_on with condition: service_healthy",
+      "Postgres pg_isready healthcheck",
+      "Redis ping healthcheck",
+      "One-shot migration container",
+      "Eliminating startup race conditions"
+    ],
+    "code": "services:\n  db:\n    image: postgres:16-alpine\n    environment:\n      POSTGRES_DB: production\n      POSTGRES_USER: admin\n      POSTGRES_PASSWORD: secretpassword\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U admin -d production\"]\n      interval: 5s\n      timeout: 5s\n      retries: 5\n      start_period: 10s\n\n  redis:\n    image: redis:7.2-alpine\n    healthcheck:\n      test: [\"CMD\", \"redis-cli\", \"ping\"]\n      interval: 5s\n      timeout: 3s\n      retries: 3\n\n  # Runs migrations once and terminates before API starts\n  migrator:\n    image: my-app:latest\n    command: [\"npm\", \"run\", \"db:migrate\"]\n    depends_on:\n      db:\n        condition: service_healthy\n\n  api:\n    image: my-app:latest\n    command: [\"npm\", \"start\"]\n    ports:\n      - \"8080:8080\"\n    depends_on:\n      db:\n        condition: service_healthy\n      redis:\n        condition: service_healthy\n      migrator:\n        condition: service_completed_successfully",
+    "breakdown": [
+      {
+        "lineRange": "8-14",
+        "note": "PostgreSQL runs pg_isready every 5 seconds until the engine accepts incoming connections."
+      },
+      {
+        "lineRange": "23-29",
+        "note": "migrator container waits for db to be healthy before executing schema migrations."
+      },
+      {
+        "lineRange": "31-42",
+        "note": "api waits for both db and redis to be healthy AND migrator to exit cleanly with code 0."
+      }
+    ],
+    "expectedOutput": "[+] Running 4/4\n ✔ Container db        Healthy\n ✔ Container redis     Healthy\n ✔ Container migrator  Exited (0)\n ✔ Container api       Started"
+  },
+  {
+    "id": "docker-ex-35",
+    "title": "Dynamic Environment Overrides Using compose.override.yaml for Dev vs Prod",
+    "category": "Docker Compose & Orchestration",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Structures modular Docker Compose configurations where a base compose.yaml defines production baseline settings, automatically merged with compose.override.yaml during local development.",
+    "conceptsCovered": [
+      "Compose file merging hierarchy",
+      "docker compose -f file1.yaml -f file2.yaml",
+      "Local development overrides (bind mounts, debugger ports)",
+      "Production immutability",
+      "Clean configuration separation"
+    ],
+    "code": "# === compose.yaml (Production Base) ===\nservices:\n  api:\n    image: enterprise/api:v1.0.0\n    restart: always\n    environment:\n      - NODE_ENV=production\n    ports:\n      - \"8080:8080\"\n\n# === compose.override.yaml (Applied automatically in development) ===\nservices:\n  api:\n    build:\n      context: .\n      target: dev\n    environment:\n      - NODE_ENV=development\n      - DEBUG=express:*\n    ports:\n      - \"9229:9229\" # Node.js V8 Debugger port\n    volumes:\n      - .:/app\n    command: [\"npm\", \"run\", \"dev\"]",
+    "breakdown": [
+      {
+        "lineRange": "1-9",
+        "note": "Base compose.yaml points to production immutable prebuilt container images."
+      },
+      {
+        "lineRange": "11-23",
+        "note": "compose.override.yaml injects live build contexts, bind mounts, and debugger ports without touching production files."
+      }
+    ],
+    "expectedOutput": "$ docker compose config\n# Outputs deep merged configuration:\nservices:\n  api:\n    build: { context: . }\n    environment:\n      DEBUG: express:*\n      NODE_ENV: development\n    ports:\n      - mode: ingress, target: 8080, published: 8080\n      - mode: ingress, target: 9229, published: 9229"
+  },
+  {
+    "id": "docker-ex-36",
+    "title": "Docker Compose Watch Mode for Instant Code Synchronization and Rebuilding",
+    "category": "Docker Compose & Orchestration",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Leverages modern Compose Watch (docker compose watch) to automatically synchronize changed frontend files directly into running containers without full image rebuilds.",
+    "conceptsCovered": [
+      "Compose develop / watch syntax",
+      "Sync action vs rebuild action",
+      "docker compose watch command",
+      "Instant feedback development loop",
+      "Ignoring node_modules sync"
+    ],
+    "code": "services:\n  web:\n    build: .\n    ports:\n      - \"3000:3000\"\n    develop:\n      watch:\n        # Instantly sync UI changes without rebuilding container\n        - action: sync\n          path: ./src\n          target: /app/src\n          ignore:\n            - ./src/**/*.test.ts\n\n        # Sync package.json and trigger background rebuild\n        - action: rebuild\n          path: ./package.json\n\n        # Sync static public assets\n        - action: sync+restart\n          path: ./public\n          target: /app/public",
+    "breakdown": [
+      {
+        "lineRange": "6-12",
+        "note": "action: sync mirrors changes in ./src into the container within 10ms, enabling frontend HMR."
+      },
+      {
+        "lineRange": "14-16",
+        "note": "Modifications to package.json automatically trigger a background Dockerfile rebuild."
+      },
+      {
+        "lineRange": "18-21",
+        "note": "sync+restart replaces assets and gracefully restarts the server process."
+      }
+    ],
+    "expectedOutput": "$ docker compose watch\nWatch enabled for service \"web\"\nSyncing /src/components/Header.tsx -> web:/app/src/components/Header.tsx\nFile synced in 14ms!"
+  },
+  {
+    "id": "docker-ex-37",
+    "title": "Secure Secret Management with File-Based Docker Compose Secrets",
+    "category": "Docker Compose & Orchestration",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Injects database passwords and private API keys into containers via Docker Compose file secrets mounted as in-memory /run/secrets files rather than leaking them in environment variables.",
+    "conceptsCovered": [
+      "Top-level secrets block",
+      "File-based secrets mounting",
+      "Mounting at /run/secrets/<secret_name>",
+      "Preventing env var leakage (docker inspect)",
+      "Zero secret disk persistence"
+    ],
+    "code": "services:\n  db:\n    image: postgres:16-alpine\n    environment:\n      POSTGRES_DB: app\n      POSTGRES_USER: dbuser\n      POSTGRES_PASSWORD_FILE: /run/secrets/db_password\n    secrets:\n      - db_password\n\n  api:\n    image: my-backend:latest\n    environment:\n      DATABASE_PASSWORD_FILE: /run/secrets/db_password\n      STRIPE_KEY_FILE: /run/secrets/stripe_key\n    secrets:\n      - db_password\n      - stripe_key\n\nsecrets:\n  db_password:\n    file: ./secrets/db_password.txt\n  stripe_key:\n    file: ./secrets/stripe_live_key.txt",
+    "breakdown": [
+      {
+        "lineRange": "6-8",
+        "note": "POSTGRES_PASSWORD_FILE instructs PostgreSQL to read its credentials from /run/secrets/db_password in RAM."
+      },
+      {
+        "lineRange": "11-17",
+        "note": "Secrets are mounted as read-only files accessible only to processes in the container."
+      },
+      {
+        "lineRange": "19-24",
+        "note": "Top-level secrets declare local host files that Compose loads securely into tmpfs mounts."
+      }
+    ],
+    "expectedOutput": "$ docker inspect api-1 | grep -i password\n# Output: Password is NOT visible anywhere in container environment variables!\n$ docker exec api-1 cat /run/secrets/db_password\nSuperSecureP@ssw0rd! (Mounted read-only in memory)"
+  },
+  {
+    "id": "docker-ex-38",
+    "title": "Dynamic Environment Variable Interpolation and Default Fallbacks",
+    "category": "Docker Compose & Orchestration",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Utilizes bash-style variable interpolation in compose.yaml (${VAR:-default}, ${VAR:?error}) along with .env files to create dynamic, portable multi-environment configs.",
+    "conceptsCovered": [
+      "${VARIABLE:-default} fallback syntax",
+      "${VARIABLE:?mandatory error} validation",
+      ".env file precedence",
+      "Inline port mapping interpolation",
+      "Self-documenting templates"
+    ],
+    "code": "services:\n  app:\n    image: \"enterprise/api:${TAG:-latest}\"\n    ports:\n      # If PORT is not set on host, defaults to 8080\n      - \"${PORT:-8080}:8080\"\n    environment:\n      # Mandates that DB_HOST must be set, otherwise Compose errors out\n      DATABASE_HOST: \"${DB_HOST:?Database host must be provided in .env}\"\n      MAX_WORKERS: \"${MAX_WORKERS:-4}\"\n      LOG_LEVEL: \"${LOG_LEVEL:-info}\"\n    deploy:\n      resources:\n        limits:\n          cpus: \"${CPU_LIMIT:-1.5}\"\n          memory: \"${MEM_LIMIT:-2G}\"",
+    "breakdown": [
+      {
+        "lineRange": "3-6",
+        "note": "${TAG:-latest} and ${PORT:-8080} provide safe defaults if host environment variables are missing."
+      },
+      {
+        "lineRange": "9-12",
+        "note": "${DB_HOST:?error} enforces required configuration, immediately halting deployment if unset."
+      }
+    ],
+    "expectedOutput": "$ docker compose up\n# If DB_HOST is missing:\nError: required variable DB_HOST is missing a value: Database host must be provided in .env\n# If DB_HOST is set:\n[+] Running 1/1 ✔ Container app-1 Started"
+  },
+  {
+    "id": "docker-ex-39",
+    "title": "Multi-Profile Orchestration for On-Demand Debugging, Testing, and Migrations",
+    "category": "Docker Compose & Orchestration",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Organizes peripheral services (pgAdmin, Mailpit, Jaeger, Integration Test runners) into named Compose profiles (profiles: ['debug', 'test']) that only start when explicitly requested.",
+    "conceptsCovered": [
+      "Compose profiles attribute",
+      "--profile flag syntax",
+      "Selective service activation",
+      "Lightweight default developer footprint",
+      "Isolated test suite execution"
+    ],
+    "code": "services:\n  api:\n    image: my-app:latest\n    ports:\n      - \"8080:8080\"\n\n  db:\n    image: postgres:16-alpine\n    environment:\n      POSTGRES_PASSWORD: secret\n\n  # Profile: debug (Only starts when developer wants visual inspection)\n  pgadmin:\n    image: dpage/pgadmin4:latest\n    profiles: [\"debug\"]\n    ports:\n      - \"5050:80\"\n    environment:\n      PGADMIN_DEFAULT_EMAIL: admin@test.com\n      PGADMIN_DEFAULT_PASSWORD: admin\n\n  # Profile: test (Only runs during CI or local integration runs)\n  integration-tests:\n    image: my-test-runner:latest\n    profiles: [\"test\"]\n    depends_on:\n      - api\n    command: [\"npm\", \"run\", \"test:integration\"]",
+    "breakdown": [
+      {
+        "lineRange": "2-10",
+        "note": "Core services (api, db) have no profile and launch on standard 'docker compose up'."
+      },
+      {
+        "lineRange": "12-21",
+        "note": "pgadmin has profiles: ['debug'], completely ignored unless requested with --profile debug."
+      },
+      {
+        "lineRange": "23-30",
+        "note": "integration-tests has profiles: ['test'], perfect for automated test workflows."
+      }
+    ],
+    "expectedOutput": "$ docker compose up -d\n[+] Running 2/2 ✔ Container db-1 Started, Container api-1 Started\n$ docker compose --profile debug up -d\n[+] Running 3/3 ✔ Container pgadmin-1 Started"
+  },
+  {
+    "id": "docker-ex-40",
+    "title": "Horizontal Service Auto-Scaling with Docker Compose and Nginx Load Balancer",
+    "category": "Docker Compose & Orchestration",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Scales stateless API containers across multiple replicas using docker compose up --scale api=5, balanced across instances using Nginx round-robin upstream routing.",
+    "conceptsCovered": [
+      "docker compose up --scale <service>=N",
+      "Round-robin load balancing",
+      "Embedded DNS multi-A record resolution",
+      "Stateless container scaling",
+      "Dynamic port management"
+    ],
+    "code": "# compose.yaml\nservices:\n  lb:\n    image: nginx:alpine\n    ports:\n      - \"80:80\"\n    volumes:\n      - ./nginx.conf:/etc/nginx/nginx.conf:ro\n    depends_on:\n      - api\n\n  api:\n    image: hashicorp/http-echo:latest\n    command: [\"-text=Hello from scaled container!\"]\n    # Do NOT bind host port directly on api! Docker resolves multiple IPs internally.\n\n# --- nginx.conf ---\n# events {}\n# http {\n#   upstream api_backend {\n#     server api:5678; # Docker DNS resolves to all scaled container IPs!\n#   }\n#   server {\n#     listen 80;\n#     location / {\n#       proxy_pass http://api_backend;\n#     }\n#   }\n# }",
+    "breakdown": [
+      {
+        "lineRange": "2-9",
+        "note": "Nginx load balancer binds port 80 and forwards requests to upstream api_backend."
+      },
+      {
+        "lineRange": "11-15",
+        "note": "api omits host port binding, allowing unlimited instances to spin up without port collisions."
+      },
+      {
+        "lineRange": "20-22",
+        "note": "server api:5678 automatically load balances across all running replica IP addresses."
+      }
+    ],
+    "expectedOutput": "$ docker compose up -d --scale api=4\n[+] Running 5/5\n ✔ Container compose-api-1  Started\n ✔ Container compose-api-2  Started\n ✔ Container compose-api-3  Started\n ✔ Container compose-api-4  Started\n ✔ Container compose-lb-1   Started\n$ curl http://localhost/ -> Round-robins across all 4 containers!"
+  },
+  {
+    "id": "docker-ex-41",
+    "title": "Zero-Downtime Rolling Service Updates via Docker Compose Deploy Config",
+    "category": "Docker Compose & Orchestration",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Configures rolling update policies (update_config: parallelism, delay, order) to upgrade replica containers in batches without downtime.",
+    "conceptsCovered": [
+      "deploy.update_config",
+      "parallelism and delay",
+      "order: start-first vs stop-first",
+      "failure_action: rollback",
+      "Zero-downtime rolling deploys"
+    ],
+    "code": "services:\n  web:\n    image: enterprise/web:v2.0\n    deploy:\n      replicas: 4\n      update_config:\n        # Update 2 containers at a time\n        parallelism: 2\n        # Wait 10 seconds between update batches\n        delay: 10s\n        # Start new container and verify health BEFORE killing old container!\n        order: start-first\n        # Automatically abort and rollback if healthcheck fails\n        failure_action: rollback\n        monitor: 15s\n        max_failure_ratio: 0.1\n      restart_policy:\n        condition: on-failure\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:3000/health\"]\n      interval: 5s\n      timeout: 3s\n      retries: 3",
+    "breakdown": [
+      {
+        "lineRange": "5-17",
+        "note": "update_config orchestrates rolling upgrades: start-first ensures healthy standby capacity before stopping old versions."
+      },
+      {
+        "lineRange": "19-24",
+        "note": "Healthcheck validates new container readiness during the monitor window before the rollout proceeds."
+      }
+    ],
+    "expectedOutput": "$ docker stack deploy -c compose.yaml production-app\nUpdating service production-app_web (replicas: 4)\noverall progress: 2 out of 4 tasks (updating...)\noverall progress: 4 out of 4 tasks (rolling update completed with 0 errors)"
+  },
+  {
+    "id": "docker-ex-42",
+    "title": "Centralized Log Aggregation Stack with Grafana Loki, Promtail, and Compose",
+    "category": "Docker Compose & Orchestration",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Stands up an observability stack using Grafana Loki and Promtail in Docker Compose, collecting stdout logs from all running containers into an indexed queryable dashboard.",
+    "conceptsCovered": [
+      "Grafana Loki log ingestion",
+      "Promtail Docker socket scraper",
+      "Mounting /var/lib/docker/containers",
+      "LogQL querying in Grafana",
+      "Production container observability"
+    ],
+    "code": "services:\n  loki:\n    image: grafana/loki:3.0.0\n    ports:\n      - \"3100:3100\"\n    command: -config.file=/etc/loki/local-config.yaml\n\n  promtail:\n    image: grafana/promtail:3.0.0\n    volumes:\n      - /var/run/docker.sock:/var/run/docker.sock:ro\n      - /var/lib/docker/containers:/var/lib/docker/containers:ro\n      - ./promtail-config.yaml:/etc/promtail/config.yaml:ro\n    command: -config.file=/etc/promtail/config.yaml\n    depends_on:\n      - loki\n\n  grafana:\n    image: grafana/grafana:11.0.0\n    ports:\n      - \"3000:3000\"\n    environment:\n      - GF_SECURITY_ADMIN_PASSWORD=admin\n    depends_on:\n      - loki",
+    "breakdown": [
+      {
+        "lineRange": "2-6",
+        "note": "Loki stores compressed log streams indexed by labels."
+      },
+      {
+        "lineRange": "8-17",
+        "note": "Promtail scrapes container logs from /var/lib/docker/containers and ships them to Loki in real time."
+      },
+      {
+        "lineRange": "19-26",
+        "note": "Grafana provides visual search dashboards using LogQL queries like {compose_service=\"api\"}."
+      }
+    ],
+    "expectedOutput": "[+] Running 3/3\n ✔ Container compose-loki-1      Started\n ✔ Container compose-promtail-1  Started\n ✔ Container compose-grafana-1   Started\nGrafana accessible at http://localhost:3000 (Loki data source attached)"
+  },
+  {
+    "id": "docker-ex-43",
+    "title": "Dropping All Linux Capabilities (--cap-drop=ALL) and Restoring NET_BIND_SERVICE",
+    "category": "Security, Hardening & Ops",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Hardens a container by dropping all default Linux kernel capabilities and adding back only the specific capability required to bind low ports (< 1024), stripping file ownership modification and raw socket access.",
+    "conceptsCovered": [
+      "--cap-drop=ALL",
+      "--cap-add=NET_BIND_SERVICE",
+      "Principle of Least Privilege (PoLP)",
+      "Linux capabilities inspection (capsh)",
+      "Privilege escalation mitigation"
+    ],
+    "code": "#!/usr/bin/env bash\n# Run web server stripping ALL kernel capabilities except the ability to bind port 80:\ndocker run -d \\\n  --name minimal-cap-nginx \\\n  --cap-drop=ALL \\\n  --cap-add=NET_BIND_SERVICE \\\n  -p 80:80 \\\n  nginx:alpine\n\n# Verify capabilities inside the container using getpcaps or capsh\nCONTAINER_PID=$(docker inspect --format '{{.State.Pid}}' minimal-cap-nginx)\necho \"=== Effective Capabilities of PID $CONTAINER_PID ===\"\ngrep Cap /proc/${CONTAINER_PID}/status\n\n# Verify privilege restriction (Attempting chown fails even as root!):\ndocker exec minimal-cap-nginx chown 1000 /etc/hosts || echo \"PASS: Capability CAP_CHOWN is absent!\"",
+    "breakdown": [
+      {
+        "lineRange": "3-8",
+        "note": "--cap-drop=ALL revokes 14 default root capabilities including CHOWN, FOWNER, KILL, MKNOD, and NET_RAW."
+      },
+      {
+        "lineRange": "5",
+        "note": "--cap-add=NET_BIND_SERVICE is the single capability granted so the process can listen on port 80."
+      },
+      {
+        "lineRange": "15-16",
+        "note": "Even with root UID 0, attempts to change file ownership fail because the kernel capability is missing."
+      }
+    ],
+    "expectedOutput": "=== Effective Capabilities of PID 14902 ===\nCapInh: 0000000000000000\nCapPrm: 0000000000000400 (NET_BIND_SERVICE only)\nCapEff: 0000000000000400\nchown: changing ownership of '/etc/hosts': Operation not permitted\nPASS: Capability CAP_CHOWN is absent!"
+  },
+  {
+    "id": "docker-ex-44",
+    "title": "Enforcing a Custom Seccomp JSON Profile Blocking Risky System Calls",
+    "category": "Security, Hardening & Ops",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Applies a custom Seccomp (Secure Computing Mode) profile to block dangerous system calls (such as ptrace, reboot, and keyctl) from reaching the host Linux kernel.",
+    "conceptsCovered": [
+      "--security-opt seccomp=profile.json",
+      "Seccomp default actions (SCMP_ACT_ERRNO)",
+      "Syscall filtering",
+      "Blocking ptrace and kernel exploits",
+      "Kernel protection"
+    ],
+    "code": "# Create a tightened seccomp profile blocking ptrace and sys_chroot\ncat << 'EOF' > hardened-seccomp.json\n{\n  \"defaultAction\": \"SCMP_ACT_ALLOW\",\n  \"architectures\": [\"SCMP_ARCH_X86_64\", \"SCMP_ARCH_AARCH64\"],\n  \"syscalls\": [\n    {\n      \"names\": [\"ptrace\", \"sys_chroot\", \"personality\", \"reboot\"],\n      \"action\": \"SCMP_ACT_ERRNO\"\n    }\n  ]\n}\nEOF\n\n# Launch container with the custom Seccomp profile\ndocker run --rm -it \\\n  --security-opt seccomp=hardened-seccomp.json \\\n  alpine:3.20 \\\n  sh -c \"strace ls 2>&1 || echo 'Seccomp blocked ptrace successfully!'\"",
+    "breakdown": [
+      {
+        "lineRange": "2-12",
+        "note": "Defines Seccomp profile: allows general calls but returns errno (EPERM) whenever ptrace or reboot is invoked."
+      },
+      {
+        "lineRange": "15-19",
+        "note": "Launches Alpine with the profile; strace (which relies on ptrace) is blocked immediately by the kernel."
+      }
+    ],
+    "expectedOutput": "strace: ptrace(PTRACE_TRACEME, ...): Operation not permitted\nSeccomp blocked ptrace successfully!\nZero kernel debug tampering allowed."
+  },
+  {
+    "id": "docker-ex-45",
+    "title": "Enforcing Hard Memory, CPU Quotas, and Swap Limits via Cgroups",
+    "category": "Security, Hardening & Ops",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Restricts container resource consumption using precise cgroup quotas (--memory, --memory-swap, --cpus, and --oom-kill-disable=false) to prevent single containers from degrading host stability.",
+    "conceptsCovered": [
+      "--memory and --memory-swap",
+      "--cpus CFS bandwidth quota",
+      "OOM killer behavior",
+      "Inspecting /sys/fs/cgroup",
+      "Preventing noisy neighbor problems"
+    ],
+    "code": "#!/usr/bin/env bash\n# Launch container with 512MB RAM, no swap, and 1.5 CPU cores\ndocker run -d \\\n  --name resource-capped-worker \\\n  --memory=\"512m\" \\\n  --memory-swap=\"512m\" \\\n  --cpus=\"1.5\" \\\n  --cpu-shares=\"512\" \\\n  alpine:3.20 sleep 3600\n\n# Inspect cgroup memory limit from inside container\necho \"=== Memory Limit (bytes) ===\"\ndocker exec resource-capped-worker cat /sys/fs/cgroup/memory.max 2>/dev/null || \\\ndocker exec resource-capped-worker cat /sys/fs/cgroup/memory/memory.limit_in_bytes\n\n# Test OOM reaction by exceeding 512MB:\ndocker run --rm --memory=\"128m\" --memory-swap=\"128m\" \\\n  polinux/stress stress --vm 1 --vm-bytes 200M --timeout 5s || echo \"Process OOMKilled with exit code 137!\"",
+    "breakdown": [
+      {
+        "lineRange": "3-9",
+        "note": "--memory-swap equal to --memory prevents the container from swapping out to host disk, preventing disk thrashing."
+      },
+      {
+        "lineRange": "12-14",
+        "note": "Reads cgroups directly: 536870912 bytes represents exactly 512MB."
+      },
+      {
+        "lineRange": "16-18",
+        "note": "Stress test forces memory allocation above 128M; the kernel terminates the container with SIGKILL (Exit code 137)."
+      }
+    ],
+    "expectedOutput": "=== Memory Limit (bytes) ===\n536870912\nstress: info: [1] dispatching hogs: 0 cpu, 0 io, 1 vm, 0 fd\nProcess OOMKilled with exit code 137!"
+  },
+  {
+    "id": "docker-ex-46",
+    "title": "Automated Container Vulnerability Scanning in CI/CD with Trivy",
+    "category": "Security, Hardening & Ops",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Integrates Aquasec Trivy into the build pipeline to scan Docker images for OS and application vulnerabilities, automatically breaking the build if CRITICAL CVEs with available fixes are discovered.",
+    "conceptsCovered": [
+      "Trivy CLI container scanner",
+      "--severity HIGH,CRITICAL",
+      "--exit-code 1 build breaking",
+      "--ignore-unfixed filter",
+      "Automated CI vulnerability gating"
+    ],
+    "code": "#!/usr/bin/env bash\n# 1. Build local container image\ndocker build -t app-to-scan:latest .\n\n# 2. Run Trivy vulnerability scan against the local Docker daemon image\ndocker run --rm \\\n  -v /var/run/docker.sock:/var/run/docker.sock:ro \\\n  -v /tmp/trivy-cache:/root/.cache/ \\\n  aquasec/trivy:latest image \\\n  --severity CRITICAL,HIGH \\\n  --ignore-unfixed \\\n  --exit-code 1 \\\n  --format table \\\n  app-to-scan:latest\n\n# If Trivy finds any actionable HIGH/CRITICAL CVEs, script halts with exit code 1!",
+    "breakdown": [
+      {
+        "lineRange": "6-14",
+        "note": "Trivy connects to docker.sock to read images locally, caching vulnerability databases in /tmp/trivy-cache."
+      },
+      {
+        "lineRange": "10-12",
+        "note": "--ignore-unfixed ignores CVEs that developers cannot fix anyway; --exit-code 1 fails CI when real fixes exist."
+      }
+    ],
+    "expectedOutput": "app-to-scan:latest (alpine 3.18.2)\nTotal: 2 (HIGH: 2, CRITICAL: 0)\n┌───────────────┬────────────────┬──────────┬────────┬───────────────────┐\n│    Library    │ Vulnerability  │ Severity │ Status │ Installed Version │\n├───────────────┼────────────────┼──────────┼────────┼───────────────────┤\n│ libcrypto3    │ CVE-2023-3817  │ HIGH     │ fixed  │ 3.1.1-r0          │\n│ libssl3       │ CVE-2023-3817  │ HIGH     │ fixed  │ 3.1.1-r0          │\n└───────────────┴────────────────┴──────────┴────────┴───────────────────┘\nError: 2 actionable vulnerabilities detected. Build terminated!"
+  },
+  {
+    "id": "docker-ex-47",
+    "title": "Generating Software Bill of Materials (SBOM) and Signing Images with Cosign",
+    "category": "Security, Hardening & Ops",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Generates an SPDX Software Bill of Materials using Docker Scout/Syft, signs the container image using Sigstore Cosign with a cryptographic keypair, and verifies the signature.",
+    "conceptsCovered": [
+      "Software Bill of Materials (SBOM)",
+      "Sigstore Cosign key generation & signing",
+      "cosign sign & cosign verify",
+      "Software supply chain integrity",
+      "SLSA compliance"
+    ],
+    "code": "#!/usr/bin/env bash\nset -euo pipefail\n\nIMAGE=\"registry.company.internal/security/api:v1.0\"\n\n# 1. Generate SBOM in SPDX JSON format\ndocker sbom --format spdx-json --output sbom.spdx.json \"$IMAGE\"\n\n# 2. Generate Cosign cryptographic keypair (if not present)\n# cosign generate-key-pair\n\n# 3. Sign the remote container image digest\nexport COSIGN_PASSWORD=\"prod-signing-password\"\ncosign sign --key cosign.key \"$IMAGE\"\n\n# 4. Attach the SBOM as an attestation\ncosign attest --key cosign.key --predicate sbom.spdx.json --type spdx \"$IMAGE\"\n\n# 5. Verify image signature before deployment:\ncosign verify --key cosign.pub \"$IMAGE\"",
+    "breakdown": [
+      {
+        "lineRange": "6-7",
+        "note": "Generates a standardized SPDX SBOM cataloging every installed package, binary, and library."
+      },
+      {
+        "lineRange": "13-17",
+        "note": "Signs image hash with ECDSA private key and attaches SBOM directly to the OCI registry."
+      },
+      {
+        "lineRange": "19-20",
+        "note": "cosign verify ensures the image has not been tampered with or modified since signing."
+      }
+    ],
+    "expectedOutput": "Verification for registry.company.internal/security/api:v1.0 --\nThe following checks were performed on each of these signatures:\n  - The cosign claims were validated\n  - The signatures were successfully verified against the public key\n[{\"critical\":{\"identity\":{\"docker-reference\":\"...\"},\"type\":\"cosign\"}}]"
+  },
+  {
+    "id": "docker-ex-48",
+    "title": "Non-Blocking JSON-File Logging with Automatic File Rotation and Max Size Limits",
+    "category": "Security, Hardening & Ops",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Configures Docker's json-file logging driver with mode: non-blocking, max-size, and max-file parameters to prevent high-velocity logging from filling disks or halting container threads.",
+    "conceptsCovered": [
+      "log-driver: json-file",
+      "max-size and max-file rotation",
+      "mode: non-blocking with ring-buffer",
+      "/etc/docker/daemon.json log configuration",
+      "Preventing stdout disk exhaustion"
+    ],
+    "code": "# Configure globally in /etc/docker/daemon.json:\n# {\n#   \"log-driver\": \"json-file\",\n#   \"log-opts\": {\n#     \"max-size\": \"50m\",\n#     \"max-file\": \"5\",\n#     \"mode\": \"non-blocking\",\n#     \"max-buffer-size\": \"4m\"\n#   }\n# }\n\n# Or pass explicitly per-container:\ndocker run -d \\\n  --name high-load-api \\\n  --log-driver json-file \\\n  --log-opt max-size=20m \\\n  --log-opt max-file=3 \\\n  --log-opt mode=non-blocking \\\n  --log-opt max-buffer-size=2m \\\n  my-api:latest\n\n# Check container log file path and active size\nCONTAINER_ID=$(docker inspect --format '{{.Id}}' high-load-api)\nsudo ls -lh /var/lib/docker/containers/${CONTAINER_ID}/${CONTAINER_ID}-json.log*",
+    "breakdown": [
+      {
+        "lineRange": "13-18",
+        "note": "max-size=20m and max-file=3 restricts disk usage to a hard maximum of 60MB total logs per container."
+      },
+      {
+        "lineRange": "17",
+        "note": "mode=non-blocking ensures that if disk I/O bottlenecks, application stdout won't lock up or block worker threads."
+      }
+    ],
+    "expectedOutput": "-rw-r----- 1 root root 19.8M Nov  4 10:50 ...-json.log\n-rw-r----- 1 root root 20.0M Nov  4 10:48 ...-json.log.1\n-rw-r----- 1 root root 20.0M Nov  4 10:46 ...-json.log.2\nTotal log disk footprint bounded strictly at 60MB!"
+  },
+  {
+    "id": "docker-ex-49",
+    "title": "Building Multi-Architecture Images (amd64 / arm64) using Docker Buildx and QEMU",
+    "category": "Security, Hardening & Ops",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Sets up QEMU CPU emulators and a dedicated Buildx builder instance to simultaneously compile and push native Linux amd64 (x86_64) and arm64 (Apple Silicon / AWS Graviton) images in a single build command.",
+    "conceptsCovered": [
+      "docker buildx create --use",
+      "tonistiigi/binfmt QEMU registration",
+      "--platform linux/amd64,linux/arm64",
+      "OCI Manifest List generation",
+      "Cross-platform compilation"
+    ],
+    "code": "#!/usr/bin/env bash\nset -euo pipefail\n\n# 1. Register QEMU emulation binfmt handlers in the host kernel\ndocker run --privileged --rm tonistiigi/binfmt --install all\n\n# 2. Create and initialize a new Buildx builder instance\ndocker buildx create --name enterprise-builder --driver docker-container --use\ndocker buildx inspect --bootstrap\n\n# 3. Build and push multi-architecture image manifest list\ndocker buildx build \\\n  --platform linux/amd64,linux/arm64 \\\n  -t my-registry.internal/app:v2.5 \\\n  --push \\\n  .\n\n# 4. Verify OCI manifest contains both target architectures:\ndocker buildx imagetools inspect my-registry.internal/app:v2.5",
+    "breakdown": [
+      {
+        "lineRange": "4-5",
+        "note": "Registers Linux kernel binfmt_misc handlers to transparently execute foreign ARM/RISC instructions via QEMU."
+      },
+      {
+        "lineRange": "7-9",
+        "note": "Creates container-backed Buildx worker capable of parallel cross-compilation."
+      },
+      {
+        "lineRange": "12-16",
+        "note": "Builds both architectures in parallel and pushes a unified manifest list under a single tag."
+      }
+    ],
+    "expectedOutput": "Name:      my-registry.internal/app:v2.5\nMediaType: application/vnd.oci.image.index.v1+json\nManifests:\n  Platform: linux/amd64\n    Digest: sha256:7b91c04f...\n  Platform: linux/arm64\n    Digest: sha256:1a84f32e..."
+  },
+  {
+    "id": "docker-ex-50",
+    "title": "Diagnosing Memory Leaks and CPU Throttling via docker stats and cgroups",
+    "category": "Security, Hardening & Ops",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Monitors live CPU throttling statistics (nr_throttled, throttled_usec) and memory cgroup page cache vs RSS breakdown to pinpoint microservice performance degradation.",
+    "conceptsCovered": [
+      "docker stats formatting",
+      "/sys/fs/cgroup/cpu.stat analysis",
+      "CFS quota throttling detection",
+      "Memory RSS vs Cache distinction",
+      "Performance triage"
+    ],
+    "code": "#!/usr/bin/env bash\n# 1. Stream formatted live stats across running containers\ndocker stats --format \"table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}\"\n\n# 2. Inspect CPU throttling counters inside cgroups (Linux host)\nCONTAINER_NAME=\"production-api\"\nCONTAINER_PID=$(docker inspect --format '{{.State.Pid}}' \"$CONTAINER_NAME\")\n\necho \"=== CPU Throttling Statistics ===\"\n# Cgroups v2\nif [ -f \"/sys/fs/cgroup/system.slice/docker-${CONTAINER_NAME}.scope/cpu.stat\" ]; then\n  cat \"/sys/fs/cgroup/system.slice/docker-${CONTAINER_NAME}.scope/cpu.stat\"\nelse\n  # Cgroups v1\n  cat \"/sys/fs/cgroup/cpu/docker/${CONTAINER_NAME}/cpu.stat\" 2>/dev/null || \\\n  docker exec \"$CONTAINER_NAME\" cat /sys/fs/cgroup/cpu.stat\nfi",
+    "breakdown": [
+      {
+        "lineRange": "2-3",
+        "note": "docker stats displays real-time CPU percentages, memory limits, and socket/disk throughput."
+      },
+      {
+        "lineRange": "10-17",
+        "note": "Checks cpu.stat: high nr_throttled indicates the container is being choked by its CFS quota."
+      }
+    ],
+    "expectedOutput": "NAME             CPU %     MEM USAGE / LIMIT     NET I/O           BLOCK I/O\nproduction-api   99.4%     412MiB / 512MiB       1.2MB / 4.8MB     12MB / 0B\n\n=== CPU Throttling Statistics ===\nusage_usec 48192019\nnr_periods 1204\nnr_throttled 612 (50.8% of execution periods throttled!)\nthrottled_usec 24192080"
+  },
+  {
+    "id": "docker-ex-51",
+    "title": "Secure Remote Docker Daemon Management via Mutual TLS (mTLS) Certificates",
+    "category": "Security, Hardening & Ops",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Secures the Docker daemon TCP socket (port 2376) using mutual TLS x509 certificates (CA, server cert, client cert) to permit remote CLI orchestration while preventing unauthorized access.",
+    "conceptsCovered": [
+      "Docker mTLS configuration",
+      "--tlsverify, --tlscacert, --tlscert, --tlskey",
+      "Securing TCP 2376",
+      "DOCKER_HOST and DOCKER_TLS_VERIFY environment vars",
+      "Preventing unauthenticated root API access"
+    ],
+    "code": "# Configure /etc/docker/daemon.json on the remote server:\n# {\n#   \"hosts\": [\"tcp://0.0.0.0:2376\", \"unix:///var/run/docker.sock\"],\n#   \"tls\": true,\n#   \"tlsverify\": true,\n#   \"tlscacert\": \"/etc/docker/certs/ca.pem\",\n#   \"tlscert\": \"/etc/docker/certs/server-cert.pem\",\n#   \"tlskey\": \"/etc/docker/certs/server-key.pem\"\n# }\n\n# From developer client workstation:\nexport DOCKER_HOST=\"tcp://remote-docker-host.company.internal:2376\"\nexport DOCKER_TLS_VERIFY=1\nexport DOCKER_CERT_PATH=\"~/.docker/client-certs\"\n\n# Remote daemon invocation over encrypted authenticated TLS tunnel:\ndocker version\ndocker ps",
+    "breakdown": [
+      {
+        "lineRange": "1-9",
+        "note": "Configures remote daemon to reject unencrypted or unauthenticated requests on TCP port 2376."
+      },
+      {
+        "lineRange": "12-14",
+        "note": "Client workstation sets DOCKER_HOST and DOCKER_CERT_PATH containing client-cert.pem and client-key.pem."
+      },
+      {
+        "lineRange": "16-18",
+        "note": "CLI communicates securely across WAN/VPC with mutual cryptographic verification."
+      }
+    ],
+    "expectedOutput": "Client: Docker Engine\n Version:           26.1.1\nServer: Docker Engine - Community\n Engine:\n  Version:          26.1.1\n  API version:      1.45 (mTLS Handshake Verified)"
+  },
+  {
+    "id": "docker-ex-52",
+    "title": "Automated Host Disk Hygiene Script Pruning Dangling Images, Builders, and Volumes",
+    "category": "Security, Hardening & Ops",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "An automated cron-compatible bash maintenance script that safely monitors /var/lib/docker disk utilization, triggering staged prune procedures when disk capacity exceeds 85%.",
+    "conceptsCovered": [
+      "Disk threshold monitoring (df -h)",
+      "Automated docker builder prune",
+      "docker image prune --all --filter",
+      "System maintenance runbook",
+      "Preventing node disk starvation"
+    ],
+    "code": "#!/usr/bin/env bash\nset -euo pipefail\n\nTHRESHOLD=85\nCURRENT_USAGE=$(df -P /var/lib/docker | awk 'NR==2 {gsub(\"%\",\"\"); print $5}')\n\necho \"Checking Docker disk space: Current utilization is ${CURRENT_USAGE}% (Threshold: ${THRESHOLD}%)\"\n\nif [ \"$CURRENT_USAGE\" -gt \"$THRESHOLD\" ]; then\n    echo \"Warning: Disk threshold exceeded! Initiating staged cleanup...\"\n    \n    # Stage 1: Prune dangling build caches older than 7 days\n    docker builder prune -f --filter \"until=168h\"\n    \n    # Stage 2: Prune stopped containers older than 24 hours\n    docker container prune -f --filter \"until=24h\"\n    \n    # Stage 3: Prune unreferenced dangling images\n    docker image prune -f\n    \n    NEW_USAGE=$(df -P /var/lib/docker | awk 'NR==2 {gsub(\"%\",\"\"); print $5}')\n    echo \"Hygiene run complete. Disk usage dropped from ${CURRENT_USAGE}% to ${NEW_USAGE}%.\"\nelse\n    echo \"Disk usage is within acceptable limits. No prune required.\"\nfi",
+    "breakdown": [
+      {
+        "lineRange": "4-7",
+        "note": "Extracts disk utilization percentage of the Docker data partition."
+      },
+      {
+        "lineRange": "12-19",
+        "note": "Executes a staged cleanup: first drops old BuildKit caches, then stopped containers, then dangling images."
+      },
+      {
+        "lineRange": "21-22",
+        "note": "Calculates reclaimed capacity and logs the result for monitoring."
+      }
+    ],
+    "expectedOutput": "Checking Docker disk space: Current utilization is 89% (Threshold: 85%)\nWarning: Disk threshold exceeded! Initiating staged cleanup...\nTotal reclaimed build cache space: 14.8GB\nTotal reclaimed dangling images: 8.2GB\nHygiene run complete. Disk usage dropped from 89% to 62%."
+  }
+]

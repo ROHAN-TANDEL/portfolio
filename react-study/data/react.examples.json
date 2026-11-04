@@ -1,0 +1,1096 @@
+[
+  {
+    "id": "react-ex-01",
+    "title": "Accessible Modal Dialog with Portal, Focus Trap & Escape Key Handler",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Renders an accessible modal dialog outside parent DOM overflow using createPortal, managing body scroll locking, keyboard focus trapping, and Esc key dismissal.",
+    "conceptsCovered": [
+      "ReactDOM.createPortal",
+      "Keyboard Accessibility (Esc key)",
+      "Body Scroll Locking",
+      "Event Bubbling Across Portals",
+      "Focus Management"
+    ],
+    "code": "import { useEffect, useRef } from 'react';\nimport { createPortal } from 'react-dom';\n\nexport function AccessibleModal({ isOpen, onClose, title, children }) {\n  const modalRef = useRef(null);\n\n  // 1. Handle Escape key and body scroll locking\n  useEffect(() => {\n    if (!isOpen) return;\n\n    const handleKeyDown = (e) => {\n      if (e.key === 'Escape') onClose();\n    };\n\n    // Lock background scrolling\n    const originalOverflow = document.body.style.overflow;\n    document.body.style.overflow = 'hidden';\n    window.addEventListener('keydown', handleKeyDown);\n\n    // Focus modal dialog container on mount\n    modalRef.current?.focus();\n\n    return () => {\n      document.body.style.overflow = originalOverflow;\n      window.removeEventListener('keydown', handleKeyDown);\n    };\n  }, [isOpen, onClose]);\n\n  if (!isOpen) return null;\n\n  // 2. Render into document.body to escape parent CSS stacking contexts\n  return createPortal(\n    <div \n      className=\"modal-backdrop\" \n      onClick={onClose}\n      aria-hidden=\"true\"\n    >\n      <div \n        ref={modalRef}\n        role=\"dialog\"\n        aria-modal=\"true\"\n        aria-labelledby=\"modal-title\"\n        tabIndex={-1}\n        className=\"modal-dialog\"\n        onClick={(e) => e.stopPropagation()} // Prevent closing when clicking content\n      >\n        <header className=\"modal-header\">\n          <h2 id=\"modal-title\">{title}</h2>\n          <button onClick={onClose} aria-label=\"Close dialog\">×</button>\n        </header>\n        <div className=\"modal-body\">{children}</div>\n      </div>\n    </div>,\n    document.body\n  );\n}",
+    "breakdown": [
+      "createPortal renders the dialog as a direct child of document.body, escaping parent overflow:hidden clipping.",
+      "Locks document.body.style.overflow to prevent background wheel scrolling while the modal is open.",
+      "Listens to keydown on window to support standard accessible Escape key dismissal.",
+      "e.stopPropagation() on modal-dialog prevents child clicks from bubbling to the backdrop close handler.",
+      "Cleans up event listeners and restores body overflow when unmounted or closed."
+    ],
+    "expectedOutput": "Modal opens rendered directly into document.body with background scroll locked and focus trapped."
+  },
+  {
+    "id": "react-ex-02",
+    "title": "Custom Imperative Media Player Controller with useImperativeHandle",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Encapsulates a native HTML5 video element inside a child component, exposing a restricted, safe imperative control API (play, pause, seek) to parent components.",
+    "conceptsCovered": [
+      "useImperativeHandle",
+      "forwardRef",
+      "Encapsulated Imperative API",
+      "HTML5 Video DOM Methods"
+    ],
+    "code": "import { forwardRef, useImperativeHandle, useRef, useState } from 'react';\n\n// Child component exposing strictly controlled methods\nexport const VideoPlayer = forwardRef(function VideoPlayer({ src }, ref) {\n  const videoRef = useRef(null);\n  const [isPlaying, setIsPlaying] = useState(false);\n\n  // Expose ONLY safe, deliberate methods to parent components\n  useImperativeHandle(ref, () => ({\n    play: () => {\n      videoRef.current?.play();\n      setIsPlaying(true);\n    },\n    pause: () => {\n      videoRef.current?.pause();\n      setIsPlaying(false);\n    },\n    restart: () => {\n      if (videoRef.current) {\n        videoRef.current.currentTime = 0;\n        videoRef.current.play();\n        setIsPlaying(true);\n      }\n    },\n    getCurrentTime: () => videoRef.current?.currentTime || 0\n  }), []);\n\n  return (\n    <div className=\"player-wrapper\">\n      <video \n        ref={videoRef} \n        src={src} \n        onEnded={() => setIsPlaying(false)}\n        className=\"video-element\"\n      />\n      <div className=\"status\">Status: {isPlaying ? 'Playing' : 'Paused'}</div>\n    </div>\n  );\n});\n\n// Parent component controlling player imperatively:\nexport function MediaDashboard() {\n  const playerRef = useRef(null);\n\n  return (\n    <div>\n      <VideoPlayer ref={playerRef} src=\"/demo-reel.mp4\" />\n      <div className=\"controls\">\n        <button onClick={() => playerRef.current?.play()}>Play</button>\n        <button onClick={() => playerRef.current?.pause()}>Pause</button>\n        <button onClick={() => playerRef.current?.restart()}>Restart</button>\n      </div>\n    </div>\n  );\n}",
+    "breakdown": [
+      "forwardRef allows the parent MediaDashboard to pass playerRef to the child VideoPlayer.",
+      "useImperativeHandle intercepts the ref and exposes only play, pause, restart, and getCurrentTime.",
+      "The parent cannot access raw video DOM attributes or tamper with internal video styling.",
+      "Maintains internal playback status state synchronized with HTML5 video event callbacks."
+    ],
+    "expectedOutput": "VideoPlayer controlled cleanly via playerRef.current.play() without exposing raw DOM node."
+  },
+  {
+    "id": "react-ex-03",
+    "title": "Precise DOM Element Geometry Measurement with useLayoutEffect",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Measures real DOM element dimensions synchronously before browser paint using useLayoutEffect to position an anchored popup tooltip without visual layout flicker.",
+    "conceptsCovered": [
+      "useLayoutEffect vs useEffect",
+      "DOM getBoundingClientRect()",
+      "Visual Flicker Elimination",
+      "Synchronous Style Calculation"
+    ],
+    "code": "import { useState, useLayoutEffect, useRef } from 'react';\n\nexport function AnchoredTooltip({ targetRect, content }) {\n  const tooltipRef = useRef(null);\n  const [coords, setCoords] = useState({ top: 0, left: 0 });\n\n  // useLayoutEffect runs SYNCHRONOUSLY after DOM insertion but BEFORE browser paint\n  useLayoutEffect(() => {\n    if (!tooltipRef.current) return;\n\n    const { width, height } = tooltipRef.current.getBoundingClientRect();\n\n    // Position tooltip centered directly above target element:\n    const calculatedTop = targetRect.top - height - 8;\n    const calculatedLeft = targetRect.left + (targetRect.width / 2) - (width / 2);\n\n    setCoords({\n      top: Math.max(8, calculatedTop), // Boundary guard against viewport top\n      left: Math.max(8, calculatedLeft)\n    });\n  }, [targetRect]);\n\n  return (\n    <div\n      ref={tooltipRef}\n      style={{\n        position: 'fixed',\n        top: `${coords.top}px`,\n        left: `${coords.left}px`,\n        pointerEvents: 'none'\n      }}\n      className=\"tooltip-bubble\"\n    >\n      {content}\n    </div>\n  );\n}",
+    "breakdown": [
+      "useLayoutEffect fires synchronously immediately after React mutates the DOM, but before the browser paints.",
+      "Measures exact pixel height and width of the tooltip via getBoundingClientRect().",
+      "Calculating position in useLayoutEffect guarantees the user never sees the tooltip flash at (0,0) before jumping.",
+      "Includes viewport bounds checking to prevent tooltips from clipping off-screen."
+    ],
+    "expectedOutput": "Tooltip appears immediately at the exact computed anchor coordinates with zero visual flicker."
+  },
+  {
+    "id": "react-ex-04",
+    "title": "Dynamic Form Resetting using the Component Key Prop",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Resets complex nested form component state cleanly by changing its key prop, unmounting the old instance and mounting a fresh instance without manual reset effects.",
+    "conceptsCovered": [
+      "State Reset via key Prop",
+      "Component Unmounting Lifecycle",
+      "Eliminating Fragile useEffect Resets",
+      "Clean Entity Editing"
+    ],
+    "code": "import { useState } from 'react';\n\n// Complex child form with internal drafts and validation state\nfunction CustomerEditor({ customerId, initialEmail, onSave }) {\n  const [email, setEmail] = useState(initialEmail);\n  const [notes, setNotes] = useState('');\n  const [dirty, setDirty] = useState(false);\n\n  const handleSubmit = (e) => {\n    e.preventDefault();\n    onSave({ customerId, email, notes });\n  };\n\n  return (\n    <form onSubmit={handleSubmit} className=\"editor-card\">\n      <h3>Editing Customer #{customerId}</h3>\n      <input \n        value={email} \n        onChange={(e) => { setEmail(e.target.value); setDirty(true); }} \n      />\n      <textarea \n        value={notes} \n        onChange={(e) => { setNotes(e.target.value); setDirty(true); }} \n        placeholder=\"Add call notes...\" \n      />\n      <button type=\"submit\" disabled={!dirty}>Save Record</button>\n    </form>\n  );\n}\n\n// Parent container switching between different customer records:\nexport function CustomerManager() {\n  const [activeCustomerId, setActiveCustomerId] = useState(101);\n\n  return (\n    <div>\n      <div className=\"tab-bar\">\n        <button onClick={() => setActiveCustomerId(101)}>Customer 101</button>\n        <button onClick={() => setActiveCustomerId(102)}>Customer 102</button>\n      </div>\n\n      {/* Passing key={activeCustomerId} forces React to mount a brand NEW */}\n      {/* component instance on tab switch, wiping draft state instantly! */}\n      <CustomerEditor \n        key={activeCustomerId}\n        customerId={activeCustomerId}\n        initialEmail={activeCustomerId === 101 ? 'alice@acme.com' : 'bob@work.org'}\n        onSave={(data) => console.log('Saved:', data)}\n      />\n    </div>\n  );\n}",
+    "breakdown": [
+      "When activeCustomerId switches from 101 to 102, React detects a new key on CustomerEditor.",
+      "The previous Fiber instance is destroyed, unmounting all old internal state (email, notes, dirty).",
+      "A brand new component instance is mounted with fresh initial state corresponding to customer 102.",
+      "Completely eliminates buggy useEffect syncing code where developers forget to clear drafts."
+    ],
+    "expectedOutput": "Switching tabs mounts clean form state instantly with 0 cross-contamination between customers."
+  },
+  {
+    "id": "react-ex-05",
+    "title": "Synthetic Event Delegation with Capture Phase Interception",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Intercepts user interaction events during the capture phase using onClickCapture to log audit telemetry or enforce global permissions before child handlers execute.",
+    "conceptsCovered": [
+      "Capture Phase vs Bubble Phase",
+      "onClickCapture Handler",
+      "Event Interception",
+      "SyntheticEvent Hierarchy"
+    ],
+    "code": "import { useState } from 'react';\n\nexport function PermissionBoundary({ userRole, children }) {\n  const [blockedAttempt, setBlockedAttempt] = useState(null);\n\n  // Capture phase listener: Fires BEFORE any child onClick handler!\n  const handleCaptureClick = (e) => {\n    const isWriteAction = e.target.closest('[data-permission=\"write\"]');\n\n    if (isWriteAction && userRole === 'VIEWER') {\n      // Intercept and stop event propagation before child handler ever fires!\n      e.stopPropagation();\n      e.preventDefault();\n      setBlockedAttempt('Permission denied: Viewer role cannot modify data.');\n    } else {\n      setBlockedAttempt(null);\n    }\n  };\n\n  return (\n    <div onClickCapture={handleCaptureClick} className=\"permission-guard\">\n      {blockedAttempt && <div className=\"alert-banner\">{blockedAttempt}</div>}\n      <div className=\"guarded-content\">{children}</div>\n    </div>\n  );\n}\n\n// Usage in UI:\nexport function ActionPanel({ role }) {\n  return (\n    <PermissionBoundary userRole={role}>\n      <button onClick={() => console.log('Viewing details')}>View (Allowed)</button>\n      {/* Child click handler will be blocked during capture if role is VIEWER! */}\n      <button \n        data-permission=\"write\" \n        onClick={() => console.log('DELETED RECORD!')}\n      >\n        Delete (Write Protected)\n      </button>\n    </PermissionBoundary>\n  );\n}",
+    "breakdown": [
+      "onClickCapture executes during the descending capture phase, prior to child element bubble listeners.",
+      "e.target.closest('[data-permission=\"write\"]') inspects whether the target element requires write permissions.",
+      "Calling e.stopPropagation() inside the capture handler prevents the event from reaching the child's onClick handler.",
+      "Provides centralized permission assertion across all nested interactive elements."
+    ],
+    "expectedOutput": "Viewer clicks on write-protected buttons are intercepted and blocked before executing action."
+  },
+  {
+    "id": "react-ex-06",
+    "title": "Auto-Resizing Textarea with DOM Refs and ScrollHeight",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Builds a smooth auto-expanding textarea component that dynamically grows and shrinks with user typing by measuring scrollHeight via a DOM ref.",
+    "conceptsCovered": [
+      "DOM Refs for Measurements",
+      "scrollHeight Adjustment",
+      "Controlled Input Styling",
+      "Layout Thrashing Avoidance"
+    ],
+    "code": "import { useRef, useEffect, useState } from 'react';\n\nexport function AutoResizeTextarea({ value, onChange, placeholder, minRows = 2, maxRows = 8 }) {\n  const textareaRef = useRef(null);\n\n  useEffect(() => {\n    const textarea = textareaRef.current;\n    if (!textarea) return;\n\n    // Reset height to auto first to calculate accurate scrollHeight on shrink\n    textarea.style.height = 'auto';\n\n    // Set new height based on content scrollHeight\n    const singleRowHeight = 24; // Approx height per line\n    const maxHeight = maxRows * singleRowHeight;\n    const computedHeight = Math.min(textarea.scrollHeight, maxHeight);\n\n    textarea.style.height = `${computedHeight}px`;\n    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';\n  }, [value, maxRows]);\n\n  return (\n    <textarea\n      ref={textareaRef}\n      value={value}\n      onChange={onChange}\n      placeholder={placeholder}\n      rows={minRows}\n      className=\"auto-expanding-input\"\n    />\n  );\n}",
+    "breakdown": [
+      "Attaches textareaRef to inspect the native DOM textarea node.",
+      "Resets textarea.style.height = 'auto' before measuring, allowing the field to shrink when text is deleted.",
+      "Calculates height matching textarea.scrollHeight bounded by maxRows.",
+      "Enables vertical scrollbar only if the content exceeds the maximum configured row height."
+    ],
+    "expectedOutput": "Textarea height expands smoothly as text wraps and contracts cleanly on backspace."
+  },
+  {
+    "id": "react-ex-07",
+    "title": "Copy to Clipboard Feedback Button with Timer Ref Cleanup",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Implements a copy-to-clipboard button with visual confirmation feedback, using a timer ref to clean up timeouts if the component unmounts mid-timer.",
+    "conceptsCovered": [
+      "navigator.clipboard API",
+      "Timer Refs Cleanup",
+      "Memory Leak Defense",
+      "Transient State Feedback"
+    ],
+    "code": "import { useState, useRef, useEffect } from 'react';\n\nexport function CopyButton({ textToCopy, label = 'Copy' }) {\n  const [copied, setCopied] = useState(false);\n  const timerRef = useRef(null);\n\n  const handleCopy = async () => {\n    try {\n      await navigator.clipboard.writeText(textToCopy);\n      setCopied(true);\n\n      // Clear existing timer if clicked repeatedly\n      if (timerRef.current) clearTimeout(timerRef.current);\n\n      // Revert copied state after 2 seconds\n      timerRef.current = setTimeout(() => {\n        setCopied(false);\n      }, 2000);\n    } catch (err) {\n      console.error('Failed to copy to clipboard', err);\n    }\n  };\n\n  // Crucial: Clean up timer on unmount to prevent setting state on unmounted component!\n  useEffect(() => {\n    return () => {\n      if (timerRef.current) clearTimeout(timerRef.current);\n    };\n  }, []);\n\n  return (\n    <button \n      onClick={handleCopy} \n      className={copied ? 'btn-copied' : 'btn-default'}\n      aria-live=\"polite\"\n    >\n      {copied ? '✓ Copied!' : label}\n    </button>\n  );\n}",
+    "breakdown": [
+      "Uses modern browser navigator.clipboard.writeText asynchronous API.",
+      "timerRef stores the active setTimeout handle across component re-renders.",
+      "Clears pending timer if user clicks multiple times in rapid succession.",
+      "useEffect cleanup guarantees clearTimeout fires on unmount, eliminating 'Can't perform state update on unmounted component' memory leaks."
+    ],
+    "expectedOutput": "Button copies text, changes label to '✓ Copied!', and safely reverts after 2000ms."
+  },
+  {
+    "id": "react-ex-08",
+    "title": "Drag and Drop File Upload Area with Drag Event Handlers",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Creates an interactive drag-and-drop file upload dropzone handling dragenter, dragleave, and drop events while managing file validation.",
+    "conceptsCovered": [
+      "HTML5 Drag and Drop API",
+      "dragOver / drop preventDefault",
+      "Drag Counter Pattern",
+      "File Validation"
+    ],
+    "code": "import { useState, useRef } from 'react';\n\nexport function FileDropzone({ onFilesSelected, accept = ['image/png', 'image/jpeg'] }) {\n  const [isDragging, setIsDragging] = useState(false);\n  const dragCounter = useRef(0); // Tracks nested child element drag entries\n\n  const handleDragEnter = (e) => {\n    e.preventDefault();\n    e.stopPropagation();\n    dragCounter.current++;\n    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {\n      setIsDragging(true);\n    }\n  };\n\n  const handleDragLeave = (e) => {\n    e.preventDefault();\n    e.stopPropagation();\n    dragCounter.current--;\n    if (dragCounter.current === 0) {\n      setIsDragging(false);\n    }\n  };\n\n  const handleDrop = (e) => {\n    e.preventDefault();\n    e.stopPropagation();\n    setIsDragging(false);\n    dragCounter.current = 0;\n\n    const files = Array.from(e.dataTransfer.files).filter(file => \n      accept.includes(file.type)\n    );\n    if (files.length > 0) {\n      onFilesSelected(files);\n    }\n  };\n\n  return (\n    <div\n      onDragEnter={handleDragEnter}\n      onDragLeave={handleDragLeave}\n      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}\n      onDrop={handleDrop}\n      className={`dropzone ${isDragging ? 'dropzone-active' : ''}`}\n    >\n      <p>{isDragging ? 'Drop files here!' : 'Drag & drop image files here'}</p>\n    </div>\n  );\n}",
+    "breakdown": [
+      "e.preventDefault() and e.stopPropagation() on onDragOver are mandatory to allow drop events in browsers.",
+      "dragCounter ref resolves the classic HTML5 drag bug where hovering over child elements triggers premature dragleave.",
+      "Filters uploaded files against the allowed MIME type array in e.dataTransfer.files.",
+      "Toggles visual styling smoothly via isDragging state."
+    ],
+    "expectedOutput": "Dropzone highlights when dragging files over container and extracts valid dropped files."
+  },
+  {
+    "id": "react-ex-09",
+    "title": "Infinite Scroll Trigger using Intersection Observer API",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Builds a high-performance infinite scroll sentinel trigger using the browser IntersectionObserver API attached via a callback ref.",
+    "conceptsCovered": [
+      "IntersectionObserver",
+      "Sentinel Element Pattern",
+      "Callback Ref Cleanup",
+      "Infinite Pagination"
+    ],
+    "code": "import { useRef, useCallback } from 'react';\n\nexport function InfiniteScrollList({ items, hasMore, isLoading, onLoadMore }) {\n  const observerRef = useRef(null);\n\n  // Callback ref: attaches observer to the sentinel DOM node as soon as it mounts\n  const sentinelRef = useCallback((node) => {\n    if (isLoading) return;\n    if (observerRef.current) observerRef.current.disconnect();\n\n    observerRef.current = new IntersectionObserver((entries) => {\n      // When sentinel scrolls into viewport and more pages exist:\n      if (entries[0].isIntersecting && hasMore) {\n        onLoadMore();\n      }\n    }, { rootMargin: '200px' }); // Trigger 200px before user hits bottom!\n\n    if (node) observerRef.current.observe(node);\n  }, [isLoading, hasMore, onLoadMore]);\n\n  return (\n    <div className=\"list-feed\">\n      {items.map(item => (\n        <div key={item.id} className=\"feed-card\">{item.title}</div>\n      ))}\n\n      {/* Sentinel element observed at the bottom of the feed */}\n      {hasMore && (\n        <div ref={sentinelRef} className=\"sentinel-loader\">\n          {isLoading ? 'Loading more posts...' : ''}\n        </div>\n      )}\n    </div>\n  );\n}",
+    "breakdown": [
+      "Uses a callback ref on the sentinel element to ensure the observer connects only when the DOM node exists.",
+      "rootMargin: '200px' starts loading the next page 200 pixels before the user reaches the bottom, creating a seamless feed.",
+      "Disconnects previous observer instance before creating a new one to prevent memory leaks.",
+      "Checks isLoading to prevent duplicate simultaneous fetch requests."
+    ],
+    "expectedOutput": "List automatically triggers onLoadMore when scrolling within 200px of sentinel element."
+  },
+  {
+    "id": "react-ex-10",
+    "title": "Outside Click Dismissal Container for Dropdown Menus",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Detects and handles mouse clicks occurring outside a target container element, dismissing dropdowns and flyout menus automatically.",
+    "conceptsCovered": [
+      "Outside Click Detection",
+      "Node.contains() DOM Method",
+      "mousedown vs click Timing",
+      "Event Listener Teardown"
+    ],
+    "code": "import { useEffect, useRef, useState } from 'react';\n\nexport function DropdownMenu({ triggerLabel, items, onSelect }) {\n  const [isOpen, setIsOpen] = useState(false);\n  const containerRef = useRef(null);\n\n  useEffect(() => {\n    if (!isOpen) return;\n\n    const handleOutsideClick = (event) => {\n      // Check if clicked element is NOT inside containerRef\n      if (containerRef.current && !containerRef.current.contains(event.target)) {\n        setIsOpen(false);\n      }\n    };\n\n    // Use mousedown instead of click to trigger before focus shifts\n    document.addEventListener('mousedown', handleOutsideClick);\n    return () => document.removeEventListener('mousedown', handleOutsideClick);\n  }, [isOpen]);\n\n  return (\n    <div ref={containerRef} className=\"dropdown-container\">\n      <button onClick={() => setIsOpen(!isOpen)}>{triggerLabel} ▼</button>\n      {isOpen && (\n        <ul className=\"dropdown-menu\">\n          {items.map(item => (\n            <li key={item.id} onClick={() => { onSelect(item); setIsOpen(false); }}>\n              {item.label}\n            </li>\n          ))}\n        </ul>\n      )}\n    </div>\n  );\n}",
+    "breakdown": [
+      "containerRef wraps the trigger button and the popup menu together.",
+      "containerRef.current.contains(event.target) checks if the clicked target belongs to the component tree.",
+      "If contains() returns false, the user clicked outside; setIsOpen(false) dismisses the menu.",
+      "Attaches listener to document on 'mousedown' and cleanly removes on unmount or close."
+    ],
+    "expectedOutput": "Dropdown closes automatically whenever user clicks anywhere outside the container."
+  },
+  {
+    "id": "react-ex-11",
+    "title": "Multi-Step Wizard with Preserved Unmounted Step Data",
+    "category": "Component Lifecycle & DOM Control",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs a multi-step checkout wizard that preserves data entered across unmounted steps while validating inputs before advancing.",
+    "conceptsCovered": [
+      "Wizard Step State Hoisting",
+      "Validation before Advancement",
+      "Unmounted Step Preservation",
+      "Conditional Step Rendering"
+    ],
+    "code": "import { useState } from 'react';\n\nexport function CheckoutWizard() {\n  const [currentStep, setCurrentStep] = useState(1);\n  const [formData, setFormData] = useState({\n    name: '',\n    address: '',\n    cardNumber: ''\n  });\n\n  const updateField = (field, value) => {\n    setFormData(prev => ({ ...prev, [field]: value }));\n  };\n\n  return (\n    <div className=\"wizard-card\">\n      <div className=\"step-indicator\">Step {currentStep} of 3</div>\n\n      {currentStep === 1 && (\n        <div className=\"step-pane\">\n          <h4>Account Details</h4>\n          <input \n            placeholder=\"Full Name\" \n            value={formData.name} \n            onChange={e => updateField('name', e.target.value)} \n          />\n          <button disabled={!formData.name} onClick={() => setCurrentStep(2)}>Next</button>\n        </div>\n      )}\n\n      {currentStep === 2 && (\n        <div className=\"step-pane\">\n          <h4>Shipping Address</h4>\n          <input \n            placeholder=\"Street Address\" \n            value={formData.address} \n            onChange={e => updateField('address', e.target.value)} \n          />\n          <button onClick={() => setCurrentStep(1)}>Back</button>\n          <button disabled={!formData.address} onClick={() => setCurrentStep(3)}>Next</button>\n        </div>\n      )}\n\n      {currentStep === 3 && (\n        <div className=\"step-pane\">\n          <h4>Review & Payment</h4>\n          <p>Name: {formData.name}</p>\n          <p>Address: {formData.address}</p>\n          <button onClick={() => setCurrentStep(2)}>Back</button>\n          <button onClick={() => alert('Order Placed!')}>Place Order</button>\n        </div>\n      )}\n    </div>\n  );\n}",
+    "breakdown": [
+      "State (formData) is hoisted to the wizard parent, keeping input values alive when steps unmount.",
+      "Current step is toggled via currentStep number state.",
+      "Back buttons let users revisit previous steps with their typed values perfectly intact.",
+      "Next buttons are disabled until required step fields satisfy validation criteria."
+    ],
+    "expectedOutput": "Users navigate back and forth through steps with zero loss of previously entered form data."
+  },
+  {
+    "id": "react-ex-12",
+    "title": "useDebounce Value Hook for High-Performance Search Input Filtering",
+    "category": "Advanced Custom Hooks",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Builds a production-grade useDebounce hook that delays updating a debounced value until typing pauses for a configured delay in milliseconds.",
+    "conceptsCovered": [
+      "Custom Hook Creation",
+      "Timer Cleanup on Dep Change",
+      "API Call Rate Limiting",
+      "Search Input Optimization"
+    ],
+    "code": "import { useState, useEffect } from 'react';\n\n// Custom Hook: Delays value update until 'delay' ms after last change\nexport function useDebounce(value, delay = 300) {\n  const [debouncedValue, setDebouncedValue] = useState(value);\n\n  useEffect(() => {\n    // Schedule timer to update debounced state\n    const timer = setTimeout(() => {\n      setDebouncedValue(value);\n    }, delay);\n\n    // Cancel timer if value changes before delay expires (user keeps typing!)\n    return () => clearTimeout(timer);\n  }, [value, delay]);\n\n  return debouncedValue;\n}\n\n// Usage in Live Search Component:\nexport function SearchInput({ onSearch }) {\n  const [query, setQuery] = useState('');\n  const debouncedQuery = useDebounce(query, 400);\n\n  useEffect(() => {\n    if (debouncedQuery.trim()) {\n      onSearch(debouncedQuery); // Fires only 400ms after user stops typing!\n    }\n  }, [debouncedQuery, onSearch]);\n\n  return (\n    <input \n      value={query} \n      onChange={e => setQuery(e.target.value)} \n      placeholder=\"Search catalog...\" \n    />\n  );\n}",
+    "breakdown": [
+      "useDebounce maintains internal debouncedValue state updated via setTimeout.",
+      "Returning clearTimeout(timer) in the effect cleanup cancels pending timers whenever value changes.",
+      "Reduces 10 keystrokes down to a single network search request.",
+      "Provides responsive local typing while protecting backend APIs from request floods."
+    ],
+    "expectedOutput": "debouncedQuery updates only after 400ms of inactivity, triggering a single search query."
+  },
+  {
+    "id": "react-ex-13",
+    "title": "useThrottle Callback Hook for Scroll & Resize Event Throttling",
+    "category": "Advanced Custom Hooks",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Throttles high-frequency function executions to run at most once per time interval, preserving browser framerate during scroll and window resize events.",
+    "conceptsCovered": [
+      "Event Throttling",
+      "useRef Timestamp Tracking",
+      "useCallback Identity Stability",
+      "Scroll Event Performance"
+    ],
+    "code": "import { useRef, useCallback } from 'react';\n\nexport function useThrottle(callback, limit = 100) {\n  const lastRunRef = useRef(0);\n  const timeoutRef = useRef(null);\n\n  return useCallback((...args) => {\n    const now = Date.now();\n\n    if (now - lastRunRef.current >= limit) {\n      lastRunRef.current = now;\n      callback(...args);\n    } else {\n      // Schedule trailing call if invoked during cooldown\n      if (timeoutRef.current) clearTimeout(timeoutRef.current);\n      timeoutRef.current = setTimeout(() => {\n        lastRunRef.current = Date.now();\n        callback(...args);\n      }, limit - (now - lastRunRef.current));\n    }\n  }, [callback, limit]);\n}\n\n// Usage in Scroll Tracker:\nexport function ScrollProgress() {\n  const handleScroll = useThrottle(() => {\n    const scrolled = (window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100;\n    console.log('Throttled scroll %:', scrolled.toFixed(1));\n  }, 100);\n\n  useEffect(() => {\n    window.addEventListener('scroll', handleScroll);\n    return () => window.removeEventListener('scroll', handleScroll);\n  }, [handleScroll]);\n\n  return <div className=\"scroll-bar\" />;\n}",
+    "breakdown": [
+      "lastRunRef stores the timestamp of the last executed call across renders without triggering re-renders.",
+      "If more than limit ms have elapsed, callback executes immediately.",
+      "Guarantees that high-frequency 60 FPS scroll events execute at most 10 times per second.",
+      "Includes a trailing edge timeout to guarantee the final scroll position is recorded."
+    ],
+    "expectedOutput": "Scroll callback fires at most once every 100ms, preserving 60 FPS UI responsiveness."
+  },
+  {
+    "id": "react-ex-14",
+    "title": "useLocalStorage with Multi-Tab Storage Event Synchronization",
+    "category": "Advanced Custom Hooks",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Persists state to browser localStorage with SSR safety, error handling for quota limits, and cross-tab synchronization using the native storage event.",
+    "conceptsCovered": [
+      "localStorage Sync",
+      "Window storage Event",
+      "SSR Lazy Initialization",
+      "QuotaExceededError Handling"
+    ],
+    "code": "import { useState, useEffect, useCallback } from 'react';\n\nexport function useLocalStorage(key, initialValue) {\n  // 1. Safe SSR initialization\n  const [storedValue, setStoredValue] = useState(() => {\n    if (typeof window === 'undefined') return initialValue;\n    try {\n      const item = window.localStorage.getItem(key);\n      return item ? JSON.parse(item) : initialValue;\n    } catch (error) {\n      console.warn(`Error reading localStorage key \"${key}\":`, error);\n      return initialValue;\n    }\n  });\n\n  // 2. Wrapped setter that writes to localStorage\n  const setValue = useCallback((value) => {\n    try {\n      setStoredValue(prev => {\n        const valueToStore = value instanceof Function ? value(prev) : value;\n        if (typeof window !== 'undefined') {\n          window.localStorage.setItem(key, JSON.stringify(valueToStore));\n        }\n        return valueToStore;\n      });\n    } catch (error) {\n      console.warn(`Error setting localStorage key \"${key}\":`, error);\n    }\n  }, [key]);\n\n  // 3. Listen for changes in OTHER browser tabs\n  useEffect(() => {\n    const handleStorageChange = (e) => {\n      if (e.key === key && e.newValue !== null) {\n        setStoredValue(JSON.parse(e.newValue));\n      }\n    };\n\n    window.addEventListener('storage', handleStorageChange);\n    return () => window.removeEventListener('storage', handleStorageChange);\n  }, [key]);\n\n  return [storedValue, setValue];\n}",
+    "breakdown": [
+      "Initializes state via lazy initializer with typeof window checks for Next.js / SSR compatibility.",
+      "Supports functional state updates: setValue(prev => prev + 1).",
+      "Listens to window.addEventListener('storage', ...) to synchronize state across multiple open tabs.",
+      "Wraps all reads and writes in try/catch to gracefully handle disabled cookies or quota limits."
+    ],
+    "expectedOutput": "Changes made in Tab A update localStorage and reflect instantaneously in Tab B without reload."
+  },
+  {
+    "id": "react-ex-15",
+    "title": "useMediaQuery Hook for Responsive JavaScript Design Breakpoints",
+    "category": "Advanced Custom Hooks",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Tracks CSS media query matches in JavaScript using window.matchMedia and the change event, enabling dynamic conditional rendering based on viewport size.",
+    "conceptsCovered": [
+      "window.matchMedia API",
+      "Responsive JS Breakpoints",
+      "MediaQueryList Listener",
+      "SSR Fallback Handling"
+    ],
+    "code": "import { useState, useEffect } from 'react';\n\nexport function useMediaQuery(query) {\n  const [matches, setMatches] = useState(() => {\n    if (typeof window === 'undefined') return false;\n    return window.matchMedia(query).matches;\n  });\n\n  useEffect(() => {\n    if (typeof window === 'undefined') return;\n\n    const mediaQueryList = window.matchMedia(query);\n    const listener = (event) => setMatches(event.matches);\n\n    // Initial check and modern addEventListener on media query list\n    setMatches(mediaQueryList.matches);\n    mediaQueryList.addEventListener('change', listener);\n\n    return () => mediaQueryList.removeEventListener('change', listener);\n  }, [query]);\n\n  return matches;\n}\n\n// Usage in responsive navigation layout:\nexport function ResponsiveNav() {\n  const isMobile = useMediaQuery('(max-width: 768px)');\n  const isDarkMode = useMediaQuery('(prefers-color-scheme: dark)');\n\n  return (\n    <nav className={isDarkMode ? 'dark-theme' : 'light-theme'}>\n      {isMobile ? <MobileDrawer /> : <DesktopNavbar />}\n    </nav>\n  );\n}",
+    "breakdown": [
+      "Uses modern window.matchMedia(query) and MediaQueryList 'change' event listener.",
+      "Returns a reactive boolean updating automatically when the user resizes browser windows.",
+      "Supports arbitrary media queries: screen widths, orientation, and prefers-color-scheme dark mode.",
+      "Cleans up listeners on unmount or query change."
+    ],
+    "expectedOutput": "isMobile switches between true and false as viewport passes the 768px threshold."
+  },
+  {
+    "id": "react-ex-16",
+    "title": "useFetch with AbortController, Retry Counter & Cache Map",
+    "category": "Advanced Custom Hooks",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A complete data-fetching hook supporting in-memory response caching, automatic request abortion on unmount, and a manual refetch retry mechanism.",
+    "conceptsCovered": [
+      "AbortController Integration",
+      "In-Memory Cache Map",
+      "Retry / Refetch Trigger",
+      "Async Lifecycle States"
+    ],
+    "code": "import { useState, useEffect, useRef, useCallback } from 'react';\n\n// Module-level in-memory cache\nconst cache = new Map();\n\nexport function useFetch(url, options = {}) {\n  const [data, setData] = useState(() => cache.get(url) || null);\n  const [error, setError] = useState(null);\n  const [isLoading, setIsLoading] = useState(!cache.has(url));\n  const [refetchIndex, setRefetchIndex] = useState(0);\n\n  const refetch = useCallback(() => {\n    cache.delete(url); // Invalidate cache for manual refresh\n    setRefetchIndex(i => i + 1);\n  }, [url]);\n\n  useEffect(() => {\n    if (!url) return;\n\n    const controller = new AbortController();\n\n    async function executeFetch() {\n      // Check cache first\n      if (cache.has(url)) {\n        setData(cache.get(url));\n        setIsLoading(false);\n        return;\n      }\n\n      setIsLoading(true);\n      setError(null);\n\n      try {\n        const response = await fetch(url, {\n          ...options,\n          signal: controller.signal\n        });\n\n        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);\n\n        const result = await response.json();\n        cache.set(url, result);\n        setData(result);\n      } catch (err) {\n        if (err.name !== 'AbortError') {\n          setError(err.message);\n        }\n      } finally {\n        setIsLoading(false);\n      }\n    }\n\n    executeFetch();\n\n    return () => controller.abort(); // Cancel request if URL changes or unmounts!\n  }, [url, refetchIndex]);\n\n  return { data, error, isLoading, refetch };\n}",
+    "breakdown": [
+      "Module-level Map provides instant cache hits across multiple components requesting identical URLs.",
+      "AbortController automatically aborts in-flight network requests when components unmount.",
+      "Filters out AbortError so cancellation isn't treated as an application error.",
+      "Exposes refetch() method that invalidates cache and triggers re-execution."
+    ],
+    "expectedOutput": "Fetches data asynchronously, caches result, and cancels stale requests on unmount."
+  },
+  {
+    "id": "react-ex-17",
+    "title": "usePrevious Hook Using Ref Stash for Value Delta Comparisons",
+    "category": "Advanced Custom Hooks",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Implements the classic usePrevious hook that tracks the value of a prop or state variable from the immediately preceding render pass.",
+    "conceptsCovered": [
+      "usePrevious Pattern",
+      "Ref Stash Execution Order",
+      "Render vs Effect Timing",
+      "Delta Change Detection"
+    ],
+    "code": "import { useRef, useEffect } from 'react';\n\n// Returns the value from the PREVIOUS render\nexport function usePrevious(value) {\n  const ref = useRef();\n\n  // useEffect runs AFTER the render is committed to DOM\n  useEffect(() => {\n    ref.current = value; // Stash current value for NEXT render\n  }, [value]);\n\n  // Return value held before this render's effect executed!\n  return ref.current;\n}\n\n// Usage in Price Tracker:\nexport function PriceTicker({ currentPrice }) {\n  const prevPrice = usePrevious(currentPrice);\n\n  const priceDelta = prevPrice !== undefined ? currentPrice - prevPrice : 0;\n  const isUp = priceDelta > 0;\n\n  return (\n    <div>\n      <h2>${currentPrice}</h2>\n      {prevPrice !== undefined && (\n        <span style={{ color: isUp ? 'green' : 'red' }}>\n          {isUp ? '▲' : '▼'} ${Math.abs(priceDelta).toFixed(2)} (Previous: ${prevPrice})\n        </span>\n      )}\n    </div>\n  );\n}",
+    "breakdown": [
+      "ref.current stores the value from the preceding render.",
+      "The component returns ref.current during render (which holds the old value).",
+      "useEffect runs AFTER paint, updating ref.current to the new value ready for the subsequent render.",
+      "Allows tracking deltas, previous routes, or previous focus elements without triggering extra re-renders."
+    ],
+    "expectedOutput": "Displays current price alongside calculated delta from the previous render value."
+  },
+  {
+    "id": "react-ex-18",
+    "title": "useInterval Hook with Dynamic Delay and Stable Callback Execution",
+    "category": "Advanced Custom Hooks",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Dan Abramov's canonical useInterval declarative hook that prevents stale closure bugs and supports dynamic delay updates or pausing.",
+    "conceptsCovered": [
+      "Declarative setInterval",
+      "Latest Ref Callback Pattern",
+      "Dynamic Timer Pausing",
+      "Stale Closure Elimination"
+    ],
+    "code": "import { useRef, useEffect } from 'react';\n\nexport function useInterval(callback, delay) {\n  const savedCallback = useRef(callback);\n\n  // Remember latest callback without resetting the timer\n  useEffect(() => {\n    savedCallback.current = callback;\n  }, [callback]);\n\n  // Set up the interval\n  useEffect(() => {\n    // If delay is null, timer is paused\n    if (delay === null || delay === undefined) return;\n\n    const tick = () => savedCallback.current();\n    const id = setInterval(tick, delay);\n\n    return () => clearInterval(id);\n  }, [delay]);\n}\n\n// Usage: Counter with dynamic speed & pause toggle\nexport function DynamicTimer() {\n  const [count, setCount] = useState(0);\n  const [delay, setDelay] = useState(1000);\n  const [isRunning, setIsRunning] = useState(true);\n\n  // Reads fresh 'count' without resetting the 1000ms timer!\n  useInterval(() => {\n    setCount(c => c + 1);\n  }, isRunning ? delay : null);\n\n  return (\n    <div>\n      <h1>Ticks: {count}</h1>\n      <button onClick={() => setIsRunning(!isRunning)}>{isRunning ? 'Pause' : 'Resume'}</button>\n      <button onClick={() => setDelay(200)}>Speed Up (200ms)</button>\n    </div>\n  );\n}",
+    "breakdown": [
+      "savedCallback ref mirrors the latest callback reference on every render.",
+      "The timer effect depends only on [delay], meaning changes to state inside callback do NOT reset the timer interval.",
+      "Passing delay = null cleanly pauses the timer by clearing the interval.",
+      "Completely eliminates the classic React setInterval stale closure bug."
+    ],
+    "expectedOutput": "Timer increments accurately and allows changing speed dynamically without losing interval alignment."
+  },
+  {
+    "id": "react-ex-19",
+    "title": "useOnClickOutside Hook for Reusable Modal & Menu Dismissal",
+    "category": "Advanced Custom Hooks",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Extracts outside click detection into a reusable hook that attaches mouse and touch listeners to dismiss flyout panels and popovers.",
+    "conceptsCovered": [
+      "Custom Hook Abstraction",
+      "Touch & Mouse Event Support",
+      "Ref Node Containment",
+      "Listener Hygiene"
+    ],
+    "code": "import { useEffect } from 'react';\n\nexport function useOnClickOutside(ref, handler) {\n  useEffect(() => {\n    const listener = (event) => {\n      // Do nothing if clicking ref's element or descendant elements\n      if (!ref.current || ref.current.contains(event.target)) {\n        return;\n      }\n      handler(event);\n    };\n\n    document.addEventListener('mousedown', listener);\n    document.addEventListener('touchstart', listener);\n\n    return () => {\n      document.removeEventListener('mousedown', listener);\n      document.removeEventListener('touchstart', listener);\n    };\n  }, [ref, handler]);\n}\n\n// Clean usage in Popover:\nexport function Popover({ onClose, children }) {\n  const popoverRef = useRef(null);\n  useOnClickOutside(popoverRef, onClose);\n\n  return <div ref={popoverRef} className=\"popover-box\">{children}</div>;\n}",
+    "breakdown": [
+      "Listens to both 'mousedown' and 'touchstart' to ensure compatibility with mobile devices.",
+      "Checks ref.current.contains(event.target) to confirm the click was outside.",
+      "Passes event to handler callback, allowing caller to inspect target or prevent default.",
+      "Encapsulates 20 lines of repetitive DOM event boilerplate into a 1-line hook call."
+    ],
+    "expectedOutput": "Invokes onClose callback whenever user clicks or taps outside the referenced popover."
+  },
+  {
+    "id": "react-ex-20",
+    "title": "useEventListener Hook with Automatic Window and Document Cleanup",
+    "category": "Advanced Custom Hooks",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A type-safe useEventListener hook supporting window, document, or specific element targets with automatic listener teardown.",
+    "conceptsCovered": [
+      "Universal Event Listener Hook",
+      "Target Node Flexibility",
+      "Latest Callback Mirroring",
+      "Passive Listener Options"
+    ],
+    "code": "import { useRef, useEffect } from 'react';\n\nexport function useEventListener(eventName, handler, element = null, options = {}) {\n  const savedHandler = useRef(handler);\n\n  useEffect(() => {\n    savedHandler.current = handler;\n  }, [handler]);\n\n  useEffect(() => {\n    // Default to window if element is not provided\n    const targetElement = element?.current || element || (typeof window !== 'undefined' ? window : null);\n    if (!targetElement?.addEventListener) return;\n\n    const eventListener = (event) => savedHandler.current(event);\n\n    targetElement.addEventListener(eventName, eventListener, options);\n    return () => targetElement.removeEventListener(eventName, eventListener, options);\n  }, [eventName, element, options]);\n}\n\n// Usage: Global Keyboard Shortcut\nexport function QuickSearchModal({ isOpen, onClose }) {\n  // Listen for Ctrl+K / Cmd+K anywhere on page\n  useEventListener('keydown', (e) => {\n    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {\n      e.preventDefault();\n      onClose(); // Toggle modal\n    }\n  });\n\n  return isOpen ? <div className=\"search-palette\">Palette...</div> : null;\n}",
+    "breakdown": [
+      "savedHandler ref ensures changing handler functions does not cause remove/re-add churn of event listeners.",
+      "Accepts window, document, or React ref object as the target element.",
+      "Supports passive event listener configuration options for smooth scrolling.",
+      "Simplifies global keyboard shortcut management."
+    ],
+    "expectedOutput": "Cmd+K or Ctrl+K triggers quick search toggle globally with zero memory leaks."
+  },
+  {
+    "id": "react-ex-21",
+    "title": "useNetworkStatus Hook with Online and Offline Browser Listeners",
+    "category": "Advanced Custom Hooks",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Tracks real-time device internet connectivity and warns users with an offline banner when network drops.",
+    "conceptsCovered": [
+      "navigator.onLine API",
+      "online / offline Window Events",
+      "SSR Fallback State",
+      "Network Reconnection Banners"
+    ],
+    "code": "import { useState, useEffect } from 'react';\n\nexport function useNetworkStatus() {\n  const [isOnline, setIsOnline] = useState(() => \n    typeof navigator !== 'undefined' ? navigator.onLine : true\n  );\n\n  useEffect(() => {\n    const handleOnline = () => setIsOnline(true);\n    const handleOffline = () => setIsOnline(false);\n\n    window.addEventListener('online', handleOnline);\n    window.addEventListener('offline', handleOffline);\n\n    return () => {\n      window.removeEventListener('online', handleOnline);\n      window.removeEventListener('offline', handleOffline);\n    };\n  }, []);\n\n  return isOnline;\n}\n\n// Usage in App:\nexport function OfflineNotification() {\n  const isOnline = useNetworkStatus();\n\n  if (isOnline) return null;\n\n  return (\n    <div className=\"offline-banner\" role=\"alert\">\n      ⚠️ You are currently offline. Changes will sync when connection returns.\n    </div>\n  );\n}",
+    "breakdown": [
+      "Initializes with navigator.onLine with safe SSR check.",
+      "Subscribes to native window 'online' and 'offline' browser events.",
+      "Returns a boolean flag that UI components can use for reconnection banners or disabling submit buttons.",
+      "Cleans up listeners automatically on component unmount."
+    ],
+    "expectedOutput": "Offline banner appears immediately when internet drops and vanishes when restored."
+  },
+  {
+    "id": "react-ex-22",
+    "title": "useWhyDidYouUpdate Diagnostic Hook for Component Render Profiling",
+    "category": "Advanced Custom Hooks",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A diagnostic hook that compares previous and current props, logging the exact keys and reference changes that caused a component to re-render in the console.",
+    "conceptsCovered": [
+      "Development Profiling Hook",
+      "Shallow Prop Diffing",
+      "Console Table Logging",
+      "Unnecessary Re-render Debugging"
+    ],
+    "code": "import { useRef, useEffect } from 'react';\n\nexport function useWhyDidYouUpdate(name, props) {\n  const previousProps = useRef();\n\n  useEffect(() => {\n    if (previousProps.current) {\n      // Gather all keys from previous and current props\n      const allKeys = Object.keys({ ...previousProps.current, ...props });\n      const changesObj = {};\n\n      allKeys.forEach((key) => {\n        if (previousProps.current[key] !== props[key]) {\n          changesObj[key] = {\n            from: previousProps.current[key],\n            to: props[key],\n            isEqualShallow: Object.is(previousProps.current[key], props[key])\n          };\n        }\n      });\n\n      if (Object.keys(changesObj).length > 0) {\n        console.group(`[WhyDidYouUpdate] ${name}`);\n        console.table(changesObj);\n        console.groupEnd();\n      }\n    }\n\n    previousProps.current = props;\n  });\n}\n\n// Usage inside an unexpectedly re-rendering component:\nexport function DataGrid(props) {\n  useWhyDidYouUpdate('DataGrid', props);\n  return <table>{/* grid rows */}</table>;\n}",
+    "breakdown": [
+      "previousProps ref stores the props object from the previous render.",
+      "Compares previousProps.current and current props key by key using reference inequality (!==).",
+      "Logs formatted console.table showing exactly which prop changed from what reference to what reference.",
+      "Instantly identifies unstable callbacks or inline object props breaking React.memo."
+    ],
+    "expectedOutput": "Console table prints: [WhyDidYouUpdate] DataGrid: onFilter changed from Function to Function."
+  },
+  {
+    "id": "react-ex-23",
+    "title": "Undo / Redo History State Machine with useReducer",
+    "category": "Complex State & Reducers",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements full time-travel undo and redo history tracking around an arbitrary state value using a pure reducer maintaining past, present, and future stacks.",
+    "conceptsCovered": [
+      "Time-Travel State",
+      "Past / Present / Future Stacks",
+      "Pure Reducer Invariants",
+      "useReducer History Management"
+    ],
+    "code": "import { useReducer, useCallback } from 'react';\n\n// History reducer managing past, present, and future stacks\nfunction historyReducer(state, action) {\n  const { past, present, future } = state;\n\n  switch (action.type) {\n    case 'UNDO': {\n      if (past.length === 0) return state;\n      const previous = past[past.length - 1];\n      const newPast = past.slice(0, past.length - 1);\n      return {\n        past: newPast,\n        present: previous,\n        future: [present, ...future]\n      };\n    }\n    case 'REDO': {\n      if (future.length === 0) return state;\n      const next = future[0];\n      const newFuture = future.slice(1);\n      return {\n        past: [...past, present],\n        present: next,\n        future: newFuture\n      };\n    }\n    case 'SET': {\n      const { newPresent } = action;\n      if (newPresent === present) return state;\n      return {\n        past: [...past, present],\n        present: newPresent,\n        future: [] // Clear redo history on new action\n      };\n    }\n    case 'RESET': {\n      return { past: [], present: action.initialPresent, future: [] };\n    }\n    default:\n      return state;\n  }\n}\n\n// Custom hook wrapping the history reducer:\nexport function useHistoryState(initialPresent) {\n  const [state, dispatch] = useReducer(historyReducer, {\n    past: [],\n    present: initialPresent,\n    future: []\n  });\n\n  const canUndo = state.past.length > 0;\n  const canRedo = state.future.length > 0;\n\n  const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);\n  const redo = useCallback(() => dispatch({ type: 'REDO' }), []);\n  const set = useCallback((newPresent) => dispatch({ type: 'SET', newPresent }), []);\n\n  return { state: state.present, set, undo, redo, canUndo, canRedo };\n}",
+    "breakdown": [
+      "past array holds previous snapshots; future array holds undone snapshots for redo.",
+      "Dispatching 'SET' clears future stack, establishing a new timeline branch.",
+      "canUndo and canRedo booleans easily control button disabled states.",
+      "Provides reliable undo/redo for canvas editors, text areas, or complex configuration builders."
+    ],
+    "expectedOutput": "Users can modify text, click Undo to revert to previous states, and click Redo to restore."
+  },
+  {
+    "id": "react-ex-24",
+    "title": "Normalized Entity Store with Normalized Insert, Update & Delete Actions",
+    "category": "Complex State & Reducers",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Maintains a relational, normalized entity store (byId and allIds) inside useReducer, achieving O(1) lookups and updates without deep nested object cloning.",
+    "conceptsCovered": [
+      "Relational State Normalization",
+      "byId Dictionary & allIds Array",
+      "O(1) Entity Operations",
+      "useReducer Entity Management"
+    ],
+    "code": "import { useReducer } from 'react';\n\nconst initialStore = {\n  byId: {},\n  allIds: []\n};\n\nfunction entityReducer(state, action) {\n  switch (action.type) {\n    case 'ADD_ENTITY': {\n      const { entity } = action;\n      if (state.byId[entity.id]) return state; // Avoid duplicate IDs\n      return {\n        byId: { ...state.byId, [entity.id]: entity },\n        allIds: [...state.allIds, entity.id]\n      };\n    }\n    case 'UPDATE_ENTITY': {\n      const { id, updates } = action;\n      if (!state.byId[id]) return state;\n      return {\n        ...state,\n        byId: {\n          ...state.byId,\n          [id]: { ...state.byId[id], ...updates }\n        }\n      };\n    }\n    case 'DELETE_ENTITY': {\n      const { id } = action;\n      const { [id]: deleted, ...remainingById } = state.byId;\n      return {\n        byId: remainingById,\n        allIds: state.allIds.filter(entityId => entityId !== id)\n      };\n    }\n    default:\n      return state;\n  }\n}\n\nexport function EntityManager() {\n  const [store, dispatch] = useReducer(entityReducer, initialStore);\n\n  const addCustomer = (name) => {\n    const id = `cust-${Date.now()}`;\n    dispatch({ type: 'ADD_ENTITY', entity: { id, name, tier: 'STANDARD' } });\n  };\n\n  const promoteCustomer = (id) => {\n    dispatch({ type: 'UPDATE_ENTITY', id, updates: { tier: 'VIP' } });\n  };\n\n  return (\n    <div>\n      <button onClick={() => addCustomer('Alice')}>Add Alice</button>\n      <ul>\n        {store.allIds.map(id => {\n          const entity = store.byId[id];\n          return (\n            <li key={id}>\n              {entity.name} ({entity.tier})\n              <button onClick={() => promoteCustomer(id)}>Promote</button>\n              <button onClick={() => dispatch({ type: 'DELETE_ENTITY', id })}>Delete</button>\n            </li>\n          );\n        })}\n      </ul>\n    </div>\n  );\n}",
+    "breakdown": [
+      "byId dictionary stores entities keyed by their unique ID, enabling O(1) lookups and updates.",
+      "allIds array maintains the explicit display order of entities.",
+      "Deleting an entity uses object destructuring (const { [id]: deleted, ...remainingById } = state.byId).",
+      "Eliminates slow array.map and array.find traversals across large datasets."
+    ],
+    "expectedOutput": "Entities are inserted, updated, and deleted with clean O(1) dictionary operations."
+  },
+  {
+    "id": "react-ex-25",
+    "title": "Async Multi-Step Wizard State Machine with Guaranteed Finite States",
+    "category": "Complex State & Reducers",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Models an asynchronous multi-step onboarding wizard as a Finite State Machine (FSM) inside useReducer to prevent impossible loading/error overlap states.",
+    "conceptsCovered": [
+      "Finite State Machine (FSM)",
+      "Discriminator Status Pattern",
+      "Impossible State Prevention",
+      "Deterministic Action Transitions"
+    ],
+    "code": "import { useReducer } from 'react';\n\nconst initialState = {\n  status: 'STEP_1_ACCOUNT',\n  accountInfo: null,\n  paymentInfo: null,\n  error: null\n};\n\nfunction wizardReducer(state, action) {\n  switch (state.status) {\n    case 'STEP_1_ACCOUNT':\n      if (action.type === 'SUBMIT_ACCOUNT') {\n        return {\n          ...state,\n          status: 'STEP_2_PAYMENT',\n          accountInfo: action.payload,\n          error: null\n        };\n      }\n      return state;\n\n    case 'STEP_2_PAYMENT':\n      if (action.type === 'BACK') {\n        return { ...state, status: 'STEP_1_ACCOUNT', error: null };\n      }\n      if (action.type === 'START_PROCESSING') {\n        return { ...state, status: 'PROCESSING', paymentInfo: action.payload, error: null };\n      }\n      return state;\n\n    case 'PROCESSING':\n      if (action.type === 'PAYMENT_SUCCESS') {\n        return { ...state, status: 'SUCCESS' };\n      }\n      if (action.type === 'PAYMENT_FAILED') {\n        return { ...state, status: 'STEP_2_PAYMENT', error: action.error };\n      }\n      return state;\n\n    case 'SUCCESS':\n      if (action.type === 'RESET') return initialState;\n      return state;\n\n    default:\n      return state;\n  }\n}\n\nexport function OnboardingWizard() {\n  const [state, dispatch] = useReducer(wizardReducer, initialState);\n\n  return (\n    <div className=\"wizard-shell\">\n      {state.status === 'STEP_1_ACCOUNT' && (\n        <div>\n          <h2>Step 1: Account</h2>\n          <button onClick={() => dispatch({ \n            type: 'SUBMIT_ACCOUNT', \n            payload: { email: 'dev@acme.com' } \n          })}>\n            Next to Payment\n          </button>\n        </div>\n      )}\n\n      {state.status === 'STEP_2_PAYMENT' && (\n        <div>\n          <h2>Step 2: Payment</h2>\n          {state.error && <p className=\"error\">{state.error}</p>}\n          <button onClick={() => dispatch({ type: 'BACK' })}>Back</button>\n          <button onClick={() => {\n            dispatch({ type: 'START_PROCESSING', payload: { card: '4242' } });\n            setTimeout(() => dispatch({ type: 'PAYMENT_SUCCESS' }), 1500);\n          }}>\n            Pay Now\n          </button>\n        </div>\n      )}\n\n      {state.status === 'PROCESSING' && <p>Processing transaction securely...</p>}\n      {state.status === 'SUCCESS' && <h2>🎉 Onboarding Complete!</h2>}\n    </div>\n  );\n}",
+    "breakdown": [
+      "status string acts as the FSM discriminator, completely eliminating impossible combinations like isProcessing && isSuccess.",
+      "Actions can only trigger valid transitions defined for the active state.",
+      "If payment fails, state returns to STEP_2_PAYMENT with the specific error populated.",
+      "Keeps complex multi-step async UI completely deterministic."
+    ],
+    "expectedOutput": "Wizard steps progress strictly through valid states (STEP_1 -> STEP_2 -> PROCESSING -> SUCCESS)."
+  },
+  {
+    "id": "react-ex-26",
+    "title": "Shopping Cart Reducer with Discounts, Taxes & Quantity Caps",
+    "category": "Complex State & Reducers",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A comprehensive e-commerce shopping cart reducer managing item additions, removals, stock quantity limits, discount promo codes, and sales tax calculation.",
+    "conceptsCovered": [
+      "Item Quantity Management",
+      "Coupon Code Validation",
+      "Derived Financial Math",
+      "Pure Reducer Invariants"
+    ],
+    "code": "import { useReducer } from 'react';\n\nconst initialCart = {\n  items: [], // [{ id, title, price, quantity, maxStock }]\n  discountCode: null,\n  discountPct: 0\n};\n\nfunction cartReducer(state, action) {\n  switch (action.type) {\n    case 'ADD_ITEM': {\n      const existing = state.items.find(i => i.id === action.item.id);\n      if (existing) {\n        // Enforce inventory stock cap\n        const newQty = Math.min(existing.quantity + 1, existing.maxStock);\n        return {\n          ...state,\n          items: state.items.map(i => i.id === action.item.id ? { ...i, quantity: newQty } : i)\n        };\n      }\n      return {\n        ...state,\n        items: [...state.items, { ...action.item, quantity: 1 }]\n      };\n    }\n    case 'UPDATE_QUANTITY': {\n      if (action.quantity <= 0) {\n        return { ...state, items: state.items.filter(i => i.id !== action.id) };\n      }\n      return {\n        ...state,\n        items: state.items.map(i => i.id === action.id ? { ...i, quantity: Math.min(action.quantity, i.maxStock) } : i)\n      };\n    }\n    case 'APPLY_DISCOUNT': {\n      if (action.code === 'SAVE20') {\n        return { ...state, discountCode: action.code, discountPct: 0.20 };\n      }\n      return state;\n    }\n    case 'CLEAR_CART':\n      return initialCart;\n    default:\n      return state;\n  }\n}\n\nexport function CartManager() {\n  const [cart, dispatch] = useReducer(cartReducer, initialCart);\n\n  // Synchronously compute derived financial totals during render:\n  const subtotal = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);\n  const discountAmount = subtotal * cart.discountPct;\n  const tax = (subtotal - discountAmount) * 0.08; // 8% tax\n  const grandTotal = subtotal - discountAmount + tax;\n\n  return (\n    <div className=\"cart-panel\">\n      <h3>Items in Cart ({cart.items.length})</h3>\n      {cart.items.map(i => (\n        <div key={i.id}>\n          {i.title} - ${i.price} x {i.quantity}\n          <button onClick={() => dispatch({ type: 'UPDATE_QUANTITY', id: i.id, quantity: i.quantity - 1 })}>-</button>\n          <button onClick={() => dispatch({ type: 'UPDATE_QUANTITY', id: i.id, quantity: i.quantity + 1 })}>+</button>\n        </div>\n      ))}\n      <div className=\"summary\">\n        <p>Subtotal: ${subtotal.toFixed(2)}</p>\n        {cart.discountPct > 0 && <p>Discount (20%): -${discountAmount.toFixed(2)}</p>}\n        <p>Tax: ${tax.toFixed(2)}</p>\n        <h4>Total: ${grandTotal.toFixed(2)}</h4>\n        <button onClick={() => dispatch({ type: 'APPLY_DISCOUNT', code: 'SAVE20' })}>Apply SAVE20</button>\n      </div>\n    </div>\n  );\n}",
+    "breakdown": [
+      "Manages additions, quantity increments/decrements, and removals in an immutable array.",
+      "Caps quantities to item.maxStock to prevent ordering out-of-stock inventory.",
+      "Computes subtotal, discount, and tax during render rather than storing redundant derived numbers in state.",
+      "Handles coupon validation cleanly via pure action dispatch."
+    ],
+    "expectedOutput": "Cart recalculates subtotal, discounts, and tax accurately with quantity caps enforced."
+  },
+  {
+    "id": "react-ex-27",
+    "title": "Context-Reducer Architecture with Context Splitting",
+    "category": "Complex State & Reducers",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Combines useReducer with React Context splitting (StateContext and DispatchContext) to provide scalable global state with zero unnecessary consumer re-renders.",
+    "conceptsCovered": [
+      "Context Splitting Pattern",
+      "useReducer + Context Integration",
+      "Stable Dispatch Provider",
+      "Consumer Re-render Elimination"
+    ],
+    "code": "import { createContext, useContext, useReducer } from 'react';\n\nconst TasksContext = createContext(null);\nconst TasksDispatchContext = createContext(null);\n\nfunction tasksReducer(tasks, action) {\n  switch (action.type) {\n    case 'ADD':\n      return [...tasks, { id: Date.now(), text: action.text, done: false }];\n    case 'TOGGLE':\n      return tasks.map(t => t.id === action.id ? { ...t, done: !t.done } : t);\n    default:\n      return tasks;\n  }\n}\n\nexport function TasksProvider({ children }) {\n  const [tasks, dispatch] = useReducer(tasksReducer, []);\n\n  return (\n    <TasksContext.Provider value={tasks}>\n      {/* Dispatch reference NEVER changes across renders! */}\n      <TasksDispatchContext.Provider value={dispatch}>\n        {children}\n      </TasksDispatchContext.Provider>\n    </TasksContext.Provider>\n  );\n}\n\n// Custom consumption hooks:\nexport function useTasks() {\n  return useContext(TasksContext);\n}\n\nexport function useTasksDispatch() {\n  return useContext(TasksDispatchContext);\n}\n\n// Button that ONLY dispatches actions: NEVER re-renders when tasks array changes!\nexport function AddTaskInput() {\n  const dispatch = useTasksDispatch();\n  return (\n    <button onClick={() => dispatch({ type: 'ADD', text: 'New Task' })}>\n      Add Task (Stable Component)\n    </button>\n  );\n}",
+    "breakdown": [
+      "TasksContext holds the dynamic tasks array; TasksDispatchContext holds the stable dispatch function.",
+      "Components that only dispatch actions (like AddTaskInput) consume TasksDispatchContext.",
+      "When tasks update, components consuming only dispatch skip re-rendering entirely (0ms render overhead).",
+      "The gold standard architecture for mid-sized React state management without third-party libraries."
+    ],
+    "expectedOutput": "Dispatchers stay reference-stable; state consumers re-render only when data array mutates."
+  },
+  {
+    "id": "react-ex-28",
+    "title": "Multi-Filter Data Table State with Sorting, Pagination & Reset",
+    "category": "Complex State & Reducers",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Coordinates complex tabular filtering, multi-column sort directions, page size, and pagination offset using a unified table state reducer.",
+    "conceptsCovered": [
+      "Table State Reducer",
+      "Multi-Column Sorting",
+      "Pagination Offset Tracking",
+      "Filter Reset Semantics"
+    ],
+    "code": "import { useReducer } from 'react';\n\nconst initialTableState = {\n  search: '',\n  roleFilter: 'ALL',\n  sortColumn: 'name',\n  sortDirection: 'asc', // 'asc' | 'desc'\n  page: 1,\n  pageSize: 10\n};\n\nfunction tableReducer(state, action) {\n  switch (action.type) {\n    case 'SET_SEARCH':\n      // Reset to page 1 whenever filters change!\n      return { ...state, search: action.search, page: 1 };\n    case 'SET_ROLE_FILTER':\n      return { ...state, roleFilter: action.role, page: 1 };\n    case 'TOGGLE_SORT':\n      return {\n        ...state,\n        sortColumn: action.column,\n        sortDirection: state.sortColumn === action.column && state.sortDirection === 'asc' ? 'desc' : 'asc'\n      };\n    case 'SET_PAGE':\n      return { ...state, page: action.page };\n    case 'RESET_ALL':\n      return initialTableState;\n    default:\n      return state;\n  }\n}\n\nexport function UserDataTable() {\n  const [tableState, dispatch] = useReducer(tableReducer, initialTableState);\n\n  return (\n    <div>\n      <input \n        value={tableState.search} \n        onChange={e => dispatch({ type: 'SET_SEARCH', search: e.target.value })} \n        placeholder=\"Filter users...\" \n      />\n      <select \n        value={tableState.roleFilter} \n        onChange={e => dispatch({ type: 'SET_ROLE_FILTER', role: e.target.value })}\n      >\n        <option value=\"ALL\">All Roles</option>\n        <option value=\"ADMIN\">Admin</option>\n        <option value=\"MEMBER\">Member</option>\n      </select>\n      <button onClick={() => dispatch({ type: 'TOGGLE_SORT', column: 'name' })}>\n        Sort Name ({tableState.sortColumn === 'name' ? tableState.sortDirection : 'none'})\n      </button>\n      <button onClick={() => dispatch({ type: 'RESET_ALL' })}>Reset Filters</button>\n    </div>\n  );\n}",
+    "breakdown": [
+      "Centralizes 6 interconnected table query parameters into a single reducer.",
+      "Changing search or filters automatically resets page back to 1, preventing empty page bugs.",
+      "Toggling column sort swaps asc and desc or switches target column cleanly.",
+      "RESET_ALL restores defaults in a single atomic action."
+    ],
+    "expectedOutput": "Table parameters stay synchronized; updating search resets pagination to page 1."
+  },
+  {
+    "id": "react-ex-29",
+    "title": "Complex Dynamic Nested Form Field Array Manager",
+    "category": "Complex State & Reducers",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Manages a dynamic list of nested form inputs (e.g. multiple phone numbers or team members) with add, remove, and field update capabilities.",
+    "conceptsCovered": [
+      "Field Array Management",
+      "Dynamic Row Generation",
+      "Nested Immutability",
+      "Array Key Stability"
+    ],
+    "code": "import { useReducer } from 'react';\n\nfunction formReducer(state, action) {\n  switch (action.type) {\n    case 'ADD_MEMBER':\n      return {\n        ...state,\n        members: [...state.members, { id: Date.now(), name: '', role: 'Developer' }]\n      };\n    case 'REMOVE_MEMBER':\n      return {\n        ...state,\n        members: state.members.filter(m => m.id !== action.id)\n      };\n    case 'UPDATE_MEMBER':\n      return {\n        ...state,\n        members: state.members.map(m => \n          m.id === action.id ? { ...m, [action.field]: action.value } : m\n        )\n      };\n    default:\n      return state;\n  }\n}\n\nexport function TeamEditor() {\n  const [form, dispatch] = useReducer(formReducer, {\n    members: [{ id: 1, name: 'Alice', role: 'Lead' }]\n  });\n\n  return (\n    <div>\n      <h3>Team Members</h3>\n      {form.members.map(member => (\n        <div key={member.id} className=\"member-row\">\n          <input\n            value={member.name}\n            onChange={e => dispatch({\n              type: 'UPDATE_MEMBER',\n              id: member.id,\n              field: 'name',\n              value: e.target.value\n            })}\n            placeholder=\"Member Name\"\n          />\n          <button \n            disabled={form.members.length === 1} \n            onClick={() => dispatch({ type: 'REMOVE_MEMBER', id: member.id })}\n          >\n            Remove\n          </button>\n        </div>\n      ))}\n      <button onClick={() => dispatch({ type: 'ADD_MEMBER' })}>+ Add Member</button>\n    </div>\n  );\n}",
+    "breakdown": [
+      "Manages dynamic collection rows using immutable array operations.",
+      "Each member item has a stable unique ID (Date.now()) ensuring input focus is preserved on deletions.",
+      "Disallows removing the last remaining row (disabled={form.members.length === 1}).",
+      "Field updates update only the matching row ID via array.map."
+    ],
+    "expectedOutput": "Users dynamically add and remove member rows without affecting existing input values."
+  },
+  {
+    "id": "react-ex-30",
+    "title": "Notification Toast Queue Dispatcher with Auto-Dismiss Timers",
+    "category": "Complex State & Reducers",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A centralized notification toast system maintaining a queue of active alerts with automatic timer dismissals and manual dismiss actions.",
+    "conceptsCovered": [
+      "Toast Notification Queue",
+      "Auto-Dismiss Timeout Handlers",
+      "Queue Insertion & Removal",
+      "Unique Notification IDs"
+    ],
+    "code": "import { useReducer, useEffect } from 'react';\n\nfunction toastReducer(toasts, action) {\n  switch (action.type) {\n    case 'ADD_TOAST':\n      return [...toasts, action.toast];\n    case 'REMOVE_TOAST':\n      return toasts.filter(t => t.id !== action.id);\n    default:\n      return toasts;\n  }\n}\n\nexport function ToastProvider({ children }) {\n  const [toasts, dispatch] = useReducer(toastReducer, []);\n\n  const showToast = (message, type = 'info', duration = 3000) => {\n    const id = `toast-${Date.now()}-${Math.random()}`;\n    dispatch({ type: 'ADD_TOAST', toast: { id, message, type } });\n\n    // Auto-dismiss after duration\n    setTimeout(() => {\n      dispatch({ type: 'REMOVE_TOAST', id });\n    }, duration);\n  };\n\n  return (\n    <div>\n      {children}\n      <div className=\"toast-container\">\n        {toasts.map(toast => (\n          <div key={toast.id} className={`toast toast-${toast.type}`}>\n            <span>{toast.message}</span>\n            <button onClick={() => dispatch({ type: 'REMOVE_TOAST', id: toast.id })}>×</button>\n          </div>\n        ))}\n      </div>\n    </div>\n  );\n}",
+    "breakdown": [
+      "toasts array holds current visible banners.",
+      "showToast generates unique ID and pushes to reducer.",
+      "setTimeout automatically enqueues REMOVE_TOAST after configured milliseconds.",
+      "Manual cross button allows immediate user dismissal before timer expires."
+    ],
+    "expectedOutput": "Toast notifications appear in a fixed floating container and disappear automatically after 3s."
+  },
+  {
+    "id": "react-ex-31",
+    "title": "Infinite Undo Canvas State with Action Compression",
+    "category": "Complex State & Reducers",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Optimizes drawing canvas history by compressing continuous mouse drag events into single discrete undo/redo steps.",
+    "conceptsCovered": [
+      "Action Coalescing / Compression",
+      "Drawing Canvas History",
+      "High-Frequency State Optimization",
+      "Undo Step Aggregation"
+    ],
+    "code": "import { useReducer } from 'react';\n\nfunction canvasReducer(state, action) {\n  switch (action.type) {\n    case 'START_STROKE':\n      // Begin new path: push previous canvas state to history\n      return {\n        ...state,\n        history: [...state.history, state.lines],\n        currentStroke: [action.point]\n      };\n    case 'APPEND_POINT':\n      // Coalesce continuous mousemove points into currentStroke without history bloat!\n      return {\n        ...state,\n        currentStroke: [...state.currentStroke, action.point]\n      };\n    case 'END_STROKE':\n      // Commit completed stroke as a single line\n      return {\n        ...state,\n        lines: [...state.lines, state.currentStroke],\n        currentStroke: []\n      };\n    case 'UNDO': {\n      if (state.history.length === 0) return state;\n      const previousLines = state.history[state.history.length - 1];\n      return {\n        ...state,\n        lines: previousLines,\n        history: state.history.slice(0, -1)\n      };\n    }\n    default:\n      return state;\n  }\n}",
+    "breakdown": [
+      "Instead of pushing 500 mousemove events into history, APPEND_POINT mutates only the temporary currentStroke.",
+      "START_STROKE preserves the previous snapshot once.",
+      "END_STROKE commits the entire line path as a single atomic drawing stroke.",
+      "Undo rolls back the entire pencil stroke at once rather than undoing 1 pixel per click."
+    ],
+    "expectedOutput": "Drawing on canvas records continuous strokes while single Undo click removes the full stroke."
+  },
+  {
+    "id": "react-ex-32",
+    "title": "Audio Playlist State Machine with Play, Pause, Next & Shuffle",
+    "category": "Complex State & Reducers",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A media playlist state machine orchestrating track indexing, playback state, loop modes, and Fisher-Yates array shuffling.",
+    "conceptsCovered": [
+      "Audio Playlist Engine",
+      "Array Shuffling Algorithm",
+      "Playback State Synchronization",
+      "Track Index Wrapping"
+    ],
+    "code": "import { useReducer } from 'react';\n\nconst initialPlaylistState = {\n  tracks: ['Song 1', 'Song 2', 'Song 3', 'Song 4'],\n  currentIndex: 0,\n  isPlaying: false,\n  isShuffled: false\n};\n\nfunction playlistReducer(state, action) {\n  switch (action.type) {\n    case 'TOGGLE_PLAY':\n      return { ...state, isPlaying: !state.isPlaying };\n    case 'NEXT_TRACK': {\n      const nextIndex = (state.currentIndex + 1) % state.tracks.length;\n      return { ...state, currentIndex: nextIndex, isPlaying: true };\n    }\n    case 'PREV_TRACK': {\n      const prevIndex = (state.currentIndex - 1 + state.tracks.length) % state.tracks.length;\n      return { ...state, currentIndex: prevIndex, isPlaying: true };\n    }\n    case 'SHUFFLE': {\n      // Fisher-Yates array shuffle\n      const shuffled = [...state.tracks];\n      for (let i = shuffled.length - 1; i > 0; i--) {\n        const j = Math.floor(Math.random() * (i + 1));\n        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];\n      }\n      return { ...state, tracks: shuffled, currentIndex: 0, isShuffled: true };\n    }\n    default:\n      return state;\n  }\n}",
+    "breakdown": [
+      "Uses modulo arithmetic ((currentIndex + 1) % length) to wrap cleanly from the last track to the first.",
+      "PREV_TRACK safely handles negative offsets using (currentIndex - 1 + length) % length.",
+      "SHUFFLE executes immutable Fisher-Yates randomization on the tracks array.",
+      "Centralizes audio player controls into predictable, testable action transitions."
+    ],
+    "expectedOutput": "Player cycles through tracks seamlessly, looping back to start and supporting shuffle mode."
+  },
+  {
+    "id": "react-ex-33",
+    "title": "Non-Blocking Search Filter with useTransition and Pending Indicator",
+    "category": "React 18 & 19 Modern Patterns",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Uses React 18 useTransition to keep a search input responsive at 60 FPS while filtering a massive 10,000-item array in the background, displaying an inline loading spinner.",
+    "conceptsCovered": [
+      "useTransition Hook",
+      "startTransition Non-Urgent Updates",
+      "Urgent vs Transition Work",
+      "Responsive Input Typing"
+    ],
+    "code": "import { useState, useTransition } from 'react';\n\n// Generates 10,000 mock items\nconst allItems = Array.from({ length: 10000 }, (_, i) => `Enterprise Server Node #${i + 1}`);\n\nexport function NonBlockingSearch() {\n  const [searchTerm, setSearchTerm] = useState('');\n  const [filteredItems, setFilteredItems] = useState(allItems);\n  const [isPending, startTransition] = useTransition();\n\n  const handleSearchChange = (e) => {\n    const nextQuery = e.target.value;\n    \n    // 1. URGENT: Updates the input field immediately on screen\n    setSearchTerm(nextQuery);\n\n    // 2. NON-URGENT: Heavy array filtering runs in background transition!\n    startTransition(() => {\n      const results = allItems.filter(item => \n        item.toLowerCase().includes(nextQuery.toLowerCase())\n      );\n      setFilteredItems(results);\n    });\n  };\n\n  return (\n    <div className=\"search-box\">\n      <input \n        value={searchTerm} \n        onChange={handleSearchChange} \n        placeholder=\"Type to filter 10,000 items...\" \n      />\n      {isPending && <span className=\"spinner\">Filtering background results...</span>}\n\n      <div style={{ opacity: isPending ? 0.6 : 1 }}>\n        <p>Found: {filteredItems.length} records</p>\n        <ul>\n          {filteredItems.slice(0, 50).map(item => (\n            <li key={item}>{item}</li>\n          ))}\n        </ul>\n      </div>\n    </div>\n  );\n}",
+    "breakdown": [
+      "setSearchTerm updates immediately, ensuring zero typing lag or stutter on the input element.",
+      "startTransition tells React that filtering 10,000 items is interruptible background work.",
+      "If the user types a new character before the filter finishes, React discards stale work and restarts with the new query.",
+      "isPending provides clean visual feedback without replacing the list with a blank screen."
+    ],
+    "expectedOutput": "Typing is completely instantaneous and smooth; background list updates with subtle pending indicator."
+  },
+  {
+    "id": "react-ex-34",
+    "title": "Fast Typing in Heavy Data Grids with useDeferredValue",
+    "category": "React 18 & 19 Modern Patterns",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Defers slow re-renders of a child data grid using useDeferredValue when receiving values via props without direct setter access.",
+    "conceptsCovered": [
+      "useDeferredValue",
+      "React.memo Child Bailing",
+      "Stale Data Indicators",
+      "Props-Based Concurrency"
+    ],
+    "code": "import { useState, useDeferredValue, memo } from 'react';\n\n// Memoized heavy table component\nconst HeavyDataGrid = memo(function HeavyDataGrid({ filterQuery }) {\n  // Heavy computation simulation...\n  const startTime = performance.now();\n  while (performance.now() - startTime < 30) {\n    // Artificial 30ms render lag per frame\n  }\n\n  return (\n    <div className=\"grid\">\n      <p>Rendered with filter: \"{filterQuery}\"</p>\n    </div>\n  );\n});\n\nexport function Dashboard() {\n  const [query, setQuery] = useState('');\n  \n  // deferredQuery lags behind during fast typing\n  const deferredQuery = useDeferredValue(query);\n  const isStale = query !== deferredQuery;\n\n  return (\n    <div>\n      <input \n        value={query} \n        onChange={e => setQuery(e.target.value)} \n        placeholder=\"Filter heavy grid...\" \n      />\n      {/* Dim table when showing stale deferred data */}\n      <div style={{ opacity: isStale ? 0.5 : 1 }}>\n        <HeavyDataGrid filterQuery={deferredQuery} />\n      </div>\n    </div>\n  );\n}",
+    "breakdown": [
+      "query updates synchronously on every keystroke, keeping the input completely responsive.",
+      "deferredQuery retains the previous value on the urgent pass and catches up in a background transition pass.",
+      "HeavyDataGrid is wrapped in React.memo, allowing it to skip rendering on the urgent pass.",
+      "Comparing query !== deferredQuery exposes isStale for visual feedback."
+    ],
+    "expectedOutput": "User types at high speed without keystroke latency; heavy table catches up smoothly in background."
+  },
+  {
+    "id": "react-ex-35",
+    "title": "React 19 Form Submission Action with useActionState and Server Validation",
+    "category": "React 18 & 19 Modern Patterns",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A modern React 19 form using useActionState with an asynchronous action function, handling form validation errors and pending submit states.",
+    "conceptsCovered": [
+      "useActionState (React 19)",
+      "Async Form Actions",
+      "Server Validation Response",
+      "Native HTML form Integration"
+    ],
+    "code": "import { useActionState } from 'react';\n\n// Server Action / Async Action Handler\nasync function createPostAction(previousState, formData) {\n  const title = formData.get('title');\n  const body = formData.get('body');\n\n  // Validation\n  if (!title || title.length < 5) {\n    return { success: false, error: 'Title must be at least 5 characters long.' };\n  }\n\n  try {\n    // Simulate network delay\n    await new Promise(r => setTimeout(r, 1000));\n    return { success: true, message: `Post \"${title}\" published successfully!` };\n  } catch (err) {\n    return { success: false, error: 'Server error while publishing post.' };\n  }\n}\n\nexport function CreatePostForm() {\n  const [state, formAction, isPending] = useActionState(createPostAction, null);\n\n  return (\n    <form action={formAction} className=\"action-form\">\n      <h3>Create Article</h3>\n      <input name=\"title\" placeholder=\"Post title\" required />\n      <textarea name=\"body\" placeholder=\"Write article content...\" required />\n\n      <button type=\"submit\" disabled={isPending}>\n        {isPending ? 'Publishing...' : 'Publish Post'}\n      </button>\n\n      {state?.error && <div className=\"alert-error\">{state.error}</div>}\n      {state?.success && <div className=\"alert-success\">{state.message}</div>}\n    </form>\n  );\n}",
+    "breakdown": [
+      "useActionState binds the async createPostAction function to the form.",
+      "formAction is passed directly to <form action={formAction}>.",
+      "isPending automatically tracks when the async action is awaiting network promises.",
+      "state holds validation errors or success messages returned by the action function."
+    ],
+    "expectedOutput": "Form submits via React 19 Action; button disables automatically during in-flight network request."
+  },
+  {
+    "id": "react-ex-36",
+    "title": "Real-Time Chat Message Feed with useOptimistic Instant Echo",
+    "category": "React 18 & 19 Modern Patterns",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Demonstrates speculative UI rendering with React 19's useOptimistic hook, displaying sent chat messages instantly and rolling back on network failure.",
+    "conceptsCovered": [
+      "useOptimistic Hook",
+      "Speculative State Layer",
+      "Automatic Error Rollback",
+      "Chat Feed UX Optimization"
+    ],
+    "code": "import { useOptimistic, useRef } from 'react';\n\nexport function ChatFeed({ messages, onSendMessage }) {\n  const formRef = useRef(null);\n\n  // Maintain optimistic messages list derived from authoritative 'messages'\n  const [optimisticMessages, setOptimisticMessages] = useOptimistic(\n    messages,\n    (currentMessages, newText) => [\n      ...currentMessages,\n      { id: 'temp-' + Date.now(), text: newText, sending: true }\n    ]\n  );\n\n  const handleSubmit = async (formData) => {\n    const text = formData.get('message');\n    if (!text) return;\n\n    formRef.current?.reset(); // Clear input immediately\n\n    // 1. Instantly display message with sending: true\n    setOptimisticMessages(text);\n\n    // 2. Perform network mutation\n    await onSendMessage(text);\n    // React automatically discards optimistic layer and displays real server message!\n  };\n\n  return (\n    <div className=\"chat-window\">\n      <div className=\"messages-list\">\n        {optimisticMessages.map(msg => (\n          <div key={msg.id} className={`msg ${msg.sending ? 'msg-sending' : ''}`}>\n            <span>{msg.text}</span>\n            {msg.sending && <small className=\"sending-indicator\"> ⏳</small>}\n          </div>\n        ))}\n      </div>\n\n      <form ref={formRef} action={handleSubmit} className=\"chat-input-bar\">\n        <input name=\"message\" placeholder=\"Type a message...\" required />\n        <button type=\"submit\">Send</button>\n      </form>\n    </div>\n  );\n}",
+    "breakdown": [
+      "useOptimistic creates a speculative message branch attached to the current messages prop.",
+      "setOptimisticMessages(text) renders the new message in the DOM in <1ms before network request starts.",
+      "Once onSendMessage resolves or rejects, React drops the optimistic branch.",
+      "If the action fails and throws, the optimistic message automatically vanishes without writing manual rollback logic."
+    ],
+    "expectedOutput": "Chat message appears immediately on Send click with a subtle hourglass icon until server confirms."
+  },
+  {
+    "id": "react-ex-37",
+    "title": "Loading State Extraction inside Child Buttons with useFormStatus",
+    "category": "React 18 & 19 Modern Patterns",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Uses React DOM's useFormStatus hook to create a reusable submit button that reads parent form pending state without any prop drilling.",
+    "conceptsCovered": [
+      "useFormStatus Hook",
+      "Zero Prop Drilling",
+      "Parent Form Context",
+      "Reusable UI Submit Buttons"
+    ],
+    "code": "import { useFormStatus } from 'react-dom';\n\n// Reusable Button: Needs ZERO props passed from parent!\nexport function SubmitButton({ children = 'Save' }) {\n  // Reads pending state of whichever <form> it is placed inside!\n  const { pending, data, method } = useFormStatus();\n\n  return (\n    <button \n      type=\"submit\" \n      disabled={pending}\n      className={`submit-btn ${pending ? 'submitting' : ''}`}\n    >\n      {pending ? (\n        <>\n          <span className=\"spinner\" /> Saving...\n        </>\n      ) : (\n        children\n      )}\n    </button>\n  );\n}\n\n// Parent Form: Does NOT need to track or pass isSubmitting props!\nexport function SettingsForm({ saveSettingsAction }) {\n  return (\n    <form action={saveSettingsAction}>\n      <label>Username</label>\n      <input name=\"username\" defaultValue=\"alice\" />\n\n      {/* SubmitButton knows when form is submitting automatically! */}\n      <SubmitButton>Save Profile</SubmitButton>\n    </form>\n  );\n}",
+    "breakdown": [
+      "useFormStatus is imported from 'react-dom'.",
+      "Must be placed in a component rendered inside a <form> tag.",
+      "Extracts pending boolean directly from React's internal form context.",
+      "Eliminates the need for parent forms to pass isSubmitting or loading props down to buttons."
+    ],
+    "expectedOutput": "SubmitButton automatically disables and shows spinner whenever parent form action is running."
+  },
+  {
+    "id": "react-ex-38",
+    "title": "Unrolling Dynamic Data Promises in Render with the use() Hook",
+    "category": "React 18 & 19 Modern Patterns",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Unwraps asynchronous data promises directly inside component render functions using the React 19 use() hook combined with Suspense.",
+    "conceptsCovered": [
+      "React 19 use() Hook",
+      "Promise Unrolling",
+      "Suspense Data Boundaries",
+      "Async Component Patterns"
+    ],
+    "code": "import { use, Suspense } from 'react';\n\n// Child component unrolling promise with use()\nfunction UserGreeting({ userPromise }) {\n  // Unwraps promise directly in render! (Suspends until resolved)\n  const user = use(userPromise);\n\n  return (\n    <header>\n      <h2>Welcome back, {user.name}!</h2>\n      <p>Role: {user.role}</p>\n    </header>\n  );\n}\n\n// Parent component initiating fetch and passing promise:\nexport function DashboardPage() {\n  // Start promise outside render or pass from Server Component\n  const userPromise = fetch('/api/user/me').then(r => r.json());\n\n  return (\n    <div className=\"dashboard-shell\">\n      <Suspense fallback={<div>Loading user profile...</div>}>\n        <UserGreeting userPromise={userPromise} />\n      </Suspense>\n      <main>Dashboard content...</main>\n    </div>\n  );\n}",
+    "breakdown": [
+      "The use(promise) hook unrolls promises without requiring useEffect or useState.",
+      "If the promise is pending, the component suspends and the nearest Suspense fallback renders.",
+      "If the promise rejects, the nearest ErrorBoundary catches the error.",
+      "Unlike standard hooks, use() can be called inside loops and conditional if blocks."
+    ],
+    "expectedOutput": "Component suspends while promise is in flight and renders data synchronously once resolved."
+  },
+  {
+    "id": "react-ex-39",
+    "title": "Dynamic Document Head Meta and Canonical Tag Injection in React 19",
+    "category": "React 18 & 19 Modern Patterns",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Natively hoists document title, meta description, and canonical link tags to document head in React 19 without third-party libraries.",
+    "conceptsCovered": [
+      "Native Metadata Hoisting",
+      "head Injection in React 19",
+      "SEO Optimization",
+      "Eliminating react-helmet"
+    ],
+    "code": "export function ArticleDetail({ article }) {\n  return (\n    <article className=\"article-container\">\n      {/* React 19 automatically hoists these tags to document <head>! */}\n      <title>{article.title} - Modern Tech</title>\n      <meta name=\"description\" content={article.excerpt} />\n      <meta property=\"og:title\" content={article.title} />\n      <meta property=\"og:image\" content={article.heroImage} />\n      <link rel=\"canonical\" href={`https://example.com/blog/${article.slug}`} />\n\n      {/* Main component markup */}\n      <h1>{article.title}</h1>\n      <p className=\"meta\">By {article.author} • {article.readingTime} min read</p>\n      <div className=\"content\">{article.body}</div>\n    </article>\n  );\n}",
+    "breakdown": [
+      "React 19 intercepts <title>, <meta>, and <link> elements during rendering.",
+      "Automatically hoists them out of the body and inserts them into document <head>.",
+      "Handles deduplication and overrides previous meta tags natively.",
+      "Completely replaces external legacy libraries like react-helmet."
+    ],
+    "expectedOutput": "Browser tab displays article title and document <head> contains correct OpenGraph meta tags."
+  },
+  {
+    "id": "react-ex-40",
+    "title": "Asset Preloading with preload and preinit in react-dom",
+    "category": "React 18 & 19 Modern Patterns",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Uses React 19's native asset preloading functions (preload, preinit, prefetchDNS) to optimize web font, stylesheet, and external script loading.",
+    "conceptsCovered": [
+      "react-dom preload()",
+      "react-dom preinit()",
+      "Web Font Preloading",
+      "Largest Contentful Paint (LCP)"
+    ],
+    "code": "import { preload, preinit, prefetchDNS } from 'react-dom';\n\nexport function AppShell() {\n  // Pre-resolve external CDN DNS\n  prefetchDNS('https://cdn.example.com');\n\n  // Preload critical web font with high priority to prevent layout shifts\n  preload('https://cdn.example.com/fonts/inter.woff2', {\n    as: 'font',\n    type: 'font/woff2',\n    crossOrigin: 'anonymous'\n  });\n\n  // Preinit stylesheet: injects link and executes immediately\n  preinit('/styles/design-tokens.css', { as: 'style' });\n\n  return (\n    <div className=\"app-shell\">\n      <header>Application Header</header>\n      <main>Content rendered with preloaded font...</main>\n    </div>\n  );\n}",
+    "breakdown": [
+      "preload tells the browser to download a high-priority asset (like fonts or hero images) early.",
+      "preinit loads and applies styles or scripts immediately in document <head>.",
+      "prefetchDNS initiates early DNS handshakes for third-party asset domains.",
+      "Dramatically reduces FOIT (Flash of Invisible Text) and improves Core Web Vitals LCP score."
+    ],
+    "expectedOutput": "Browser immediately requests critical fonts and styles before component HTML finishes rendering."
+  },
+  {
+    "id": "react-ex-41",
+    "title": "Ref-as-a-Prop Direct Forwarding in React 19 (Zero forwardRef)",
+    "category": "React 18 & 19 Modern Patterns",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Demonstrates the React 19 simplification where ref is passed directly as a standard prop into function component arguments without forwardRef.",
+    "conceptsCovered": [
+      "Ref as Prop (React 19)",
+      "Deprecation of forwardRef",
+      "Direct Ref Passing",
+      "Clean Component Interfaces"
+    ],
+    "code": "import { useRef } from 'react';\n\n// In React 19: NO forwardRef wrapper required!\n// 'ref' is simply accepted as a standard function prop!\nfunction TextInput({ ref, label, placeholder, ...rest }) {\n  return (\n    <div className=\"input-group\">\n      <label>{label}</label>\n      <input ref={ref} placeholder={placeholder} {...rest} />\n    </div>\n  );\n}\n\n// Parent component passing ref naturally:\nexport function LoginForm() {\n  const emailInputRef = useRef(null);\n\n  const focusEmail = () => {\n    emailInputRef.current?.focus();\n  };\n\n  return (\n    <div>\n      <TextInput \n        ref={emailInputRef} \n        label=\"Email Address\" \n        placeholder=\"you@acme.com\" \n      />\n      <button onClick={focusEmail}>Focus Input</button>\n    </div>\n  );\n}",
+    "breakdown": [
+      "In React 19, ref is no longer an excluded reserved keyword intercepted by compiler gymnastics.",
+      "Function components receive ref directly in their props argument.",
+      "Eliminates forwardRef wrapper ceremony and simplifies TypeScript prop types.",
+      "Directly backward-compatible with older ref handling."
+    ],
+    "expectedOutput": "Parent component focuses child input directly through ref prop without forwardRef wrapper."
+  },
+  {
+    "id": "react-ex-42",
+    "title": "Synchronous Native DOM Flush with flushSync",
+    "category": "React 18 & 19 Modern Patterns",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Forces React to flush pending state updates synchronously to the DOM using flushSync to measure elements or scroll immediately after an update.",
+    "conceptsCovered": [
+      "flushSync Escape Hatch",
+      "Synchronous DOM Updates",
+      "Immediate Scroll Alignment",
+      "Automatic Batching De-opt"
+    ],
+    "code": "import { useState, useRef } from 'react';\nimport { flushSync } from 'react-dom';\n\nexport function ChatScroller() {\n  const [messages, setMessages] = useState(['Hello!']);\n  const listRef = useRef(null);\n\n  const handleAddMessage = () => {\n    const newMessage = `Message #${messages.length + 1}`;\n\n    // Normal setState would batch and update asynchronously AFTER this function exits.\n    // flushSync FORCES React to mutate the real DOM synchronously right now!\n    flushSync(() => {\n      setMessages(prev => [...prev, newMessage]);\n    });\n\n    // DOM is 100% updated on the very next line:\n    if (listRef.current) {\n      listRef.current.scrollTop = listRef.current.scrollHeight;\n    }\n  };\n\n  return (\n    <div>\n      <div ref={listRef} className=\"chat-scroll-pane\">\n        {messages.map((m, i) => (\n          <p key={i}>{m}</p>\n        ))}\n      </div>\n      <button onClick={handleAddMessage}>Send & Scroll</button>\n    </div>\n  );\n}",
+    "breakdown": [
+      "Normal setState schedules an update; reading DOM immediately afterward sees outdated DOM height.",
+      "flushSync forces React to reconcile and commit the DOM mutation synchronously.",
+      "Immediately following flushSync, listRef.current.scrollHeight includes the newly added message.",
+      "Enables instant scrolling to bottom without requiring a delayed useEffect tick."
+    ],
+    "expectedOutput": "Chat pane adds message and scrolls instantly to the bottom in the exact same event tick."
+  },
+  {
+    "id": "react-ex-43",
+    "title": "Windowed Virtual List with react-window for 100,000 Records",
+    "category": "Production Patterns & Performance",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Renders 100,000 items at 60 FPS by rendering only the visible viewport rows using react-window virtualization.",
+    "conceptsCovered": [
+      "Virtual DOM Windowing",
+      "react-window FixedSizeList",
+      "Memory Footprint Minimization",
+      "60 FPS Scroll Performance"
+    ],
+    "code": "import { FixedSizeList as List } from 'react-window';\n\n// 100,000 large records\nconst bigDataset = Array.from({ length: 100000 }, (_, index) => ({\n  id: index,\n  accountNumber: `ACC-${100000 + index}`,\n  balance: (Math.random() * 50000).toFixed(2),\n  status: index % 5 === 0 ? 'FLAGGED' : 'ACTIVE'\n}));\n\n// Row renderer receives index and calculated absolute positioning style\nconst Row = ({ index, style }) => {\n  const item = bigDataset[index];\n  return (\n    <div style={style} className={`table-row ${index % 2 === 0 ? 'even' : 'odd'}`}>\n      <span className=\"col-id\">#{item.id}</span>\n      <span className=\"col-acc\">{item.accountNumber}</span>\n      <span className=\"col-bal\">${item.balance}</span>\n      <span className={`status status-${item.status}`}>{item.status}</span>\n    </div>\n  );\n};\n\nexport function VirtualizedAccountTable() {\n  return (\n    <div className=\"table-container\">\n      <h3>Live Accounts (100,000 Rows)</h3>\n      {/* List renders only ~15 DOM nodes instead of 100,000! */}\n      <List\n        height={450}          // Height of viewport container\n        itemCount={bigDataset.length}\n        itemSize={40}         // Row height in pixels\n        width=\"100%\"\n        overscanCount={5}     // Pre-renders 5 rows above/below viewport\n      >\n        {Row}\n      </List>\n    </div>\n  );\n}",
+    "breakdown": [
+      "FixedSizeList calculates the visible scroll range based on container height (450px) and itemSize (40px).",
+      "Only ~15 physical <div> nodes are mounted in the browser DOM at any time.",
+      "The style prop passes absolute positioning (top: 400px), recycling DOM nodes as user scrolls.",
+      "overscanCount={5} pre-renders a small buffer above and below to eliminate whitespace flash on fast flick scrolling."
+    ],
+    "expectedOutput": "Users scroll through 100,000 records with buttery-smooth 60 FPS performance and <5MB DOM memory."
+  },
+  {
+    "id": "react-ex-44",
+    "title": "Route-Based Code Splitting with React.lazy and Error Boundary Fallback",
+    "category": "Production Patterns & Performance",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Splits large administrative routes into on-demand asynchronous chunks using React.lazy, Suspense, and a dedicated Error Boundary to catch network chunk loading failures.",
+    "conceptsCovered": [
+      "React.lazy Code Splitting",
+      "Chunk Load Failure Defense",
+      "Suspense Fallback UI",
+      "Dynamic Route Bundling"
+    ],
+    "code": "import { lazy, Suspense, Component } from 'react';\nimport { BrowserRouter, Routes, Route, Link } from 'react-router-dom';\n\n// Error Boundary specifically catching network chunk loading failures (e.g. user offline or new deploy)\nclass ChunkErrorBoundary extends Component {\n  state = { hasError: false };\n  static getDerivedStateFromError() { return { hasError: true }; }\n  render() {\n    if (this.state.hasError) {\n      return (\n        <div className=\"chunk-error\">\n          <p>Failed to load page. A new app version may be available.</p>\n          <button onClick={() => window.location.reload()}>Reload Page</button>\n        </div>\n      );\n    }\n    return this.props.children;\n  }\n}\n\n// Lazy-loaded route chunks\nconst AnalyticsDashboard = lazy(() => import('./routes/AnalyticsDashboard'));\nconst SystemSettings = lazy(() => import('./routes/SystemSettings'));\n\nexport function AppRouter() {\n  return (\n    <BrowserRouter>\n      <nav>\n        <Link to=\"/analytics\">Analytics</Link>\n        <Link to=\"/settings\">Settings</Link>\n      </nav>\n\n      <ChunkErrorBoundary>\n        <Suspense fallback={<div className=\"skeleton-loader\">Loading page module...</div>}>\n          <Routes>\n            <Route path=\"/analytics\" element={<AnalyticsDashboard />} />\n            <Route path=\"/settings\" element={<SystemSettings />} />\n          </Routes>\n        </Suspense>\n      </ChunkErrorBoundary>\n    </BrowserRouter>\n  );\n}",
+    "breakdown": [
+      "lazy(() => import(...)) instructs bundlers to emit separate JavaScript chunk files.",
+      "Browser downloads AnalyticsDashboard chunk ONLY when the user clicks the Analytics route link.",
+      "ChunkErrorBoundary catches network dropouts or 404s when a new deployment invalidates older chunk hashes.",
+      "Suspense displays a skeleton screen while the chunk downloads over the network."
+    ],
+    "expectedOutput": "Initial bundle excludes admin code; navigating to /analytics downloads chunk on demand."
+  },
+  {
+    "id": "react-ex-45",
+    "title": "Fine-Grained React.memo with Custom Equality Comparator",
+    "category": "Production Patterns & Performance",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Wraps a complex chart widget in React.memo with a custom comparator function, ignoring irrelevant parent prop changes and re-rendering only when core telemetry IDs change.",
+    "conceptsCovered": [
+      "React.memo Custom Comparator",
+      "Shallow Equality Override",
+      "Targeted Bailout Optimization",
+      "Expensive Render Prevention"
+    ],
+    "code": "import React, { memo } from 'react';\n\n// Custom comparison function:\n// Returns TRUE if nextProps are EQUIVALENT to prevProps (skip render!)\n// Returns FALSE if component MUST re-render.\nfunction areChartPropsEqual(prevProps, nextProps) {\n  // Compare only critical chart ID, timestamps, and series length:\n  const isSameId = prevProps.chartId === nextProps.chartId;\n  const isSameVersion = prevProps.dataVersion === nextProps.dataVersion;\n  const isSameTheme = prevProps.theme === nextProps.theme;\n\n  return isSameId && isSameVersion && isSameTheme;\n}\n\nexport const HeavyChart = memo(function HeavyChart({ chartId, dataVersion, theme, telemetryData }) {\n  console.log('HeavyChart evaluated and rendered!');\n  return (\n    <div className={`chart-box theme-${theme}`}>\n      <h4>Chart #{chartId} (v{dataVersion})</h4>\n      <svg width=\"400\" height=\"200\">{/* Heavy SVG calculations */}</svg>\n    </div>\n  );\n}, areChartPropsEqual);",
+    "breakdown": [
+      "Second argument to React.memo is areChartPropsEqual(prevProps, nextProps).",
+      "Note the inverse logic: returning true tells React to SKIP re-rendering; returning false forces re-rendering.",
+      "Ignores newly created inline callbacks or unstable parent container props.",
+      "Prevents heavy SVG canvas recalculations when unrelated parent state updates."
+    ],
+    "expectedOutput": "HeavyChart skips re-rendering when parent renders unless chartId, dataVersion, or theme changes."
+  },
+  {
+    "id": "react-ex-46",
+    "title": "Web Worker Offloading for Client-Side CSV / Excel Parsing",
+    "category": "Production Patterns & Performance",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Offloads the parsing of massive 50MB CSV files to a Web Worker background thread, keeping the React UI animated and responsive without dropped frames.",
+    "conceptsCovered": [
+      "Web Workers in React",
+      "Non-Blocking Main Thread",
+      "Worker Message Passing",
+      "Worker Termination Hygiene"
+    ],
+    "code": "import { useState, useRef, useEffect } from 'react';\n\n// Inline worker script (or separate worker.js file)\nconst workerCode = `\n  self.onmessage = function(e) {\n    const rawCSV = e.data;\n    const lines = rawCSV.split('\\n');\n    const result = [];\n    \n    // Simulate heavy CPU-bound parsing of 100,000 rows\n    for (let i = 0; i < lines.length; i++) {\n      if (lines[i].trim()) {\n        result.push(lines[i].split(','));\n      }\n    }\n    self.postMessage(result);\n  };\n`;\n\nexport function CSVParserComponent() {\n  const [parsedRows, setParsedRows] = useState([]);\n  const [isProcessing, setIsProcessing] = useState(false);\n  const workerRef = useRef(null);\n\n  useEffect(() => {\n    // Initialize Web Worker from blob URL\n    const blob = new Blob([workerCode], { type: 'application/javascript' });\n    workerRef.current = new Worker(URL.createObjectURL(blob));\n\n    workerRef.current.onmessage = (event) => {\n      setParsedRows(event.data);\n      setIsProcessing(false);\n    };\n\n    return () => workerRef.current?.terminate(); // Clean up thread!\n  }, []);\n\n  const handleFileUpload = (e) => {\n    const file = e.target.files[0];\n    if (!file) return;\n\n    setIsProcessing(true);\n    const reader = new FileReader();\n    reader.onload = (event) => {\n      // Offload massive text string to background worker thread!\n      workerRef.current.postMessage(event.target.result);\n    };\n    reader.readAsText(file);\n  };\n\n  return (\n    <div>\n      <input type=\"file\" accept=\".csv\" onChange={handleFileUpload} />\n      {isProcessing && <div className=\"spinner\">Processing CSV in background OS thread...</div>}\n      <p>Parsed Rows: {parsedRows.length}</p>\n    </div>\n  );\n}",
+    "breakdown": [
+      "Instantiates a dedicated Web Worker running on an independent background operating system thread.",
+      "Offloads heavy CSV parsing out of JavaScript's single main thread.",
+      "The React UI maintains smooth CSS animations and button responsiveness even while parsing 500,000 lines.",
+      "Cleans up and terminates the worker on unmount via worker.terminate()."
+    ],
+    "expectedOutput": "50MB CSV parses in background; React UI remains completely fluid with 0 frame drops."
+  },
+  {
+    "id": "react-ex-47",
+    "title": "Context Provider Value Stabilization with useMemo",
+    "category": "Production Patterns & Performance",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Stops widespread consumer re-renders by memoizing the Context Provider's value object and callbacks using useMemo and useCallback.",
+    "conceptsCovered": [
+      "Context Provider Memoization",
+      "Object Reference Equality",
+      "Consumer Re-render Elimination",
+      "useMemo Context Value Pattern"
+    ],
+    "code": "import { createContext, useContext, useState, useMemo, useCallback } from 'react';\n\nconst UserContext = createContext(null);\n\nexport function UserProvider({ children }) {\n  const [user, setUser] = useState({ name: 'Alice', role: 'Admin' });\n  const [theme, setTheme] = useState('dark');\n\n  const updateUserRole = useCallback((newRole) => {\n    setUser(prev => ({ ...prev, role: newRole }));\n  }, []);\n\n  // CRUCIAL: Stabilize provider value object!\n  // If not memoized, EVERY render of UserProvider creates a brand new { user, updateUserRole }\n  // forcing EVERY consumer to re-render, even if only 'theme' state updated!\n  const contextValue = useMemo(() => ({\n    user,\n    updateUserRole\n  }), [user, updateUserRole]);\n\n  return (\n    <UserContext.Provider value={contextValue}>\n      {children}\n    </UserContext.Provider>\n  );\n}",
+    "breakdown": [
+      "Without useMemo, <Provider value={{ user, updateUserRole }}> instantiates a new object literal on every render.",
+      "Consumers of UserContext compare previous value to next value using Object.is.",
+      "useMemo guarantees that if user hasn't changed, the contextValue object keeps the identical memory address.",
+      "When sibling state (like theme) updates, UserContext consumers skip re-rendering entirely."
+    ],
+    "expectedOutput": "Context consumers only re-render when user actually changes, not when parent provider re-renders."
+  },
+  {
+    "id": "react-ex-48",
+    "title": "Re-render Isolation via Component Composition (Passing Subtree as Children)",
+    "category": "Production Patterns & Performance",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Eliminates unnecessary re-renders of a heavy component tree without using React.memo, simply by lifting the heavy component and passing it as children into a stateful container.",
+    "conceptsCovered": [
+      "Component Composition as Optimization",
+      "Zero React.memo Optimization",
+      "props.children Stability",
+      "Render Tree Decoupling"
+    ],
+    "code": "import { useState } from 'react';\n\n// Stateful container: Re-renders on every scroll, but does NOT re-render 'children'!\nexport function ScrollHighlightContainer({ children }) {\n  const [scrollY, setScrollY] = useState(0);\n\n  return (\n    <div \n      onScroll={(e) => setScrollY(e.currentTarget.scrollTop)}\n      className=\"scrollable-pane\"\n    >\n      <div className=\"scroll-indicator\">Position: {scrollY}px</div>\n      {/* 'children' is already evaluated by Parent; its element reference is unchanged! */}\n      {/* React skips re-rendering 'children' completely! */}\n      {children}\n    </div>\n  );\n}\n\n// Parent Component\nexport function PageLayout() {\n  return (\n    <ScrollHighlightContainer>\n      {/* HeavyComplexTree is rendered in PageLayout scope, NOT ScrollHighlightContainer! */}\n      {/* It NEVER re-renders when ScrollHighlightContainer scrolls! */}\n      <HeavyComplexTree />\n    </ScrollHighlightContainer>\n  );\n}",
+    "breakdown": [
+      "ScrollHighlightContainer re-renders on every scroll event as scrollY state changes.",
+      "However, HeavyComplexTree is created in PageLayout's render scope and passed in as props.children.",
+      "Because PageLayout did not re-render, children has the identical element object reference.",
+      "React skips reconciling the children subtree entirely with 0 lines of useMemo or React.memo."
+    ],
+    "expectedOutput": "Container updates scroll indicator at 60 FPS while heavy child component tree never re-renders."
+  },
+  {
+    "id": "react-ex-49",
+    "title": "Responsive Image Component with AVIF/WebP srcset & Blur Placeholder",
+    "category": "Production Patterns & Performance",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A high-performance responsive image component that prevents layout shift (CLS), uses modern WebP/AVIF picture sources, and displays a smooth blur placeholder transition.",
+    "conceptsCovered": [
+      "Modern HTML5 <picture> Tag",
+      "Cumulative Layout Shift (CLS) Defense",
+      "Blur-Up Image Transition",
+      "Responsive srcset Resolutions"
+    ],
+    "code": "import { useState } from 'react';\n\nexport function OptimizedImage({ src, alt, width, height, blurDataUrl }) {\n  const [isLoaded, setIsLoaded] = useState(false);\n\n  return (\n    <div \n      className=\"image-wrapper\"\n      style={{\n        aspectRatio: `${width} / ${height}`, // Reserves exact layout space preventing CLS!\n        backgroundColor: '#f0f0f0'\n      }}\n    >\n      {/* Low-Quality Image Placeholder (LQIP) */}\n      {!isLoaded && blurDataUrl && (\n        <img \n          src={blurDataUrl} \n          alt=\"\" \n          aria-hidden=\"true\" \n          className=\"blur-placeholder\" \n        />\n      )}\n\n      {/* Modern Picture Element with AVIF and WebP fallbacks */}\n      <picture>\n        <source srcSet={`${src}.avif`} type=\"image/avif\" />\n        <source srcSet={`${src}.webp`} type=\"image/webp\" />\n        <img\n          src={`${src}.jpg`}\n          alt={alt}\n          width={width}\n          height={height}\n          loading=\"lazy\"\n          decoding=\"async\"\n          onLoad={() => setIsLoaded(true)}\n          className={`main-image ${isLoaded ? 'image-visible' : 'image-hidden'}`}\n        />\n      </picture>\n    </div>\n  );\n}",
+    "breakdown": [
+      "style.aspectRatio reserves exact pixel dimensions prior to image download, eliminating Cumulative Layout Shift.",
+      "<picture> serves AVIF to modern browsers and falls back to WebP and JPG.",
+      "loading='lazy' defers offscreen images; decoding='async' prevents main-thread image decoding stalls.",
+      "Fades smoothly from blur placeholder to high-resolution image on load."
+    ],
+    "expectedOutput": "Images load with zero layout shift, serving AVIF to modern devices with a smooth blur fade-in."
+  },
+  {
+    "id": "react-ex-50",
+    "title": "Programmatic Render Profiling with the <Profiler> Component",
+    "category": "Production Patterns & Performance",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Instruments real user performance monitoring in code using the React Profiler component, logging slow component renders exceeding 16ms to APM telemetry.",
+    "conceptsCovered": [
+      "React.Profiler Component",
+      "actualDuration vs baseDuration",
+      "APM Telemetry Integration",
+      "Slow Render Detection"
+    ],
+    "code": "import { Profiler } from 'react';\n\nexport function MonitoredFeature({ featureName, children }) {\n  const handleRender = (\n    id,             // Profiler id prop\n    phase,          // \"mount\" or \"update\"\n    actualDuration, // Time spent rendering this update (ms)\n    baseDuration,   // Estimated time to render entire subtree without memoization\n    startTime,      // When React started rendering\n    commitTime      // When React committed update\n  ) => {\n    // If render took longer than one 60 FPS frame (16.6ms):\n    if (actualDuration > 16.6) {\n      console.warn(`[APM Slow Render] ${id} (${phase}): ${actualDuration.toFixed(2)}ms`);\n      // Send telemetry beacon to Datadog / New Relic:\n      // telemetry.recordMetric('slow_render', { id, phase, actualDuration });\n    }\n  };\n\n  return (\n    <Profiler id={featureName} onRender={handleRender}>\n      {children}\n    </Profiler>\n  );\n}",
+    "breakdown": [
+      "Profiler measures the render performance of its descendants in milliseconds.",
+      "actualDuration tells you how long the actual render took (after React.memo bailing).",
+      "baseDuration estimates how long it would take without any memoization.",
+      "Enables continuous real-user monitoring (RUM) in staging and production canaries."
+    ],
+    "expectedOutput": "Logs warning to APM whenever the monitored subtree takes longer than 16.6ms to commit."
+  },
+  {
+    "id": "react-ex-51",
+    "title": "Resilient Error Boundary with Sentry Telemetry and User Retry Reset",
+    "category": "Production Patterns & Performance",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A production-grade class Error Boundary that catches runtime render exceptions, reports componentStack traces to monitoring, and provides a working reset mechanism.",
+    "conceptsCovered": [
+      "Production Error Boundary",
+      "componentStack Traces",
+      "Reset Mechanism",
+      "Sentry Error Telemetry"
+    ],
+    "code": "import React, { Component } from 'react';\n\nexport class ResilientErrorBoundary extends Component {\n  state = { hasError: false, error: null };\n\n  static getDerivedStateFromError(error) {\n    // Update state so the next render will show the fallback UI\n    return { hasError: true, error };\n  }\n\n  componentDidCatch(error, errorInfo) {\n    // Log stack trace to Sentry / Datadog\n    console.error('ErrorBoundary captured crash:', error, errorInfo.componentStack);\n    // Sentry.captureException(error, { extra: { componentStack: errorInfo.componentStack } });\n  }\n\n  handleReset = () => {\n    this.setState({ hasError: false, error: null });\n    this.props.onReset?.();\n  };\n\n  render() {\n    if (this.state.hasError) {\n      if (this.props.fallback) {\n        return this.props.fallback({ error: this.state.error, reset: this.handleReset });\n      }\n\n      return (\n        <div className=\"error-card\" role=\"alert\">\n          <h3>Something went wrong in this module.</h3>\n          <p className=\"error-text\">{this.state.error?.message}</p>\n          <button onClick={this.handleReset}>Try Again</button>\n        </div>\n      );\n    }\n\n    return this.props.children;\n  }\n}",
+    "breakdown": [
+      "getDerivedStateFromError updates state to render the fallback UI immediately in the render pass.",
+      "componentDidCatch sends the full componentStack to error reporting services.",
+      "handleReset clears error state and invokes onReset, allowing children to re-mount with clean state.",
+      "Prevents a single widget crash from bringing down the entire application."
+    ],
+    "expectedOutput": "Widget crashes render a localized fallback card with a working 'Try Again' recovery button."
+  },
+  {
+    "id": "react-ex-52",
+    "title": "Headless Accessible Dropdown using the Compound Component Pattern",
+    "category": "Production Patterns & Performance",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Builds a flexible, accessible dropdown menu using compound components sharing an internal context with arrow key navigation and ARIA attributes.",
+    "conceptsCovered": [
+      "Compound Component Pattern",
+      "Keyboard Navigation (ArrowDown/Up)",
+      "ARIA Accessibility Roles",
+      "Context-Driven Compound State"
+    ],
+    "code": "import { createContext, useContext, useState, useRef, useEffect } from 'react';\n\nconst DropdownContext = createContext(null);\n\nexport function Dropdown({ children, onSelect }) {\n  const [isOpen, setIsOpen] = useState(false);\n  const [activeIndex, setActiveIndex] = useState(-1);\n  const itemsRef = useRef([]);\n\n  const toggle = () => setIsOpen(prev => !prev);\n  const close = () => { setIsOpen(false); setActiveIndex(-1); };\n\n  const handleKeyDown = (e) => {\n    if (!isOpen) {\n      if (e.key === 'ArrowDown' || e.key === 'Enter') {\n        setIsOpen(true);\n        setActiveIndex(0);\n      }\n      return;\n    }\n\n    if (e.key === 'ArrowDown') {\n      e.preventDefault();\n      setActiveIndex(i => (i + 1) % itemsRef.current.length);\n    } else if (e.key === 'ArrowUp') {\n      e.preventDefault();\n      setActiveIndex(i => (i - 1 + itemsRef.current.length) % itemsRef.current.length);\n    } else if (e.key === 'Escape') {\n      close();\n    }\n  };\n\n  return (\n    <DropdownContext.Provider value={{\n      isOpen, toggle, close, activeIndex, setActiveIndex, onSelect, itemsRef\n    }}>\n      <div onKeyDown={handleKeyDown} className=\"dropdown-compound\">\n        {children}\n      </div>\n    </DropdownContext.Provider>\n  );\n}\n\nDropdown.Trigger = function Trigger({ children }) {\n  const { toggle, isOpen } = useContext(DropdownContext);\n  return (\n    <button onClick={toggle} aria-haspopup=\"listbox\" aria-expanded={isOpen}>\n      {children}\n    </button>\n  );\n};\n\nDropdown.Menu = function Menu({ children }) {\n  const { isOpen } = useContext(DropdownContext);\n  if (!isOpen) return null;\n  return <ul role=\"listbox\" className=\"dropdown-list\">{children}</ul>;\n};\n\nDropdown.Item = function Item({ index, value, children }) {\n  const { activeIndex, onSelect, close, itemsRef } = useContext(DropdownContext);\n  const isSelected = activeIndex === index;\n\n  useEffect(() => {\n    itemsRef.current[index] = value;\n  }, [index, value, itemsRef]);\n\n  return (\n    <li\n      role=\"option\"\n      aria-selected={isSelected}\n      className={`dropdown-item ${isSelected ? 'active' : ''}`}\n      onClick={() => { onSelect(value); close(); }}\n    >\n      {children}\n    </li>\n  );\n};",
+    "breakdown": [
+      "Dropdown wraps state and exposes Dropdown.Trigger, Dropdown.Menu, and Dropdown.Item.",
+      "Coordinates keyboard navigation: ArrowUp, ArrowDown, Enter, and Escape seamlessly across components.",
+      "Pre-wires ARIA roles (aria-haspopup, aria-expanded, role='listbox', role='option').",
+      "Consumers assemble dropdowns naturally without passing rigid configuration objects."
+    ],
+    "expectedOutput": "Dropdown opens, highlights active item via arrow keys, and selects item via Enter or click."
+  }
+]

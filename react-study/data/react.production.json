@@ -1,0 +1,268 @@
+[
+  {
+    "id": "react-prod-01",
+    "topic": "Infinite Re-render Loops via Inline Reference Dependencies",
+    "category": "Re-render Storms & State Loops",
+    "severity": "P0 / Browser Tab Freezing & CPU Spiking to 100%",
+    "theProblem": "A component invokes `setState` inside a `useEffect` that depends on an un-memoized object, array, or function created in the component body. On every render, a new memory reference is allocated. The effect detects a changed dependency, triggers `setState`, which causes a re-render, allocating another reference. The loop repeats continuously until React throws 'Maximum update depth exceeded' or the browser tab crashes with an out-of-memory error.",
+    "howItWorksInternally": "React's `useEffect` checks dependency equality using `Object.is(prevDep, nextDep)`. An object literal (`{ id: userId }`) or inline arrow function (`() => {}`) is assigned a brand new memory pointer on every render pass. When React runs `areHookInputsEqual`, the reference check returns `false`. If the effect body calls `setState`, React enqueues an update on the Fiber's `updateQueue`. Because this update is scheduled before the browser yields, React executes 50 consecutive render passes in a tight loop before hitting the internal `RE_RENDER_LIMIT` safety guard.",
+    "productionCode": "// 1. DISASTER ANTI-PATTERN: Infinite loop in 3 lines of code!\nfunction BadUserFeed({ userId }) {\n  const [data, setData] = useState(null);\n\n  // BUG: Options object allocated on EVERY render!\n  const fetchOptions = { headers: { 'X-User': userId } };\n\n  useEffect(() => {\n    fetchUserData(userId, fetchOptions).then(res => setData(res));\n    // setData triggers re-render -> new fetchOptions reference -> effect re-runs!\n  }, [fetchOptions]); // Object.is({ ... }, { ... }) is ALWAYS FALSE!\n\n  return <div>{data?.name}</div>;\n}\n\n// 2. PRODUCTION REMEDIATION: Move outside, use primitives, or useMemo\nfunction GoodUserFeed({ userId }) {\n  const [data, setData] = useState(null);\n\n  useEffect(() => {\n    // Construct options INSIDE the effect: eliminates external reference dependency!\n    const fetchOptions = { headers: { 'X-User': userId } };\n    let isCancelled = false;\n\n    fetchUserData(userId, fetchOptions).then(res => {\n      if (!isCancelled) setData(res);\n    });\n\n    return () => { isCancelled = true; };\n  }, [userId]); // Primitive string/number has stable Object.is equality!\n\n  return <div>{data?.name}</div>;\n}",
+    "monitoringMetrics": [
+      "Client-side exception rate tracking 'Maximum update depth exceeded'",
+      "Browser CPU utilization pegged at 100% on specific component mount",
+      "Spikes in repetitive HTTP network requests to identical endpoints within 500ms"
+    ],
+    "productionChecklist": [
+      "Never pass un-memoized object literals, arrays, or inline functions directly into `useEffect` dependency arrays.",
+      "Move helper objects or functions inside the `useEffect` body so they are not treated as reactive dependencies.",
+      "If an object must come from outside, stabilize it with `useMemo` or pass individual primitive properties (`options.id`)."
+    ]
+  },
+  {
+    "id": "react-prod-02",
+    "topic": "Stale Closure Disasters in Async Callbacks & Intervals",
+    "category": "Closures & Event Handlers",
+    "severity": "P1 / Silent Data Corruption & Frozen Timers",
+    "theProblem": "Asynchronous handlers (`setInterval`, `setTimeout`, WebSocket handlers, or promise chains) capture state variables from the render pass in which they were created. As time passes, the component re-renders with new state, but the asynchronous closure permanently accesses the old snapshot. A timer counting up gets stuck at 1, or an order submit handler posts an outdated shopping cart, silently corrupting user data.",
+    "howItWorksInternally": "JavaScript functions maintain a reference to the lexical environment of their creation scope. When a component function runs, local variables (`const [count, setCount] = useState(0)`) are local constants for that single invocation. If an effect runs with an empty dependency array (`[]`), its setup closure is created once on mount when `count === 0`. The interval callback inside that closure permanently references the mount environment's `count` variable. Calling `setCount(count + 1)` calculates `0 + 1 = 1` on every tick, never advancing.",
+    "productionCode": "// 1. BUGGY STALE CLOSURE: Timer permanently stuck at 1!\nfunction BrokenTimer() {\n  const [seconds, setSeconds] = useState(0);\n\n  useEffect(() => {\n    const id = setInterval(() => {\n      // Stale closure: 'seconds' is permanently 0 from the mount pass!\n      setSeconds(seconds + 1); \n    }, 1000);\n    return () => clearInterval(id);\n  }, []); // Missing 'seconds' dependency!\n\n  return <h1>Seconds: {seconds}</h1>; // Stays at 1 forever!\n}\n\n// 2. PRODUCTION REMEDIATION A: Functional State Update (Recommended)\nfunction SafeTimer() {\n  const [seconds, setSeconds] = useState(0);\n\n  useEffect(() => {\n    const id = setInterval(() => {\n      // Functional updater reads latest pending state from Fiber queue:\n      setSeconds(prev => prev + 1);\n    }, 1000);\n    return () => clearInterval(id);\n  }, []); // Safe: zero dependency on 'seconds'!\n\n  return <h1>Seconds: {seconds}</h1>;\n}\n\n// 3. PRODUCTION REMEDIATION B: Latest Ref Pattern (For complex callbacks)\nfunction useEventCallback(fn) {\n  const ref = useRef(fn);\n  useEffect(() => { ref.current = fn; }); // Sync ref on each render\n  return useCallback((...args) => ref.current(...args), []);\n}",
+    "monitoringMetrics": [
+      "User telemetry showing frozen timer or stuck counter widgets",
+      "Discrepancies in submitted form payloads containing default/initial state values",
+      "ESLint violations flagging `react-hooks/exhaustive-deps` rule suppressions"
+    ],
+    "productionChecklist": [
+      "Strictly forbid disabling `eslint-plugin-react-hooks/exhaustive-deps` in CI/CD pipelines.",
+      "Use functional state updaters (`setState(prev => ... )`) whenever the new state derives from previous state.",
+      "Use the Latest Ref pattern (`useEventCallback` / `useEffectEvent`) for event listeners that need fresh state without re-triggering effects."
+    ]
+  },
+  {
+    "id": "react-prod-03",
+    "topic": "SSR Hydration Mismatch Crashes & Layout Shift",
+    "category": "Server-Side Rendering (SSR) & Hydration",
+    "severity": "P1 / Hydration Bailout & Visual Flickering",
+    "theProblem": "In Server-Side Rendered (SSR) apps (Next.js, Remix, Astro), the server renders HTML based on server time, cookies, or headers, while the client hydration pass renders based on `window.innerWidth`, client `localStorage`, or local browser timezone. React detects mismatched HTML and throws a hydration warning, discards server DOM attributes, and forces a full client re-render, destroying SEO advantages and causing jarring Cumulative Layout Shift (CLS).",
+    "howItWorksInternally": "During `hydrateRoot`, React traverses the existing server-rendered DOM nodes and attempts to match each DOM element and text node with the virtual element tree produced by the client component's initial render. If React expects a `<button>Login</button>` based on client `localStorage` but finds `<button>Loading</button>` from server HTML, it logs a hydration failure. In React 18, React attempts to patch up the mismatch by client-rendering the mismatched subtree, causing visual flickering and delayed interactivity.",
+    "productionCode": "// 1. DISASTER ANTI-PATTERN: Checking 'window' directly during render!\nfunction BadHeader() {\n  // SERVER renders: \"Theme: Light\" (window is undefined)\n  // CLIENT renders: \"Theme: Dark\" (localStorage has 'dark') -> HYDRATION ERROR!\n  const theme = typeof window !== 'undefined' ? localStorage.getItem('theme') : 'Light';\n  return <div className={`header ${theme}`}>Welcome</div>;\n}\n\n// 2. PRODUCTION REMEDIATION: Two-Pass Rendering with mounted flag\nfunction SafeHeader() {\n  const [theme, setTheme] = useState('Light'); // Match server default on initial render!\n  const [mounted, setMounted] = useState(false);\n\n  useEffect(() => {\n    // Only runs on the client AFTER initial hydration completes:\n    setMounted(true);\n    const saved = localStorage.getItem('theme');\n    if (saved) setTheme(saved);\n  }, []);\n\n  if (!mounted) {\n    // Render matching server placeholder on first pass!\n    return <div className=\"header Light\">Welcome</div>;\n  }\n\n  return <div className={`header ${theme}`}>Welcome</div>;\n}\n\n// 3. For dynamic timestamps: Use suppressHydrationWarning\nfunction Timestamp({ date }) {\n  return (\n    <time dateTime={date.toISOString()} suppressHydrationWarning>\n      {date.toLocaleDateString()}\n    </time>\n  );\n}",
+    "monitoringMetrics": [
+      "Hydration error rate in client logs: 'Hydration failed because the initial UI does not match'",
+      "Cumulative Layout Shift (CLS) spikes during initial page load",
+      "Time to Interactive (TTI) degradation caused by client-side tree patch-up passes"
+    ],
+    "productionChecklist": [
+      "Never read `window`, `localStorage`, `navigator`, or `document` during the initial component render pass.",
+      "Use two-pass rendering (`const [mounted, setMounted] = useState(false)`) for client-only UI widgets.",
+      "Apply `suppressHydrationWarning` strictly to leaf elements displaying unavoidable client-rendered local dates or times."
+    ]
+  },
+  {
+    "id": "react-prod-04",
+    "topic": "Cascading Re-render Storms Across Deep Component Subtrees",
+    "category": "Re-render Storms & State Loops",
+    "severity": "P1 / High Latency & Dropped Frames (Jank)",
+    "theProblem": "A top-level state change in an application root component (e.g. typing a character in a search bar or receiving a WebSocket notification) triggers synchronous recursive re-renders across 2,000 descendant components. The browser frame rate drops from 60 FPS to 12 FPS, making the entire application feel laggy and unresponsive.",
+    "howItWorksInternally": "By default in React, when a parent component renders, ALL of its children render recursively down the entire component tree, regardless of whether their props changed. If an un-memoized component tree has 2,000 nodes, React executes 2,000 function bodies, creates 2,000 virtual element objects, and performs 2,000 diffing comparisons on every single keystroke. Even if real DOM mutations are minimal, the sheer CPU time spent traversing V8 function executions exceeds the 16.6ms frame budget.",
+    "productionCode": "// 1. ANTI-PATTERN: Root state forces entire app tree to re-render on every keystroke!\nfunction BadApp() {\n  const [search, setSearch] = useState('');\n  return (\n    <div>\n      <input value={search} onChange={e => setSearch(e.target.value)} />\n      <HeavyDashboard /> {/* 2,000 components re-rendered on EVERY single character! */}\n      <ComplexDataGrid />\n    </div>\n  );\n}\n\n// 2. PRODUCTION REMEDIATION A: Push State Down (Collocation)\nfunction SearchWidget() {\n  const [search, setSearch] = useState('');\n  return <input value={search} onChange={e => setSearch(e.target.value)} />;\n}\n\nfunction OptimizedApp() {\n  return (\n    <div>\n      <SearchWidget /> {/* Keystroke re-renders ONLY SearchWidget! */}\n      <HeavyDashboard /> {/* Unaffected! 0ms render cost! */}\n      <ComplexDataGrid />\n    </div>\n  );\n}\n\n// 3. PRODUCTION REMEDIATION B: Pass Heavy Component as 'children'\nfunction LayoutWrapper({ children }) {\n  const [color, setColor] = useState('blue');\n  return (\n    <div style={{ color }}>\n      <button onClick={() => setColor(c => c === 'blue' ? 'red' : 'blue')}>Toggle Color</button>\n      {children} {/* children element was created in parent; skips re-rendering! */}\n    </div>\n  );\n}",
+    "monitoringMetrics": [
+      "Total component render counts per user interaction tracked via React Profiler",
+      "Long tasks (>50ms) detected by PerformanceObserver during typing or clicks",
+      "Interaction to Next Paint (INP) degradation exceeding the 200ms threshold"
+    ],
+    "productionChecklist": [
+      "Collocate state: push state down to the lowest possible leaf component that needs it.",
+      "Use composition (`children` or slot props) to isolate stateful containers from heavy subtrees.",
+      "Wrap pure, expensive leaf tables or charts in `React.memo` with primitive props."
+    ]
+  },
+  {
+    "id": "react-prod-05",
+    "topic": "Context API Value Invalidation Starving High-Velocity UI",
+    "category": "State Management & Context",
+    "severity": "P1 / Application-Wide Render Thrashing",
+    "theProblem": "A single global React Context holds application user data along with high-velocity data (such as notifications, mouse coordinates, or active tab timers). Every time the high-velocity value changes, the context value object is recreated, forcing EVERY single component consuming that context across the entire application to re-render, starving UI responsiveness.",
+    "howItWorksInternally": "When a `<Context.Provider value={val}>` updates its `value` prop to a new object reference, React marks every Fiber subscribing to that context as dirty with `ForceUpdate`. Crucially, `React.memo` CANNOT stop this re-render: `React.memo` only bails out if *props* don't change; it is intentionally bypassed when consumed context changes. If 500 components call `useContext(GlobalContext)` to read `user.id`, updating `notifications` in the same context forces all 500 components to re-render.",
+    "productionCode": "// 1. DISASTER ANTI-PATTERN: Monolithic context holding both slow and fast state\nconst GlobalContext = createContext(null);\n\nfunction BadProvider({ children }) {\n  const [user, setUser] = useState({ name: 'Alice' });\n  const [tick, setTick] = useState(0); // High-velocity ticker!\n\n  useEffect(() => {\n    const id = setInterval(() => setTick(t => t + 1), 1000);\n    return () => clearInterval(id);\n  }, []);\n\n  // Recreates object every second! Forces every consumer to re-render every second!\n  return (\n    <GlobalContext.Provider value={{ user, tick }}>\n      {children}\n    </GlobalContext.Provider>\n  );\n}\n\n// 2. PRODUCTION REMEDIATION: Context Splitting\nconst UserContext = createContext(null);\nconst TickerContext = createContext(null);\n\nfunction GoodProvider({ children }) {\n  const [user] = useState({ name: 'Alice' });\n  const [tick, setTick] = useState(0);\n\n  return (\n    <UserContext.Provider value={user}>\n      <TickerContext.Provider value={tick}>\n        {children}\n      </TickerContext.Provider>\n    </UserContext.Provider>\n  );\n}\n\n// UserProfile consumes ONLY UserContext -> NEVER re-renders on ticker changes!\nfunction UserProfile() {\n  const user = useContext(UserContext); // Stable! 0 unnecessary renders!\n  return <h1>{user.name}</h1>;\n}",
+    "monitoringMetrics": [
+      "Total re-render counts on static navigation components during timer/polling events",
+      "Context update propagation time in React DevTools Profiler",
+      "Flamegraph showing hundreds of components updating simultaneously under a Provider"
+    ],
+    "productionChecklist": [
+      "Split monolithic contexts into separate, single-responsibility Context Providers (e.g. `UserContext`, `ThemeContext`).",
+      "Separate dynamic state from static dispatchers (`StateContext` and `DispatchContext`).",
+      "For high-frequency or granular slice updates, migrate to an external store (Zustand) with selector subscriptions."
+    ]
+  },
+  {
+    "id": "react-prod-06",
+    "topic": "Concurrent UI Tearing & State De-synchronization in External Stores",
+    "category": "Concurrent Engine & Scheduling",
+    "severity": "P1 / Visual Inconsistency & Ghost State",
+    "theProblem": "An application subscribes to an external store (Redux, Zustand, or a custom event bus) using traditional `useEffect` + `useState`. In React 18 Concurrent Mode, React time-slices a heavy render across multiple frames. If the external store updates while React is paused mid-render, different components on screen display conflicting values (e.g. Header shows Account Balance $100 while Checkout shows Account Balance $50).",
+    "howItWorksInternally": "In React 18, render work is non-blocking and can yield to the browser between fiber chunks. If an external store is mutated during that yield, the component tree becomes partially rendered with old store state and partially rendered with new store state. Because `useEffect` subscriptions only fire *after* the commit phase, React cannot detect that the store changed mid-render. This visual defect is known as 'UI Tearing'.",
+    "productionCode": "// 1. VULNERABLE ANTI-PATTERN: useEffect + useState subscription in Concurrent Mode\nfunction useVulnerableStore(store) {\n  const [state, setState] = useState(store.getState());\n\n  useEffect(() => {\n    // Subject to UI Tearing in React 18 Concurrent Rendering!\n    return store.subscribe(() => {\n      setState(store.getState());\n    });\n  }, [store]);\n\n  return state;\n}\n\n// 2. PRODUCTION REMEDIATION: useSyncExternalStore\nimport { useSyncExternalStore } from 'react';\n\nexport function useSafeStore(store, selector = state => state) {\n  // Guaranteed tearing-free across React 18 and 19 concurrent renders!\n  return useSyncExternalStore(\n    store.subscribe,\n    () => selector(store.getState()),\n    () => selector(store.getInitialServerState()) // SSR safe snapshot\n  );\n}",
+    "monitoringMetrics": [
+      "Inconsistent state telemetry reports from user sessions",
+      "Visual defect bug reports describing contradictory data on the same view",
+      "Audit of state libraries ensuring compatibility with `useSyncExternalStore`"
+    ],
+    "productionChecklist": [
+      "Ban raw `useEffect` + `useState` patterns for subscribing to external state stores.",
+      "Enforce `useSyncExternalStore` for all custom stores and browser event subscriptions.",
+      "Ensure store `getSnapshot` functions return immutable, cached references when data has not changed."
+    ]
+  },
+  {
+    "id": "react-prod-07",
+    "topic": "Uncaught Async Promise Rejections Bypassing Error Boundaries",
+    "category": "Resilience & Error Handling",
+    "severity": "P1 / Silent App Failure & Unhandled Rejections",
+    "theProblem": "A network fetch inside an asynchronous event handler rejects, or an unhandled exception occurs inside a `setTimeout`. The developer assumes the parent `<ErrorBoundary>` will catch it and display a fallback. Instead, the error bypasses the Error Boundary completely, logs an unhandled promise rejection in the browser console, and leaves the user staring at a frozen, broken UI state.",
+    "howItWorksInternally": "React Error Boundaries strictly operate on the React Fiber call stack during the **Render Phase** and component lifecycle methods. Asynchronous callbacks (`fetch().then()`, `setTimeout`, event handlers) run on the browser event loop outside of React's render phase. Because there is no active Fiber work loop running when the promise rejects, React has no boundary context to unwind, and the exception bubbles directly to `window.onerror`.",
+    "productionCode": "// 1. DISASTER ANTI-PATTERN: Async error bypasses ErrorBoundary!\nfunction UnsafeWidget() {\n  const handleClick = async () => {\n    // If this throws, ErrorBoundary DOES NOT CATCH IT!\n    const data = await api.failingEndpoint();\n    console.log(data);\n  };\n\n  return <button onClick={handleClick}>Run Action</button>;\n}\n\n// 2. PRODUCTION REMEDIATION A: Bridge to ErrorBoundary via State Setter\nfunction SafeWidget() {\n  const [_, setThrowError] = useState();\n\n  const handleClick = async () => {\n    try {\n      await api.failingEndpoint();\n    } catch (err) {\n      // Throw inside a state updater function: bridges into React Render loop!\n      setThrowError(() => { throw err; });\n    }\n  };\n\n  return <button onClick={handleClick}>Run Action</button>;\n}\n\n// 3. PRODUCTION REMEDIATION B: React 19 Actions (Native ErrorBoundary catch!)\nfunction React19ActionWidget() {\n  const [isPending, startTransition] = useTransition();\n\n  const handleClick = () => {\n    // In React 19, startTransition natively catches async rejections!\n    startTransition(async () => {\n      await api.failingEndpoint(); // Uncaught rejection automatically caught by ErrorBoundary!\n    });\n  };\n\n  return <button onClick={handleClick} disabled={isPending}>Run Action</button>;\n}",
+    "monitoringMetrics": [
+      "Window unhandledrejection event rate in client monitoring (Sentry / Datadog)",
+      "Unhandled network exception counts on interactive form submit buttons",
+      "Stuck loading spinner metrics where promises failed silently without error UI"
+    ],
+    "productionChecklist": [
+      "Always wrap raw async event handlers in try/catch blocks with explicit user-facing error feedback.",
+      "In React 19, execute async mutations inside `startTransition` so rejections trigger Error Boundaries natively.",
+      "Install a global `window.addEventListener('unhandledrejection')` listener to capture and report orphaned async crashes."
+    ]
+  },
+  {
+    "id": "react-prod-08",
+    "topic": "Double-Submit Form Race Conditions & State Corruption",
+    "category": "Forms & Mutation Lifecycle",
+    "severity": "P1 / Duplicate Financial Charges & Corrupted Data",
+    "theProblem": "A user double-clicks or rapidly taps a 'Submit Order' button. In a naive form, both clicks fire simultaneously, initiating two concurrent asynchronous HTTP requests. The user is charged twice for the same order, creating duplicate ledger entries and catastrophic billing support escalation.",
+    "howItWorksInternally": "In standard JavaScript event handling, clicking a button twice in 100ms dispatches two discrete `click` events to the event loop. If the first handler sets `isSubmitting = true`, that state update is asynchronous and has not yet disabled the button before the second click fires. Both asynchronous network promises execute in parallel, racing against each other to write duplicate records to the database.",
+    "productionCode": "// 1. DISASTER ANTI-PATTERN: Naive state-based disabling has a race window!\nfunction VulnerableForm() {\n  const [isSubmitting, setIsSubmitting] = useState(false);\n\n  const handleSubmit = async (e) => {\n    e.preventDefault();\n    if (isSubmitting) return; // RACE CONDITION: Second click arrives before state commits!\n    setIsSubmitting(true);\n    await api.chargeCreditCard();\n    setIsSubmitting(false);\n  };\n\n  return <button onClick={handleSubmit} disabled={isSubmitting}>Pay Now</button>;\n}\n\n// 2. PRODUCTION REMEDIATION A: Synchronous Ref Lock\nfunction RobustForm() {\n  const isLockedRef = useRef(false);\n  const [isSubmitting, setIsSubmitting] = useState(false);\n\n  const handleSubmit = async (e) => {\n    e.preventDefault();\n    // Synchronous immediate check: Ref mutates in 0ms, closing race window!\n    if (isLockedRef.current) return;\n    isLockedRef.current = true;\n    setIsSubmitting(true);\n\n    try {\n      await api.chargeCreditCard();\n    } finally {\n      isLockedRef.current = false;\n      setIsSubmitting(false);\n    }\n  };\n\n  return <button onClick={handleSubmit} disabled={isSubmitting}>Pay Now</button>;\n}\n\n// 3. PRODUCTION REMEDIATION B: React 19 Form Action (Natively serializes submissions!)\nfunction ModernReact19Form() {\n  const [state, formAction, isPending] = useActionState(async (prev, formData) => {\n    // React 19 automatically queues and deduplicates consecutive submissions!\n    return await api.chargeCreditCard();\n  }, null);\n\n  return (\n    <form action={formAction}>\n      <button type=\"submit\" disabled={isPending}>\n        {isPending ? 'Processing...' : 'Pay Now'}\n      </button>\n    </form>\n  );\n}",
+    "monitoringMetrics": [
+      "Duplicate POST request frequency to mutation endpoints within a 1-second window",
+      "Database unique constraint violation rate on order generation keys",
+      "Customer support ticket volume citing duplicate charges or double orders"
+    ],
+    "productionChecklist": [
+      "Use synchronous `useRef` locks to guard mutation handlers against rapid double-clicks.",
+      "Send a unique idempotency key (`Idempotency-Key: uuid`) with every financial mutation request.",
+      "Leverage React 19 Actions (`useActionState`), which natively serialize form submissions."
+    ]
+  },
+  {
+    "id": "react-prod-09",
+    "topic": "Monolithic Bundle Bloat & Tree-Shaking Failure from Barrel Files",
+    "category": "Bundle Optimization & Build Tools",
+    "severity": "P1 / Slow First Contentful Paint (FCP) & High Bandwidth",
+    "theProblem": "An application imports a single utility or icon from a common barrel file (`import { Check } from '@/components/icons'`). The bundler is forced to evaluate and pull the entire 2MB library of 1,500 icons and components into the client bundle, delaying First Contentful Paint by several seconds on mobile connections.",
+    "howItWorksInternally": "Barrel files (`index.js` or `index.ts` re-exporting hundreds of modules) create a massive entangled module graph. If any re-exported file has side effects (e.g. executing code at module root, registering polyfills), or if the bundler cannot prove purity, the bundler must retain all re-exported files to preserve JavaScript execution semantics. This disables tree-shaking and causes client bundle size to explode.",
+    "productionCode": "// 1. BARREL FILE TRAP (icons/index.js re-exports 1,000 icons):\n// import { Check } from '@/components/icons'; \n// Result: Pulls in 1,000 SVG components (800KB of dead code!)\n\n// 2. PRODUCTION REMEDIATION A: Direct Path Imports\nimport Check from '@/components/icons/Check'; // Pulls in ONLY Check icon (1.2KB)!\n\n// 3. PRODUCTION REMEDIATION B: Package.json sideEffects Flag\n// In component library package.json:\n// {\n//   \"name\": \"@acme/ui-library\",\n//   \"sideEffects\": false // Informs Webpack/Rollup that unused imports CAN be safely deleted!\n// }\n\n// 4. PRODUCTION REMEDIATION C: Next.js optimizePackageImports Config\n// next.config.js:\nmodule.exports = {\n  experimental: {\n    // Automatically transforms barrel imports to direct file paths at compile time:\n    optimizePackageImports: ['lucide-react', '@headlessui/react', 'lodash-es']\n  }\n};",
+    "monitoringMetrics": [
+      "Production JavaScript bundle size tracking in CI/CD pull request checks",
+      "First Contentful Paint (FCP) and Largest Contentful Paint (LCP) web vitals",
+      "Tree map visualization via `rollup-plugin-visualizer` flagging unused packages"
+    ],
+    "productionChecklist": [
+      "Avoid root barrel files (`index.ts` re-exporting the entire project) in large codebases.",
+      "Add `\"sideEffects\": false` to internal UI packages in `package.json` to enable dead-code elimination.",
+      "Configure bundler import optimization (`optimizePackageImports`) for icon and utility libraries."
+    ]
+  },
+  {
+    "id": "react-prod-10",
+    "topic": "Ref Staling & Missing Teardown in React 18 Strict Mode Remounts",
+    "category": "Component Lifecycle & DOM Control",
+    "severity": "P1 / Ghost Subscriptions & Memory Leaks",
+    "theProblem": "In React 18 Strict Mode (development), React mounts, unmounts, and immediately remounts components to verify cleanup resiliency. Effects that attach native event listeners or initialize third-party imperative widgets (charts, maps, video players) without proper teardown end up with duplicate listeners, double rendering, and memory leaks that crash staging environments.",
+    "howItWorksInternally": "To prepare applications for future Concurrent features (like `<Activity mode='hidden'>` where components are preserved in background), React 18 simulates immediate remounting: `setup() -> cleanup() -> setup()`. If your effect initializes an imperative library (`new Chart(canvasRef.current)`) but does not destroy the chart instance in the cleanup return function, the second `setup()` call instantiates a second overlapping chart on the same canvas, leaking memory and breaking UI rendering.",
+    "productionCode": "// 1. DISASTER ANTI-PATTERN: Third-party widget initialized without teardown!\nfunction BadChart({ data }) {\n  const chartRef = useRef(null);\n\n  useEffect(() => {\n    // In React 18 Strict Mode, runs twice! Creates TWO charts on the same DOM canvas!\n    const chart = new ImperativeChart(chartRef.current, data);\n    // LEAK: Missing chart.destroy() cleanup!\n  }, [data]);\n\n  return <canvas ref={chartRef} />;\n}\n\n// 2. PRODUCTION REMEDIATION: Idempotent Setup and Teardown\nfunction GoodChart({ data }) {\n  const chartRef = useRef(null);\n\n  useEffect(() => {\n    if (!chartRef.current) return;\n\n    // 1. Setup\n    const chart = new ImperativeChart(chartRef.current, data);\n\n    // 2. Symmetrical Cleanup: Destroys instance cleanly on simulated remount!\n    return () => {\n      chart.destroy();\n    };\n  }, [data]);\n\n  return <canvas ref={chartRef} />;\n}",
+    "monitoringMetrics": [
+      "Duplicate DOM element creation warnings in browser console during development",
+      "Memory heap snapshot growth across simulated unmount/remount cycles",
+      "Zombie listener counts on `window` and `document` event targets"
+    ],
+    "productionChecklist": [
+      "Ensure every single `useEffect` that initializes external instances has an exact matching `.destroy()` or `.dispose()` cleanup.",
+      "Never use hacky `hasMountedRef` flags to bypass React 18 Strict Mode double-invocations in development.",
+      "Test component lifecycles by unmounting and remounting manually in Cypress or Playwright tests."
+    ]
+  },
+  {
+    "id": "react-prod-11",
+    "topic": "Controlled vs Uncontrolled Input Lag & Cursor Jumping",
+    "category": "Forms & Mutation Lifecycle",
+    "severity": "P1 / Unusable Typing Experience on Form Inputs",
+    "theProblem": "In a controlled input (`<input value={text} onChange={...} />`), an asynchronous delay or formatted state transformation causes the cursor to violently jump to the end of the text box on every keystroke, or causes dropped characters during fast typing.",
+    "howItWorksInternally": "When you type in a native HTML input, the browser immediately moves the cursor to the typed position. In a controlled input, React overrides this: React receives `onChange`, updates state, re-renders, and writes `value` back to the DOM node. If the state update is asynchronous or delayed by a transition, the DOM value is overwritten *after* the browser had already advanced the cursor, resetting the browser's cursor selection range (`selectionStart`, `selectionEnd`) to the very end of the string.",
+    "productionCode": "// 1. DISASTER ANTI-PATTERN: Formatting state inside controlled input causes cursor jumping!\nfunction BadPhoneInput() {\n  const [phone, setPhone] = useState('');\n\n  const handleChange = (e) => {\n    // Formats raw '1234' into '(123) 4...'\n    // When editing in the middle, cursor JUMPS to the very end on every letter!\n    setPhone(formatPhoneNumber(e.target.value));\n  };\n\n  return <input value={phone} onChange={handleChange} />;\n}\n\n// 2. PRODUCTION REMEDIATION A: Restore Cursor Position via DOM Ref\nfunction SafePhoneInput() {\n  const [phone, setPhone] = useState('');\n  const inputRef = useRef(null);\n\n  const handleChange = (e) => {\n    const input = inputRef.current;\n    const originalPos = input.selectionStart; // Save cursor position!\n    const formatted = formatPhoneNumber(e.target.value);\n    \n    setPhone(formatted);\n\n    // Restore cursor position on next microtask:\n    requestAnimationFrame(() => {\n      if (input) {\n        input.setSelectionRange(originalPos, originalPos);\n      }\n    });\n  };\n\n  return <input ref={inputRef} value={phone} onChange={handleChange} />;\n}\n\n// 3. PRODUCTION REMEDIATION B: Uncontrolled Input with Submit Extraction\nfunction UncontrolledForm({ onSubmit }) {\n  // Pure native typing: Zero cursor jumping, zero keystroke lag!\n  return (\n    <form onSubmit={(e) => {\n      e.preventDefault();\n      const data = new FormData(e.currentTarget);\n      onSubmit(data.get('phone'));\n    }}>\n      <input name=\"phone\" defaultValue=\"\" />\n      <button type=\"submit\">Save</button>\n    </form>\n  );\n}",
+    "monitoringMetrics": [
+      "User complaints of cursor jumping or input lag in customer feedback telemetry",
+      "Form input abandonment rates on complex formatted checkout fields",
+      "Interaction to Next Paint (INP) degradation during continuous text input typing"
+    ],
+    "productionChecklist": [
+      "Never put controlled inputs inside `useTransition` or deferred updates; input value must be synchronous.",
+      "Save and restore `selectionStart` / `selectionEnd` when applying inline input masking (phone numbers, credit cards).",
+      "Prefer uncontrolled inputs with native `FormData` for standard forms where live character-by-character formatting is not required."
+    ]
+  },
+  {
+    "id": "react-prod-12",
+    "topic": "Layout Thrashing and Visual Flicker with useEffect vs useLayoutEffect",
+    "category": "DOM Measurements & Layout",
+    "severity": "P1 / Visual Layout Shift (CLS) & Screen Flickering",
+    "theProblem": "A component measures a DOM node (e.g. tooltip, dropdown, or modal dimensions) and repositions it using `useEffect`. The browser paints the tooltip at default coordinates `(0, 0)`, and then 16ms later recalculates and jumps the tooltip to the target button. Users see an ugly visual flash/flicker, and automated testing fails Cumulative Layout Shift (CLS) audits.",
+    "howItWorksInternally": "`useEffect` executes asynchronously *after* the browser layout reflow and paint steps have already committed pixels to the physical display screen. When your effect runs `setCoords({ top, left })`, it forces React to commit a second render pass, which triggers a second browser layout reflow and repaint in the next frame. The user's eye catches the intermediate frame, perceived as flickering.",
+    "productionCode": "// 1. FLICKERING ANTI-PATTERN: Measuring in useEffect causes visual jump!\nfunction BadTooltip({ anchorRect }) {\n  const [top, setTop] = useState(0);\n  const ref = useRef(null);\n\n  useEffect(() => {\n    // RUNS AFTER PAINT: User sees tooltip flash at top: 0 before jumping!\n    const height = ref.current.getBoundingClientRect().height;\n    setTop(anchorRect.top - height);\n  }, [anchorRect]);\n\n  return <div ref={ref} style={{ position: 'fixed', top }} className=\"tooltip\">Hint</div>;\n}\n\n// 2. PRODUCTION REMEDIATION: useLayoutEffect (Flicker-Free Synchronous Position)\nimport { useLayoutEffect } from 'react';\n\nfunction SafeTooltip({ anchorRect }) {\n  const [top, setTop] = useState(0);\n  const ref = useRef(null);\n\n  // useLayoutEffect runs SYNCHRONOUSLY before browser paints to screen:\n  useLayoutEffect(() => {\n    const height = ref.current.getBoundingClientRect().height;\n    setTop(anchorRect.top - height);\n    // React flushes this state update BEFORE screen pixels are painted! Zero flicker!\n  }, [anchorRect]);\n\n  return <div ref={ref} style={{ position: 'fixed', top }} className=\"tooltip\">Hint</div>;\n}",
+    "monitoringMetrics": [
+      "Cumulative Layout Shift (CLS) score degradation on pages containing tooltips or popovers",
+      "Visual regression testing (Percy / Chromatic) catching layout jump artifacts",
+      "Client telemetry tracking double-paint layout reflows in performance traces"
+    ],
+    "productionChecklist": [
+      "Use `useLayoutEffect` strictly for synchronous DOM measurements and position adjustments before paint.",
+      "Keep calculations inside `useLayoutEffect` minimal and fast, as it blocks the browser main thread.",
+      "Default to standard `useEffect` for all non-DOM visual operations (data fetching, logging, timers)."
+    ]
+  },
+  {
+    "id": "react-prod-13",
+    "topic": "Runtime CSS-in-JS Engine Overhead Saturating Browser CPU",
+    "category": "CSS & Styling Performance",
+    "severity": "P1 / High Main-Thread Execution Time",
+    "theProblem": "A large enterprise dashboard built with runtime CSS-in-JS libraries (Emotion, Styled-Components) renders a table with 2,000 cells. The page takes 1,800ms to mount. Profiling reveals that over 65% of CPU time is spent inside CSS-in-JS hashing, string parsing, and style tag injection rather than actual React business logic.",
+    "howItWorksInternally": "Runtime CSS-in-JS libraries must parse CSS strings inside JavaScript during the React render phase. On every render of `<Cell active={isActive}>`, the library runs string interpolation, computes a MurmurHash of the CSS string, checks an internal JavaScript cache map, and imperatively calls `document.head.appendChild(styleTag)`. Injecting hundreds of `<style>` tags forces the browser's CSSOM to invalidate and recalculate styles across the entire page.",
+    "productionCode": "// 1. RUNTIME CSS-IN-JS ANTI-PATTERN (Heavy CPU cost on every render pass):\n// const StyledCell = styled.div`\n//   background: ${props => props.active ? 'blue' : 'transparent'};\n//   padding: 8px;\n//   color: ${props => props.color};\n// `; // In a table of 2,000 rows, this executes 2,000 CSS string parses in JS!\n\n// 2. PRODUCTION REMEDIATION A: Zero-Runtime Tailwind CSS (0ms JS Runtime!)\nfunction FastCell({ active, color, children }) {\n  return (\n    // Pre-compiled static atomic CSS classes: Zero JavaScript execution!\n    <div className={`p-2 text-sm ${active ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-900'}`}>\n      {children}\n    </div>\n  );\n}\n\n// 3. PRODUCTION REMEDIATION B: CSS Modules with Dynamic CSS Variables\n// styles.module.css:\n// .cell { padding: 8px; background: var(--bg-color); }\nimport styles from './styles.module.css';\n\nfunction VariableCell({ active, children }) {\n  return (\n    <div \n      className={styles.cell} \n      style={{ '--bg-color': active ? '#2563eb' : 'transparent' }}\n    >\n      {children}\n    </div>\n  );\n}",
+    "monitoringMetrics": [
+      "JavaScript execution duration spent in styling library functions (`css`, `styled`) in Chrome DevTools",
+      "Total number of injected `<style>` tags in `document.head` (>100 indicates runtime thrashing)",
+      "Time to Interactive (TTI) degradation on data-dense views"
+    ],
+    "productionChecklist": [
+      "Migrate high-frequency, data-dense components from runtime CSS-in-JS to zero-runtime CSS (Tailwind, CSS Modules).",
+      "Use CSS custom properties (variables) for dynamic runtime colors instead of generating new CSS-in-JS rules.",
+      "Ensure style extraction occurs at build time to enable browser caching of static `.css` files."
+    ]
+  },
+  {
+    "id": "react-prod-14",
+    "topic": "Broken Error Boundary Granularity Causing Complete App Whiteouts",
+    "category": "Resilience & Error Handling",
+    "severity": "P0 / Total Application Availability Collapse",
+    "theProblem": "An application has only a single root Error Boundary (or none at all). A minor formatting bug inside a non-critical sidebar widget (e.g. attempting to read `.avatar` on an undefined user) causes the entire application to crash. The user is greeted with a completely blank white screen or full-page error, losing their unsaved form work and active shopping cart.",
+    "howItWorksInternally": "In React 16+, an uncaught exception in any component's render phase causes React to unmount the entire component tree from the DOM root. React purposefully unmounts rather than leaving corrupt UI on screen because a corrupt UI can lead to accidental financial clicks or data corruption. If no intermediate boundary exists to catch the error, the root fiber unmounts, destroying the entire application DOM.",
+    "productionCode": "// 1. DISASTER ARCHITECTURE: Monolithic Root-only Boundary\n// function BadApp() {\n//   return (\n//     <RootErrorBoundary>\n//       <Navbar />\n//       <MainArticle />\n//       <FlakyCommentWidget /> {/* Crash here unmounts the ENTIRE APP! */}\n//     </RootErrorBoundary>\n//   );\n// }\n\n// 2. PRODUCTION ARCHITECTURE: Multi-Tiered Nested Error Boundaries\nimport { ErrorBoundary } from 'react-error-boundary';\n\nfunction WidgetFallback({ error, resetErrorBoundary }) {\n  return (\n    <div className=\"widget-error-card\">\n      <p>Failed to load widget comments.</p>\n      <button onClick={resetErrorBoundary}>Retry Widget</button>\n    </div>\n  );\n}\n\nexport function ResilientApp() {\n  return (\n    // Tier 1: Catches catastrophic navigation/routing failures\n    <ErrorBoundary fallback={<div>Critical app failure. Please refresh.</div>}>\n      <Navbar />\n      <div className=\"main-layout\">\n        <MainArticle />\n\n        {/* Tier 2: Isolated Widget Boundary */}\n        {/* If FlakyCommentWidget throws, ONLY this widget unmounts! */}\n        {/* Navbar and MainArticle remain 100% interactive and intact! */}\n        <ErrorBoundary FallbackComponent={WidgetFallback}>\n          <FlakyCommentWidget />\n        </ErrorBoundary>\n      </div>\n    </ErrorBoundary>\n  );\n}",
+    "monitoringMetrics": [
+      "Root-level Error Boundary trigger counts in Sentry (P0 severity alert)",
+      "User session abandonment immediately following component render exceptions",
+      "Widget-level fallback render rates indicating specific localized instability"
+    ],
+    "productionChecklist": [
+      "Wrap every independent UI section (widgets, modals, data tables, sidebars) in its own localized Error Boundary.",
+      "Provide working retry/reset handlers on error fallbacks to let users recover without reloading the page.",
+      "Ensure all error boundaries forward `componentStack` telemetry to APM platforms for rapid debugging."
+    ]
+  }
+]

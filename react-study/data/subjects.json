@@ -26,10 +26,14 @@
   {
     "id": "react",
     "name": "React",
-    "icon": "\u269b",
+    "icon": "⚛",
     "iconColor": "bg-cyan-500 text-white",
     "description": "Components, hooks, virtual DOM, reconciliation & state",
-    "dataFile": "react.json"
+    "dataFile": "react.json",
+    "qaFile": "react.qa.json",
+    "deepFile": "react.deep.json",
+    "examplesFile": "react.examples.json",
+    "productionFile": "react.production.json"
   },
   {
     "id": "typescript",
@@ -81,7 +85,11 @@
     "icon": "NG",
     "iconColor": "bg-rose-600 text-white",
     "description": "Components, directives, RxJS, state and rendering",
-    "dataFile": "angular.json"
+    "dataFile": "angular.json",
+    "qaFile": "angular.qa.json",
+    "deepFile": "angular.deep.json",
+    "examplesFile": "angular.examples.json",
+    "productionFile": "angular.production.json"
   },
   {
     "id": "pgsql",
@@ -94,6 +102,18 @@
     "deepFile": "pgsql.deep.json",
     "examplesFile": "pgsql.examples.json",
     "productionFile": "pgsql.production.json"
+  },
+  {
+    "id": "docker",
+    "name": "Docker",
+    "icon": "DK",
+    "iconColor": "bg-sky-600 text-white",
+    "description": "Containers, BuildKit, networking, storage, security & orchestration",
+    "dataFile": "docker.json",
+    "qaFile": "docker.qa.json",
+    "deepFile": "docker.deep.json",
+    "examplesFile": "docker.examples.json",
+    "productionFile": "docker.production.json"
   },
   {
     "id": "awss3",
@@ -114,7 +134,7 @@
   {
     "id": "ec2lambda",
     "name": "EC2 & Lambda",
-    "icon": "\u03bb",
+    "icon": "λ",
     "iconColor": "bg-amber-600 text-white",
     "description": "Compute instances, serverless functions, execution lifecycle",
     "dataFile": "ec2lambda.json"
@@ -134,5 +154,29 @@
     "iconColor": "bg-purple-700 text-white",
     "description": "Subnets, route tables, security groups, NACLs and security",
     "dataFile": "vpciamsg.json"
+  },
+  {
+    "id": "lld",
+    "name": "Low-Level Design (LLD)",
+    "icon": "LLD",
+    "iconColor": "bg-emerald-600 text-white",
+    "description": "Object-oriented principles, design patterns, concurrency, state machines & machine coding",
+    "dataFile": "lld.json",
+    "qaFile": "lld.qa.json",
+    "deepFile": "lld.deep.json",
+    "examplesFile": "lld.examples.json",
+    "productionFile": "lld.production.json"
+  },
+  {
+    "id": "hld",
+    "name": "High-Level Design (HLD)",
+    "icon": "HLD",
+    "iconColor": "bg-indigo-600 text-white",
+    "description": "Distributed systems, scalability, storage engines, consensus, caching, microservices & large-scale architectures",
+    "dataFile": "hld.json",
+    "qaFile": "hld.qa.json",
+    "deepFile": "hld.deep.json",
+    "examplesFile": "hld.examples.json",
+    "productionFile": "hld.production.json"
   }
 ]
