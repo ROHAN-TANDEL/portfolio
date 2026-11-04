@@ -289,7 +289,7 @@ export function DeeperConceptsSection({ subject }) {
               {/* Header Bar */}
               <div
                 onClick={() => toggleExpand(item.id)}
-                className="flex items-start justify-between gap-3 p-4 sm:p-5 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-zinc-850/50 transition-colors"
+                className="flex items-start justify-between gap-3 p-4 sm:p-5 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-zinc-800/50 transition-colors"
               >
                 <div className="flex items-start gap-3 flex-1 min-w-0">
                   <button
@@ -346,7 +346,7 @@ export function DeeperConceptsSection({ subject }) {
               {isExpanded && (
                 <div className="px-4 sm:px-6 pb-6 pt-2 border-t border-slate-100 dark:border-zinc-800/80 space-y-6">
                   {/* Overview Full Callout */}
-                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-850/80 border border-slate-200/80 dark:border-zinc-750 text-xs sm:text-sm text-slate-700 dark:text-zinc-200 leading-relaxed">
+                  <div className="p-4 rounded-xl bg-slate-50/90 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 text-xs sm:text-sm text-slate-700 dark:text-zinc-200 leading-relaxed">
                     <p className="font-semibold text-slate-900 dark:text-white mb-1 flex items-center gap-1.5">
                       <BookOpen className="w-4 h-4 text-primary" />
                       Executive Summary & Context
@@ -377,7 +377,7 @@ export function DeeperConceptsSection({ subject }) {
                       {item.deepDive.map((sub, sIdx) => (
                         <div
                           key={sIdx}
-                          className="space-y-3 p-4 rounded-xl bg-slate-50/60 dark:bg-zinc-850/40 border border-slate-200/60 dark:border-zinc-800"
+                          className="space-y-3 p-4 rounded-xl bg-slate-50/90 dark:bg-zinc-950/60 border border-slate-200/60 dark:border-zinc-800"
                         >
                           <h5 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                             <span className="w-5 h-5 rounded-full bg-primary-subtle text-primary dark:bg-primary-dark-subtle dark:text-primary-dark-text text-[11px] flex items-center justify-center font-bold">

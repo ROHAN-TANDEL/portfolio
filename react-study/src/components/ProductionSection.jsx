@@ -301,7 +301,7 @@ export function ProductionSection({ subject }) {
               {/* Header Bar */}
               <div
                 onClick={() => toggleExpand(item.id)}
-                className="flex items-start justify-between gap-3 p-4 sm:p-5 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-zinc-850/50 transition-colors"
+                className="flex items-start justify-between gap-3 p-4 sm:p-5 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-zinc-800/50 transition-colors"
               >
                 <div className="flex items-start gap-3 flex-1 min-w-0">
                   <button
@@ -377,7 +377,7 @@ export function ProductionSection({ subject }) {
                         <Cpu className="w-3.5 h-3.5 text-primary" />
                         How It Works Internally (Engine / OS Mechanics)
                       </h4>
-                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-850/70 border border-slate-200/80 dark:border-zinc-800 text-xs sm:text-sm text-slate-700 dark:text-zinc-200 leading-relaxed whitespace-pre-line">
+                      <div className="p-4 rounded-xl bg-slate-50/90 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 text-xs sm:text-sm text-slate-700 dark:text-zinc-200 leading-relaxed whitespace-pre-line">
                         {item.howItWorksInternally}
                       </div>
                     </div>
@@ -405,7 +405,7 @@ export function ProductionSection({ subject }) {
                         {item.monitoringMetrics.map((metric, mIdx) => (
                           <div
                             key={mIdx}
-                            className="p-3 rounded-xl bg-slate-50/80 dark:bg-zinc-850/60 border border-slate-200/60 dark:border-zinc-800 text-xs flex items-center gap-2.5 font-mono text-slate-800 dark:text-zinc-200"
+                            className="p-3 rounded-xl bg-slate-50/90 dark:bg-zinc-950/60 border border-slate-200/60 dark:border-zinc-800 text-xs flex items-center gap-2.5 font-mono text-slate-800 dark:text-zinc-200"
                           >
                             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                             <span>{metric}</span>
@@ -432,7 +432,7 @@ export function ProductionSection({ subject }) {
                               className={`p-3 rounded-xl border flex items-start gap-3 text-xs cursor-pointer transition-colors ${
                                 isChecked
                                   ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-200'
-                                  : 'bg-slate-50 dark:bg-zinc-850/60 border-slate-200/80 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800'
+                                  : 'bg-slate-50/90 dark:bg-zinc-900 border-slate-200/80 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800'
                               }`}
                             >
                               <div className="mt-0.5 text-slate-400 dark:text-zinc-500">

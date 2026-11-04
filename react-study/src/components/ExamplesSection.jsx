@@ -337,7 +337,7 @@ export function ExamplesSection({ subject }) {
               {/* Header Bar */}
               <div
                 onClick={() => toggleExpand(item.id)}
-                className="flex items-start justify-between gap-3 p-4 sm:p-5 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-zinc-850/50 transition-colors"
+                className="flex items-start justify-between gap-3 p-4 sm:p-5 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-zinc-800/50 transition-colors"
               >
                 <div className="flex items-start gap-3 flex-1 min-w-0">
                   <button
@@ -446,7 +446,7 @@ export function ExamplesSection({ subject }) {
                         {item.breakdown.map((b, bIdx) => (
                           <div
                             key={bIdx}
-                            className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-850/70 border border-slate-200/70 dark:border-zinc-800 flex items-start gap-3 text-xs"
+                            className="p-3 rounded-xl bg-slate-50/90 dark:bg-zinc-950/60 border border-slate-200/70 dark:border-zinc-800 flex items-start gap-3 text-xs"
                           >
                             {b.lineRange && (
                               <span className="px-2 py-0.5 rounded font-mono text-[11px] font-bold bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 whitespace-nowrap">

@@ -372,7 +372,7 @@ export function TopicDetailPage({
           className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
             studyMode === 'theory'
               ? 'bg-primary text-white shadow-xs'
-              : 'bg-slate-100 dark:bg-zinc-850 text-slate-600 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white'
+              : 'bg-slate-100 dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 text-slate-600 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-zinc-800'
           }`}
         >
           <BookOpen className="w-4 h-4" />
@@ -380,7 +380,7 @@ export function TopicDetailPage({
           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
             studyMode === 'theory'
               ? 'bg-white/20 text-white'
-              : 'bg-slate-200 dark:bg-zinc-700 text-slate-700 dark:text-zinc-200'
+              : 'bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200'
           }`}>
             {effectiveCards.length}
           </span>
@@ -393,7 +393,7 @@ export function TopicDetailPage({
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
               studyMode === 'qa'
                 ? 'bg-primary text-white shadow-xs'
-                : 'bg-slate-100 dark:bg-zinc-850 text-slate-600 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white'
+                : 'bg-slate-100 dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 text-slate-600 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-zinc-800'
             }`}
           >
             <HelpCircle className="w-4 h-4" />
@@ -415,7 +415,7 @@ export function TopicDetailPage({
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
               studyMode === 'deep'
                 ? 'bg-primary text-white shadow-xs'
-                : 'bg-slate-100 dark:bg-zinc-850 text-slate-600 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white'
+                : 'bg-slate-100 dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 text-slate-600 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-zinc-800'
             }`}
           >
             <Sparkles className="w-4 h-4" />
@@ -437,7 +437,7 @@ export function TopicDetailPage({
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
               studyMode === 'examples'
                 ? 'bg-primary text-white shadow-xs'
-                : 'bg-slate-100 dark:bg-zinc-850 text-slate-600 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white'
+                : 'bg-slate-100 dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 text-slate-600 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-zinc-800'
             }`}
           >
             <Code2 className="w-4 h-4" />
@@ -459,7 +459,7 @@ export function TopicDetailPage({
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
               studyMode === 'production'
                 ? 'bg-primary text-white shadow-xs'
-                : 'bg-slate-100 dark:bg-zinc-850 text-slate-600 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white'
+                : 'bg-slate-100 dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 text-slate-600 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-zinc-800'
             }`}
           >
             <Server className="w-4 h-4" />
@@ -524,7 +524,7 @@ export function TopicDetailPage({
                 setIsArchiveMode(false);
                 setActiveCategory('All');
               }}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-white dark:bg-zinc-850 text-slate-800 dark:text-zinc-200 border border-slate-200 dark:border-zinc-700 hover:border-primary/50 transition-colors cursor-pointer self-start sm:self-auto shadow-xs group"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-200 border border-slate-200 dark:border-zinc-700 hover:border-primary/50 transition-colors cursor-pointer self-start sm:self-auto shadow-xs group"
             >
               <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
               <span>Back to Current Edition ({cards.length} cards)</span>
@@ -552,7 +552,7 @@ export function TopicDetailPage({
                       className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                         isSelected
                           ? 'bg-primary text-white shadow-xs ring-2 ring-primary/40'
-                          : 'bg-white dark:bg-zinc-850 text-slate-700 dark:text-zinc-200 border border-slate-200 dark:border-zinc-800 hover:border-primary/50'
+                          : 'bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 border border-slate-200 dark:border-zinc-800 hover:border-primary/50'
                       }`}
                     >
                       <PackageCheck className="w-4 h-4" />

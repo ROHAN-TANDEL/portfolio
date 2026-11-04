@@ -496,7 +496,7 @@ export function QuestionAnswerSection({
                   </h3>
 
                   {/* Quick Answer Snippet */}
-                  <div className="mt-3 p-3 rounded-xl bg-slate-50 dark:bg-zinc-850/70 border border-slate-100 dark:border-zinc-800/80">
+                  <div className="mt-3 p-3 rounded-xl bg-slate-50/90 dark:bg-zinc-950/70 border border-slate-200/80 dark:border-zinc-800/80">
                     <div className="flex items-start gap-2">
                       <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
                       <p className={`text-xs text-slate-700 dark:text-zinc-200 leading-relaxed font-medium ${isExpanded ? '' : 'line-clamp-3'}`}>
@@ -598,7 +598,7 @@ export function QuestionAnswerSection({
                 {/* Card Header Row */}
                 <div
                   onClick={() => toggleExpand(item.id)}
-                  className="p-4 sm:p-5 flex items-start justify-between gap-4 cursor-pointer select-none hover:bg-slate-50/50 dark:hover:bg-zinc-850/50 transition-colors"
+                  className="p-4 sm:p-5 flex items-start justify-between gap-4 cursor-pointer select-none hover:bg-slate-50/50 dark:hover:bg-zinc-800/50 transition-colors"
                 >
                   <div className="flex items-start gap-3 min-w-0">
                     <button
@@ -655,7 +655,7 @@ export function QuestionAnswerSection({
 
                 {/* Quick Answer Banner */}
                 <div className="px-4 pb-4 sm:px-5 sm:pb-4 pt-0">
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-850/70 border border-slate-100 dark:border-zinc-800/80">
+                  <div className="p-3 rounded-xl bg-slate-50/90 dark:bg-zinc-950/70 border border-slate-200/80 dark:border-zinc-800/80">
                     <div className="flex items-start gap-2">
                       <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
                       <p className="text-xs sm:text-sm text-slate-700 dark:text-zinc-200 leading-relaxed font-medium">

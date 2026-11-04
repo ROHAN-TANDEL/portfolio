@@ -11,6 +11,8 @@
   --color-primary-dark-subtle: var(--theme-primary-dark-subtle);
   --color-primary-dark-border: var(--theme-primary-dark-border);
   --color-primary-dark-text: var(--theme-primary-dark-text);
+  --color-zinc-750: #2e2e34;
+  --color-zinc-850: #1a1a1e;
 }
 
 :root {
