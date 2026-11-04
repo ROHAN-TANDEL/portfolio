@@ -1,0 +1,1103 @@
+[
+  {
+    "id": "pg-ex-01",
+    "title": "Atomic Upsert with ON CONFLICT DO UPDATE & EXCLUDED Table",
+    "category": "Advanced SQL & Queries",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Demonstrates an atomic, race-condition-free upsert pattern maintaining view counts and updating timestamps using the EXCLUDED pseudo-table and RETURNING clause.",
+    "conceptsCovered": [
+      "INSERT ... ON CONFLICT",
+      "EXCLUDED Pseudo-Table",
+      "Atomic Counter Increment",
+      "RETURNING Clause",
+      "Unique Constraint Target"
+    ],
+    "code": "-- 1. Schema with unique constraint target\nCREATE TABLE page_analytics (\n    page_url TEXT PRIMARY KEY,\n    view_count BIGINT NOT NULL DEFAULT 1,\n    last_viewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\n-- 2. Atomic upsert: If url exists, increment count and update timestamp\nINSERT INTO page_analytics (page_url, view_count, last_viewed_at)\nVALUES ('/blog/postgresql-internals', 1, NOW())\nON CONFLICT (page_url) \nDO UPDATE SET\n    view_count = page_analytics.view_count + EXCLUDED.view_count,\n    last_viewed_at = EXCLUDED.last_viewed_at\nRETURNING page_url, view_count, last_viewed_at;",
+    "breakdown": [
+      "ON CONFLICT (page_url) targets the primary key unique index.",
+      "EXCLUDED.view_count references the proposed insert row value (1), adding it atomically to the existing row's view_count.",
+      "Eliminates application-level SELECT-then-INSERT race conditions under high concurrency.",
+      "RETURNING yields the newly updated row state in the same network roundtrip."
+    ],
+    "expectedOutput": "page_url                    | view_count | last_viewed_at\n/blog/postgresql-internals  | 2          | 2026-11-04 11:20:00+00"
+  },
+  {
+    "id": "pg-ex-02",
+    "title": "Writable Common Table Expression (CTE) Data Archival Pipeline",
+    "category": "Advanced SQL & Queries",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Combines a DELETE statement with an INSERT statement in a single atomic SQL transaction using a Writable CTE to archive expired session records.",
+    "conceptsCovered": [
+      "Writable CTEs",
+      "DELETE ... RETURNING",
+      "Atomic Archival",
+      "Audit Pipeline",
+      "Single-Statement Data Migration"
+    ],
+    "code": "-- Move expired sessions to an archive table atomically in one query\nWITH deleted_sessions AS (\n    DELETE FROM user_sessions\n    WHERE expires_at < NOW()\n    RETURNING session_id, user_id, ip_address, created_at, NOW() AS archived_at\n)\nINSERT INTO session_archive (session_id, user_id, ip_address, created_at, archived_at)\nSELECT session_id, user_id, ip_address, created_at, archived_at\nFROM deleted_sessions\nRETURNING session_id, user_id, archived_at;",
+    "breakdown": [
+      "The CTE executes the DELETE operation and captures deleted rows via RETURNING.",
+      "The outer INSERT pipes the deleted rows directly into the session_archive table.",
+      "Guarantees that rows deleted from active storage are 100% saved in the archive; if anything fails, the entire transaction rolls back.",
+      "Eliminates multi-step application roundtrips."
+    ],
+    "expectedOutput": "session_id | user_id | archived_at\nsess_1001  | 42      | 2026-11-04 11:20:00+00\nsess_1002  | 89      | 2026-11-04 11:20:00+00"
+  },
+  {
+    "id": "pg-ex-03",
+    "title": "Top-N Per Category Query using Indexed LATERAL Join",
+    "category": "Advanced SQL & Queries",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Uses a CROSS JOIN LATERAL subquery backed by a composite B-Tree index to fetch the top 2 highest-value orders for every active customer with maximum efficiency.",
+    "conceptsCovered": [
+      "CROSS JOIN LATERAL",
+      "Top-N Per Group",
+      "Composite Index Seek",
+      "Subquery Parameter Passing",
+      "Foreach SQL Evaluation"
+    ],
+    "code": "-- Composite index to make the lateral subquery an instant index seek\nCREATE INDEX idx_orders_cust_amt ON orders (customer_id, amount DESC);\n\n-- Fetch top 2 orders per active customer\nSELECT \n    c.id AS customer_id, \n    c.company_name, \n    top_orders.id AS order_id, \n    top_orders.amount, \n    top_orders.created_at\nFROM customers c\nCROSS JOIN LATERAL (\n    SELECT o.id, o.amount, o.created_at\n    FROM orders o\n    WHERE o.customer_id = c.id\n    ORDER BY o.amount DESC\n    LIMIT 2\n) AS top_orders\nWHERE c.is_active = true;",
+    "breakdown": [
+      "LATERAL allows the subquery to reference c.id from the outer customers table.",
+      "Because the subquery has ORDER BY amount DESC LIMIT 2 matching idx_orders_cust_amt, Postgres only visits 2 index leaf entries per customer.",
+      "Vastly out-performs window functions (ROW_NUMBER) on large datasets because it never sorts or scans the full orders table."
+    ],
+    "expectedOutput": "customer_id | company_name | order_id | amount  | created_at\n10          | Acme Corp    | 9801     | 4500.00 | 2026-10-15 08:30:00+00\n10          | Acme Corp    | 9750     | 3200.00 | 2026-09-12 14:15:00+00\n11          | Globex       | 9912     | 8900.00 | 2026-11-01 10:00:00+00"
+  },
+  {
+    "id": "pg-ex-04",
+    "title": "Latest Status per Entity using DISTINCT ON (...) Deduplication",
+    "category": "Advanced SQL & Queries",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Employs PostgreSQL-specific DISTINCT ON (...) to fetch the single most recent tracking status update for every shipping shipment in a single pass.",
+    "conceptsCovered": [
+      "DISTINCT ON (...)",
+      "ORDER BY Synchronization",
+      "Latest State Extraction",
+      "Deduplication",
+      "Single-Pass Grouping"
+    ],
+    "code": "-- Fetch the latest tracking milestone for each parcel\nSELECT DISTINCT ON (parcel_id) \n    parcel_id, \n    status, \n    location, \n    updated_at\nFROM shipment_tracking_events\nORDER BY parcel_id, updated_at DESC;",
+    "breakdown": [
+      "DISTINCT ON (parcel_id) tells PostgreSQL to output only the first row encountered for each distinct parcel_id.",
+      "The ORDER BY clause begins with parcel_id, updated_at DESC, ensuring the newest event is always first.",
+      "Avoids verbose subqueries with MAX(updated_at) or ROW_NUMBER() window partitions."
+    ],
+    "expectedOutput": "parcel_id | status     | location | updated_at\nP-101     | DELIVERED  | Seattle  | 2026-11-04 09:30:00+00\nP-102     | IN_TRANSIT | Chicago  | 2026-11-04 08:15:00+00"
+  },
+  {
+    "id": "pg-ex-05",
+    "title": "Dynamic KPI Pivot Dashboard with FILTER (WHERE ...)",
+    "category": "Advanced SQL & Queries",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs an executive dashboard pivot summary using aggregate FILTER clauses to calculate status breakdowns in a single sequential table pass.",
+    "conceptsCovered": [
+      "FILTER (WHERE ...)",
+      "Selective Aggregates",
+      "Single-Pass Pivot",
+      "KPI Dashboards",
+      "Eliminating CASE WHEN"
+    ],
+    "code": "-- Executive KPI summary by month\nSELECT \n    DATE_TRUNC('month', order_date)::DATE AS sales_month,\n    COUNT(*) AS total_orders,\n    COUNT(*) FILTER (WHERE status = 'PAID') AS successful_orders,\n    COUNT(*) FILTER (WHERE status = 'REFUNDED') AS refunded_orders,\n    SUM(amount) FILTER (WHERE status = 'PAID') AS gross_revenue,\n    ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'PAID') / NULLIF(COUNT(*), 0), 2) AS conversion_rate_pct\nFROM sales_orders\nGROUP BY DATE_TRUNC('month', order_date)\nORDER BY sales_month DESC;",
+    "breakdown": [
+      "FILTER (WHERE status = 'PAID') evaluates only matching rows directly inside the aggregate calculation.",
+      "Replaces awkward SUM(CASE WHEN status = 'PAID' THEN amount ELSE 0 END) syntax.",
+      "Calculates gross revenue, counts, and conversion rate in a single scan of sales_orders."
+    ],
+    "expectedOutput": "sales_month | total_orders | successful_orders | refunded_orders | gross_revenue | conversion_rate_pct\n2026-11-01  | 1500         | 1420              | 35              | 142500.00     | 94.67\n2026-10-01  | 1400         | 1310              | 40              | 131000.00     | 93.57"
+  },
+  {
+    "id": "pg-ex-06",
+    "title": "Hierarchical Org-Chart Traversal with Depth & Breadcrumb Paths",
+    "category": "Advanced SQL & Queries",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Traverses a multi-tier management reporting hierarchy using WITH RECURSIVE, calculating organization depth, reporting chains, and formatted breadcrumb trees.",
+    "conceptsCovered": [
+      "WITH RECURSIVE",
+      "Anchor vs Recursive Term",
+      "Hierarchical Trees",
+      "Breadcrumb String Concatenation",
+      "Depth Tracking"
+    ],
+    "code": "-- Recursive CTE to build employee management hierarchy\nWITH RECURSIVE org_hierarchy AS (\n    -- 1. Anchor: Top-level CEO (manager_id IS NULL)\n    SELECT \n        employee_id, \n        name, \n        manager_id, \n        1 AS level, \n        name::TEXT AS management_chain,\n        ARRAY[employee_id] AS hierarchy_path\n    FROM employees\n    WHERE manager_id IS NULL\n\n    UNION ALL\n\n    -- 2. Recursive Member: Direct reports of previous level\n    SELECT \n        e.employee_id, \n        e.name, \n        e.manager_id, \n        o.level + 1, \n        o.management_chain || ' -> ' || e.name,\n        o.hierarchy_path || e.employee_id\n    FROM employees e\n    JOIN org_hierarchy o ON e.manager_id = o.employee_id\n)\nSELECT level, name, management_chain\nFROM org_hierarchy\nORDER BY hierarchy_path;",
+    "breakdown": [
+      "Anchor query initializes the working table with root executives where manager_id IS NULL.",
+      "Recursive query joins employees against org_hierarchy using manager_id = employee_id.",
+      "ARRAY[employee_id] provides hierarchical sorting so direct reports appear directly beneath their manager.",
+      "Terminates automatically when no employees report to the lowest level."
+    ],
+    "expectedOutput": "level | name       | management_chain\n1     | Sarah CEO  | Sarah CEO\n2     | Bob VP Eng | Sarah CEO -> Bob VP Eng\n3     | Carol Dev  | Sarah CEO -> Bob VP Eng -> Carol Dev"
+  },
+  {
+    "id": "pg-ex-07",
+    "title": "Cycle-Protected Directed Graph Path Traversal",
+    "category": "Advanced SQL & Queries",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Navigates complex directed cyclic graphs (e.g. social networks, supply chain dependencies) using array visited-checks and PostgreSQL 14+ CYCLE clause.",
+    "conceptsCovered": [
+      "Directed Graphs",
+      "Cycle Detection",
+      "Infinite Loop Prevention",
+      "ARRAY Visited Tracking",
+      "CYCLE Clause (PG 14+)"
+    ],
+    "code": "-- Find all transitive dependencies while stopping cycles\nWITH RECURSIVE component_deps AS (\n    -- Anchor: root component\n    SELECT \n        assembly_id, \n        part_id, \n        1 AS depth, \n        ARRAY[assembly_id] AS visited_ids,\n        false AS is_cycle\n    FROM bill_of_materials\n    WHERE assembly_id = 'ENGINE-01'\n\n    UNION ALL\n\n    -- Recursive: sub-components\n    SELECT \n        b.assembly_id, \n        b.part_id, \n        cd.depth + 1, \n        cd.visited_ids || b.assembly_id,\n        b.part_id = ANY(cd.visited_ids)\n    FROM bill_of_materials b\n    JOIN component_deps cd ON b.assembly_id = cd.part_id\n    WHERE NOT (b.assembly_id = ANY(cd.visited_ids)) -- Stop infinite cycles!\n)\nSELECT depth, assembly_id, part_id, is_cycle FROM component_deps;",
+    "breakdown": [
+      "Maintains visited_ids array across recursive iterations.",
+      "The WHERE condition NOT (b.assembly_id = ANY(cd.visited_ids)) halts recursive traversal before entering an infinite loop.",
+      "Safeguards against corrupted data structures or circular dependencies in manufacturing BOMs."
+    ],
+    "expectedOutput": "depth | assembly_id | part_id    | is_cycle\n1     | ENGINE-01   | PISTON-01  | f\n2     | PISTON-01   | RING-02    | f"
+  },
+  {
+    "id": "pg-ex-08",
+    "title": "Time-Series Moving Average with ROWS vs RANGE Framing",
+    "category": "Advanced SQL & Queries",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Calculates physical 3-row moving averages and time-interval 7-day rolling revenue using window function frames (ROWS vs RANGE).",
+    "conceptsCovered": [
+      "Window Frames",
+      "ROWS BETWEEN",
+      "RANGE BETWEEN INTERVAL",
+      "Moving Averages",
+      "Time-Series Analytics"
+    ],
+    "code": "-- Compare physical row window vs time-based interval window\nSELECT \n    sold_at, \n    daily_revenue,\n    -- 1. Physical 3-day moving average (strictly 3 preceding rows)\n    AVG(daily_revenue) OVER (\n        ORDER BY sold_at \n        ROWS BETWEEN 2 PRECEDING AND CURRENT ROW\n    ) AS physical_3_day_avg,\n    -- 2. Time-based 7-day rolling sum (handles gaps/missing days gracefully)\n    SUM(daily_revenue) OVER (\n        ORDER BY sold_at \n        RANGE BETWEEN INTERVAL '7 days' PRECEDING AND CURRENT ROW\n    ) AS rolling_7_day_revenue\nFROM revenue_history\nORDER BY sold_at DESC;",
+    "breakdown": [
+      "ROWS counts physical tuple offsets; if days are skipped, it still takes 3 rows.",
+      "RANGE BETWEEN INTERVAL evaluates timestamp values directly; if weekends are skipped, it sums only the actual past 7 calendar days.",
+      "Provides robust statistical calculations for financial analytics."
+    ],
+    "expectedOutput": "sold_at    | daily_revenue | physical_3_day_avg | rolling_7_day_revenue\n2026-11-04 | 12000.00      | 11500.00           | 78000.00\n2026-11-03 | 11000.00      | 11000.00           | 66000.00"
+  },
+  {
+    "id": "pg-ex-09",
+    "title": "Multi-Dimensional Summary Aggregation with ROLLUP and GROUPING()",
+    "category": "Advanced SQL & Queries",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Generates hierarchical subtotals and grand totals in a single database query using ROLLUP and labels summary rows with GROUPING().",
+    "conceptsCovered": [
+      "ROLLUP",
+      "GROUPING() Function",
+      "Subtotals & Grand Totals",
+      "OLAP Aggregations",
+      "Single-Pass Reporting"
+    ],
+    "code": "-- Multi-level regional sales summary\nSELECT \n    CASE WHEN GROUPING(continent) = 1 THEN 'Global Total' ELSE continent END AS continent,\n    CASE WHEN GROUPING(country) = 1 THEN 'Continent Total' ELSE country END AS country,\n    SUM(sales_amount) AS total_sales\nFROM geographic_sales\nGROUP BY ROLLUP (continent, country)\nORDER BY continent, country;",
+    "breakdown": [
+      "ROLLUP (continent, country) computes subtotals for (continent, country), (continent), and grand total ().",
+      "GROUPING(col) returns 1 when the column is aggregated into a subtotal, allowing clean conditional labels.",
+      "Eliminates 3 separate queries combined with UNION ALL."
+    ],
+    "expectedOutput": "continent    | country         | total_sales\nEurope       | Germany         | 50000.00\nEurope       | Continent Total | 50000.00\nGlobal Total | Continent Total | 50000.00"
+  },
+  {
+    "id": "pg-ex-10",
+    "title": "Table Synchronization with PostgreSQL 15+ MERGE Statement",
+    "category": "Advanced SQL & Queries",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Synchronizes a primary customer table with an external incoming staging batch using MERGE to handle matched updates, conditional deletions, and new insertions.",
+    "conceptsCovered": [
+      "MERGE INTO ... USING",
+      "WHEN MATCHED THEN UPDATE",
+      "WHEN MATCHED THEN DELETE",
+      "WHEN NOT MATCHED THEN INSERT",
+      "PostgreSQL 15+"
+    ],
+    "code": "-- Synchronize accounts table from external incoming feed\nMERGE INTO customer_accounts target\nUSING staging_account_updates source\nON target.account_id = source.account_id\n-- 1. If closed in source, delete from target\nWHEN MATCHED AND source.status = 'CLOSED' THEN\n    DELETE\n-- 2. If balance changed, update\nWHEN MATCHED THEN\n    UPDATE SET \n        balance = source.balance, \n        updated_at = NOW()\n-- 3. If new account, insert\nWHEN NOT MATCHED THEN\n    INSERT (account_id, balance, status, created_at)\n    VALUES (source.account_id, source.balance, source.status, NOW());",
+    "breakdown": [
+      "MERGE joins target with source on account_id.",
+      "Handles updates, deletes, and inserts conditionally in one atomic statement.",
+      "Standard ANSI SQL syntax added in PostgreSQL 15 for batch ETL pipelines."
+    ],
+    "expectedOutput": "MERGE 150 (Total rows inserted, updated, or deleted)"
+  },
+  {
+    "id": "pg-ex-11",
+    "title": "Zero-Downtime Data Profiling with TABLESAMPLE BERNOULLI",
+    "category": "Advanced SQL & Queries",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Samples 1% of a 50-million row table uniformly using TABLESAMPLE BERNOULLI for instant statistical data profiling without sorting or memory exhaustion.",
+    "conceptsCovered": [
+      "TABLESAMPLE BERNOULLI",
+      "Statistical Profiling",
+      "Avoiding ORDER BY random()",
+      "Fast Sample Execution",
+      "REPEATABLE Seed"
+    ],
+    "code": "-- Uniform random 1% sample of users for statistical profiling\nSELECT \n    verification_status, \n    COUNT(*) AS sample_count,\n    ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 2) AS sample_pct\nFROM user_identities TABLESAMPLE BERNOULLI (1.0) REPEATABLE (123)\nGROUP BY verification_status;",
+    "breakdown": [
+      "TABLESAMPLE BERNOULLI (1.0) samples roughly 1% of rows randomly across all table pages.",
+      "REPEATABLE (123) guarantees identical sample rows for consistent test verification.",
+      "Executes in 100ms on a 50GB table instead of spending 5 minutes sorting by random()."
+    ],
+    "expectedOutput": "verification_status | sample_count | sample_pct\nVERIFIED            | 42000        | 84.00\nPENDING             | 8000         | 16.00"
+  },
+  {
+    "id": "pg-ex-12",
+    "title": "Granular JSONB Document Mutation with jsonb_set & Subtraction",
+    "category": "JSONB & Indexing",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Updates deeply nested values, merges top-level keys, and removes sensitive attributes from JSONB documents without replacing the whole payload.",
+    "conceptsCovered": [
+      "jsonb_set",
+      "Path Mutation",
+      "Concatenation Operator (||)",
+      "Subtraction Operator (-)",
+      "Deep Path Deletion (#-)"
+    ],
+    "code": "-- Perform deep surgical updates on user settings\nUPDATE user_profiles \nSET preferences = \n    -- 1. Update deep nested key\n    jsonb_set(\n        preferences, \n        '{notifications, email, digest}', \n        'true'::jsonb, \n        true -- create missing path\n    )\n    -- 2. Shallow merge new theme\n    || '{\"theme\": \"dark\"}'::jsonb\n    -- 3. Strip deprecated tracking key\n    #- '{security, legacy_token}'\nWHERE user_id = 42\nRETURNING preferences;",
+    "breakdown": [
+      "jsonb_set navigates {notifications, email, digest} and atomically updates or inserts the boolean value.",
+      "|| merges theme: dark at the root object level.",
+      "#- '{security, legacy_token}' deletes the nested key path.",
+      "Combines three mutations into a single atomic UPDATE statement."
+    ],
+    "expectedOutput": "preferences\n{\"theme\": \"dark\", \"notifications\": {\"email\": {\"digest\": true}}}"
+  },
+  {
+    "id": "pg-ex-13",
+    "title": "Advanced SQL/JSON Path Predicates & Filtering",
+    "category": "JSONB & Indexing",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Executes complex array filters and extracts matching sub-elements from JSONB documents using ANSI SQL/JSON path queries.",
+    "conceptsCovered": [
+      "jsonb_path_query",
+      "jsonb_path_exists",
+      "JSONPath Filter Predicates (?@)",
+      "Array Slicing in JSONB",
+      "ANSI Standard SQL/JSON"
+    ],
+    "code": "-- 1. Filter rows where any high-priority item costs over $500\nSELECT id, order_payload\nFROM purchase_orders\nWHERE jsonb_path_exists(\n    order_payload, \n    '$.line_items[*] ? (@.priority == \"URGENT\" && @.price > 500)'\n);\n\n-- 2. Extract matching items as individual rows\nSELECT \n    id,\n    jsonb_path_query(\n        order_payload, \n        '$.line_items[*] ? (@.priority == \"URGENT\").sku'\n    ) AS urgent_sku\nFROM purchase_orders;",
+    "breakdown": [
+      "jsonb_path_exists tests if any array element in line_items matches the boolean filter.",
+      "jsonb_path_query unpacks and returns only the matching SKUs directly as a rowset.",
+      "Avoids verbose LATERAL jsonb_array_elements joins."
+    ],
+    "expectedOutput": "id   | urgent_sku\n1001 | \"SKU-SERVER-01\"\n1001 | \"SKU-SWITCH-02\""
+  },
+  {
+    "id": "pg-ex-14",
+    "title": "GIN Operator Class Benchmark: jsonb_ops vs jsonb_path_ops",
+    "category": "JSONB & Indexing",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Constructs and compares default GIN indexing (jsonb_ops) against path-optimized GIN indexing (jsonb_path_ops), demonstrating up to 70% storage savings.",
+    "conceptsCovered": [
+      "GIN Operator Classes",
+      "jsonb_ops vs jsonb_path_ops",
+      "Containment Operator (@>)",
+      "Index Size Profiling",
+      "Write Amplification Reduction"
+    ],
+    "code": "-- Setup test table\nCREATE TABLE telemetry_events (\n    id BIGSERIAL PRIMARY KEY,\n    metadata JSONB NOT NULL\n);\n\n-- 1. Standard GIN index (indexes all keys and values independently)\nCREATE INDEX idx_telem_default ON telemetry_events USING gin (metadata);\n\n-- 2. Path-Ops GIN index (hashes path + values together, 3x smaller)\nCREATE INDEX idx_telem_path_ops ON telemetry_events USING gin (metadata jsonb_path_ops);\n\n-- Compare index sizes\nSELECT \n    pg_size_pretty(pg_relation_size('idx_telem_default')) AS default_size,\n    pg_size_pretty(pg_relation_size('idx_telem_path_ops')) AS path_ops_size;",
+    "breakdown": [
+      "jsonb_ops supports all operators (@>, ?, ?|, ?&) but consumes massive RAM and disk space.",
+      "jsonb_path_ops hashes entire paths, reducing index size by 60-70% and accelerating @> containment queries.",
+      "Best practice when queries only filter using containment (@>)."
+    ],
+    "expectedOutput": "default_size | path_ops_size\n450 MB       | 135 MB"
+  },
+  {
+    "id": "pg-ex-15",
+    "title": "Building Deeply Nested JSON APIs Directly in PostgreSQL",
+    "category": "JSONB & Indexing",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Eliminates application-side N+1 queries by aggregating parent customers and child orders into a single nested JSON API response in one query.",
+    "conceptsCovered": [
+      "jsonb_agg",
+      "jsonb_build_object",
+      "to_jsonb",
+      "Zero-Roundtrip JSON Serialization",
+      "COALESCE Empty Array"
+    ],
+    "code": "-- Fetch customer with nested array of order objects\nSELECT \n    c.id AS customer_id,\n    c.name,\n    jsonb_build_object(\n        'profile', jsonb_build_object('email', c.email, 'tier', c.tier),\n        'orders', COALESCE(\n            jsonb_agg(\n                jsonb_build_object(\n                    'order_id', o.id,\n                    'total', o.total_amount,\n                    'created_at', o.created_at\n                ) ORDER BY o.created_at DESC\n            ) FILTER (WHERE o.id IS NOT NULL),\n            '[]'::jsonb\n        )\n    ) AS api_payload\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.id\nGROUP BY c.id, c.name, c.email, c.tier;",
+    "breakdown": [
+      "jsonb_build_object creates structured JSON keys and values.",
+      "jsonb_agg collects matching orders into an array ordered by date.",
+      "FILTER (WHERE o.id IS NOT NULL) and COALESCE ensure customers with 0 orders return an empty array [] rather than [null].",
+      "Serves ready-to-send JSON payloads directly to Node.js/Express."
+    ],
+    "expectedOutput": "customer_id | name  | api_payload\n10          | Alice | {\"orders\": [{\"order_id\": 99, \"total\": 250.00}], \"profile\": {\"email\": \"alice@ex.com\", \"tier\": \"gold\"}}"
+  },
+  {
+    "id": "pg-ex-16",
+    "title": "Unpacking JSONB Arrays to Relational Rows with jsonb_to_recordset",
+    "category": "JSONB & Indexing",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Flattens an array of nested JSON invoice items into typed relational SQL rows with CROSS JOIN LATERAL for easy joins and filtering.",
+    "conceptsCovered": [
+      "jsonb_to_recordset",
+      "CROSS JOIN LATERAL",
+      "Set-Returning Functions",
+      "Typed Virtual Relational Columns",
+      "JSON Deserialization"
+    ],
+    "code": "-- Unpack invoice line items into relational columns\nSELECT \n    inv.id AS invoice_id,\n    inv.customer_id,\n    items.sku,\n    items.qty,\n    items.unit_price,\n    (items.qty * items.unit_price) AS line_total\nFROM invoices inv,\nLATERAL jsonb_to_recordset(inv.payload->'line_items') AS items(\n    sku TEXT, \n    qty INT, \n    unit_price NUMERIC(10, 2)\n)\nWHERE items.qty > 10;",
+    "breakdown": [
+      "jsonb_to_recordset transforms the JSON array into a virtual relational table.",
+      "Explicit column definitions items(sku TEXT, qty INT, unit_price NUMERIC) provide strict typing.",
+      "Standard SQL WHERE, ORDER BY, and arithmetic expressions run seamlessly on the unpacked data."
+    ],
+    "expectedOutput": "invoice_id | customer_id | sku        | qty | unit_price | line_total\nINV-9001   | 42          | WIDGET-RED | 25  | 14.50      | 362.50"
+  },
+  {
+    "id": "pg-ex-17",
+    "title": "JSON Schema Validation using Native CHECK Constraints",
+    "category": "JSONB & Indexing",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Enforces structural typing, mandatory keys, and value bounds on JSONB columns without installing third-party extensions.",
+    "conceptsCovered": [
+      "CHECK Constraints on JSONB",
+      "jsonb_typeof()",
+      "Key Existence Check (?&)",
+      "Data Integrity",
+      "Schema-on-Write"
+    ],
+    "code": "-- Enforce strict JSONB schema on write\nCREATE TABLE service_configs (\n    service_id TEXT PRIMARY KEY,\n    config JSONB NOT NULL,\n    CONSTRAINT check_valid_config CHECK (\n        -- 1. Must be a JSON object\n        jsonb_typeof(config) = 'object' AND\n        -- 2. Must contain required keys\n        config ?& ARRAY['port', 'workers', 'env'] AND\n        -- 3. Port must be a number between 1024 and 65535\n        jsonb_typeof(config->'port') = 'number' AND\n        (config->>'port')::INT BETWEEN 1024 AND 65535 AND\n        -- 4. Environment must match enum values\n        config->>'env' IN ('development', 'staging', 'production')\n    )\n);",
+    "breakdown": [
+      "Enforces data integrity before rows hit disk storage.",
+      "Guarantees that bad API payloads fail immediately with constraint violation errors.",
+      "Combines schema flexibility for optional keys with relational rigor for core attributes."
+    ],
+    "expectedOutput": "CREATE TABLE\n-- Valid insert:\nINSERT INTO service_configs VALUES ('api', '{\"port\": 8080, \"workers\": 4, \"env\": \"production\"}');\n-- Invalid insert fails immediately:\n-- INSERT INTO service_configs VALUES ('bad', '{\"port\": 80}');"
+  },
+  {
+    "id": "pg-ex-18",
+    "title": "Generated Stored Columns on JSONB with Foreign Key Enforcement",
+    "category": "JSONB & Indexing",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Extracts scalar fields from JSONB documents into GENERATED ALWAYS AS (expr) STORED columns, enabling Foreign Keys and native B-Tree indexing.",
+    "conceptsCovered": [
+      "GENERATED ALWAYS AS ... STORED",
+      "Foreign Keys on JSONB",
+      "B-Tree Indexing on Generated Columns",
+      "Planner Statistics",
+      "PostgreSQL 12+"
+    ],
+    "code": "-- Extract tenant_id from JSONB payload into a relational column\nCREATE TABLE tenant_audit_events (\n    id BIGSERIAL PRIMARY KEY,\n    payload JSONB NOT NULL,\n    -- Generated column extracted automatically at write time\n    tenant_id INT GENERATED ALWAYS AS ((payload->>'tenant_id')::INT) STORED,\n    created_at TIMESTAMPTZ GENERATED ALWAYS AS ((payload->>'timestamp')::TIMESTAMPTZ) STORED\n);\n\n-- Enforce Foreign Key referencing tenants table\nALTER TABLE tenant_audit_events \nADD CONSTRAINT fk_audit_tenant \nFOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;\n\n-- Standard B-Tree index for tenant searches\nCREATE INDEX idx_audit_tenant ON tenant_audit_events (tenant_id, created_at DESC);",
+    "breakdown": [
+      "GENERATED ALWAYS AS ... STORED extracts and materializes the value into physical heap tuples.",
+      "Allows foreign key constraints (impossible directly on JSONB columns).",
+      "PostgreSQL collects full statistical histograms on generated columns, optimizing query plans."
+    ],
+    "expectedOutput": "CREATE TABLE\nALTER TABLE\nCREATE INDEX"
+  },
+  {
+    "id": "pg-ex-19",
+    "title": "GIN Inverted Indexing on Native PostgreSQL Text Arrays",
+    "category": "JSONB & Indexing",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Indexes multi-tag text arrays using GIN, executing instant array containment (@>) and overlap (&&) searches across millions of records.",
+    "conceptsCovered": [
+      "GIN Index on Arrays",
+      "Array Containment (@>)",
+      "Array Overlap (&&)",
+      "Tag-Based Search",
+      "Index Scan Optimization"
+    ],
+    "code": "-- Array table with GIN index\nCREATE TABLE knowledge_base_articles (\n    id SERIAL PRIMARY KEY,\n    title TEXT NOT NULL,\n    tags TEXT[] NOT NULL\n);\n\n-- GIN inverted index on tags\nCREATE INDEX idx_articles_tags_gin ON knowledge_base_articles USING gin (tags);\n\n-- 1. Overlap query: articles tagged with 'postgres' OR 'performance'\nEXPLAIN (ANALYZE, BUFFERS)\nSELECT * FROM knowledge_base_articles \nWHERE tags && ARRAY['postgres', 'performance'];\n\n-- 2. Containment query: articles tagged with BOTH 'postgres' AND 'replication'\nEXPLAIN (ANALYZE, BUFFERS)\nSELECT * FROM knowledge_base_articles \nWHERE tags @> ARRAY['postgres', 'replication'];",
+    "breakdown": [
+      "GIN index indexes every distinct array element.",
+      "Overlap operator && matches if any tag intersects.",
+      "Containment operator @> matches if all specified tags exist in the row's array.",
+      "Both queries use Bitmap Index Scan via idx_articles_tags_gin."
+    ],
+    "expectedOutput": "Bitmap Heap Scan on knowledge_base_articles\n  ->  Bitmap Index Scan on idx_articles_tags_gin\n        Index Cond: (tags && '{postgres,performance}'::text[])"
+  },
+  {
+    "id": "pg-ex-20",
+    "title": "Spatial & Geometric Bounding Box Indexing with GiST",
+    "category": "JSONB & Indexing",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Uses GiST (Generalized Search Tree) with PostGIS geometric point coordinates to execute nearest-neighbor KNN ordering (<->) and bounding box queries.",
+    "conceptsCovered": [
+      "GiST Indexing",
+      "Spatial Bounding Boxes",
+      "K-Nearest Neighbors (<->)",
+      "PostGIS Geometries",
+      "Distance Ordering"
+    ],
+    "code": "-- Enable spatial extension\nCREATE EXTENSION IF NOT EXISTS postgis;\n\nCREATE TABLE warehouse_locations (\n    id SERIAL PRIMARY KEY,\n    name TEXT NOT NULL,\n    geo_point GEOMETRY(Point, 4326) NOT NULL\n);\n\n-- Create GiST spatial index\nCREATE INDEX idx_warehouse_geom ON warehouse_locations USING gist (geo_point);\n\n-- Instant K-Nearest Neighbor (KNN) search: 5 closest warehouses to user coordinates\nSELECT \n    name,\n    ST_Distance(geo_point, ST_SetSRID(ST_MakePoint(-73.985, 40.748), 4326)::geography) AS distance_meters\nFROM warehouse_locations\nORDER BY geo_point <-> ST_SetSRID(ST_MakePoint(-73.985, 40.748), 4326)\nLIMIT 5;",
+    "breakdown": [
+      "GiST indexes multi-dimensional bounding boxes.",
+      "<-> operator computes nearest neighbor distance in index traversal order.",
+      "Executes sub-millisecond distance sorting across millions of geographic points without calculating distances on every row."
+    ],
+    "expectedOutput": "name                   | distance_meters\nManhattan Depot 01     | 450.25\nQueens Distribution    | 3210.80"
+  },
+  {
+    "id": "pg-ex-21",
+    "title": "Time-Series BRIN (Block Range Index) for Multi-Gigabyte Tables",
+    "category": "JSONB & Indexing",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Deploys a BRIN index on a 100-million row IoT telemetry table, achieving a 99% smaller index memory footprint compared to B-Tree.",
+    "conceptsCovered": [
+      "BRIN (Block Range Index)",
+      "pages_per_range Tuning",
+      "Append-Only Data",
+      "Physical Correlation",
+      "Massive Storage Savings"
+    ],
+    "code": "-- Time-series append-only sensor log\nCREATE TABLE iot_telemetry (\n    reading_id BIGSERIAL PRIMARY KEY,\n    device_id INT NOT NULL,\n    recorded_at TIMESTAMPTZ NOT NULL,\n    temperature NUMERIC(5, 2)\n);\n\n-- Check column physical correlation (must be close to 1.0)\nSELECT correlation FROM pg_stats WHERE tablename = 'iot_telemetry' AND attname = 'recorded_at';\n\n-- Create BRIN index with 64 pages per range summary\nCREATE INDEX idx_telemetry_time_brin \nON iot_telemetry \nUSING brin (recorded_at) WITH (pages_per_range = 64);\n\n-- Inspect index size: 100M rows index is < 1 MB!\nSELECT pg_size_pretty(pg_relation_size('idx_telemetry_time_brin')) AS brin_size;",
+    "breakdown": [
+      "BRIN stores [min, max] values per 64-page block range.",
+      "Consumes 99% less RAM than a B-Tree, fitting entirely in CPU cache.",
+      "Ideal for append-only timestamps and auto-increment sequential IDs."
+    ],
+    "expectedOutput": "brin_size\n512 kB"
+  },
+  {
+    "id": "pg-ex-22",
+    "title": "Radix Prefix & IP Subnet Indexing with SP-GiST on INET",
+    "category": "JSONB & Indexing",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Indexes IP address subnets using Space-Partitioned GiST (SP-GiST) for high-performance network security traffic filtering.",
+    "conceptsCovered": [
+      "SP-GiST (Space-Partitioned GiST)",
+      "Radix Trees / Tries",
+      "INET and CIDR Types",
+      "Subnet Containment (<<=)",
+      "Network Routing Performance"
+    ],
+    "code": "-- Network firewall log table\nCREATE TABLE firewall_traffic_logs (\n    log_id BIGSERIAL PRIMARY KEY,\n    client_ip INET NOT NULL,\n    bytes_transferred BIGINT\n);\n\n-- SP-GiST index on INET column (builds a radix tree)\nCREATE INDEX idx_traffic_ip_spgist \nON firewall_traffic_logs \nUSING spgist (client_ip);\n\n-- Fast subnet query: All traffic originating from 192.168.0.0/16\nEXPLAIN (ANALYZE, BUFFERS)\nSELECT SUM(bytes_transferred) \nFROM firewall_traffic_logs \nWHERE client_ip <<= inet '192.168.0.0/16';",
+    "breakdown": [
+      "SP-GiST builds non-overlapping space-partitioned radix tries.",
+      "Optimized for prefixes and hierarchical clustering (IP subnets, telephone codes).",
+      "Subnet operator <<= traverses the trie directly, pruning non-matching IP ranges."
+    ],
+    "expectedOutput": "Index Scan using idx_traffic_ip_spgist on firewall_traffic_logs\n  Index Cond: (client_ip <<= '192.168.0.0/16'::inet)"
+  },
+  {
+    "id": "pg-ex-23",
+    "title": "Preventing Double Bookings with Exclusion Constraints (EXCLUDE USING gist)",
+    "category": "Types & Constraints",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Guarantees database-enforced non-overlapping room reservations using Exclusion Constraints powered by GiST and the btree_gist extension.",
+    "conceptsCovered": [
+      "EXCLUDE USING gist",
+      "btree_gist Extension",
+      "Range Overlap Operator (&&)",
+      "Race-Condition-Free Scheduling",
+      "Data Integrity at Engine Level"
+    ],
+    "code": "-- Enable btree_gist to mix scalar types with range types\nCREATE EXTENSION IF NOT EXISTS btree_gist;\n\nCREATE TABLE conference_room_bookings (\n    booking_id SERIAL PRIMARY KEY,\n    room_number INT NOT NULL,\n    booking_period TSTZRANGE NOT NULL,\n    -- Physically prevents overlapping bookings for the same room\n    CONSTRAINT no_overlapping_room_bookings EXCLUDE USING gist (\n        room_number WITH =,\n        booking_period WITH &&\n    )\n);\n\n-- First booking succeeds\nINSERT INTO conference_room_bookings (room_number, booking_period)\nVALUES (101, tstzrange('2026-06-01 10:00:00+00', '2026-06-01 12:00:00+00'));\n\n-- Conflicting overlap FAILS with ExclusionConstraintViolation:\n-- INSERT INTO conference_room_bookings (room_number, booking_period)\n-- VALUES (101, tstzrange('2026-06-01 11:00:00+00', '2026-06-01 13:00:00+00'));",
+    "breakdown": [
+      "EXCLUDE USING gist ensures no two rows return TRUE when comparing room_number WITH = AND booking_period WITH &&.",
+      "btree_gist enables the standard equality (=) operator on room_number inside the GiST index.",
+      "Guarantees ACID reservation integrity even if concurrent web requests submit bookings at the exact same microsecond."
+    ],
+    "expectedOutput": "INSERT 0 1\n-- Concurrent collision outputs:\n-- ERROR: conflicting key value violates exclusion constraint \"no_overlapping_room_bookings\""
+  },
+  {
+    "id": "pg-ex-24",
+    "title": "Continuous Interval Operations with Timestamp Range Types",
+    "category": "Types & Constraints",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Models temporal promotion windows using tstzrange, testing element containment (@>), interval intersection (*), and adjacency (-|-).",
+    "conceptsCovered": [
+      "tstzrange",
+      "Range Containment (@>)",
+      "Range Intersection (*)",
+      "Range Adjacency (-|-)",
+      "Inclusive vs Exclusive Bounds"
+    ],
+    "code": "-- Promotions with continuous date boundaries\nCREATE TABLE promotional_discounts (\n    promo_code TEXT PRIMARY KEY,\n    valid_window TSTZRANGE NOT NULL,\n    discount_pct NUMERIC(4, 2) NOT NULL\n);\n\nINSERT INTO promotional_discounts VALUES \n('SUMMER26', tstzrange('2026-06-01 00:00:00+00', '2026-09-01 00:00:00+00', '[)'), 20.00);\n\n-- 1. Check if promo is valid right now (@> operator)\nSELECT promo_code, discount_pct \nFROM promotional_discounts \nWHERE valid_window @> '2026-07-15 12:00:00+00'::TIMESTAMPTZ;\n\n-- 2. Find overlap between promo and a scheduled customer event\nSELECT \n    promo_code, \n    valid_window * tstzrange('2026-08-15 00:00:00+00', '2026-09-15 00:00:00+00') AS active_overlap\nFROM promotional_discounts;",
+    "breakdown": [
+      "[) denotes inclusive start bound and exclusive end bound.",
+      "@> tests whether a single timestamp falls inside the continuous interval.",
+      "* calculates the mathematical intersection between two range intervals.",
+      "Eliminates complex multi-condition start_date <= ? AND end_date >= ? SQL logic."
+    ],
+    "expectedOutput": "promo_code | discount_pct\nSUMMER26   | 20.00"
+  },
+  {
+    "id": "pg-ex-25",
+    "title": "Reusable Validated Custom DOMAIN Types",
+    "category": "Types & Constraints",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Defines reusable DOMAIN types with built-in regex check constraints and range bounds to standardize email and currency attributes across tables.",
+    "conceptsCovered": [
+      "CREATE DOMAIN",
+      "DRY Schema Architecture",
+      "Built-in Validation",
+      "ALTER DOMAIN",
+      "Domain-Driven Value Objects"
+    ],
+    "code": "-- 1. Define validated domain types\nCREATE DOMAIN valid_email AS TEXT\nCHECK (\n    VALUE ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$'\n);\n\nCREATE DOMAIN positive_usd AS NUMERIC(12, 2)\nCHECK (VALUE > 0.00);\n\n-- 2. Use domains in table definitions\nCREATE TABLE vendors (\n    vendor_id SERIAL PRIMARY KEY,\n    billing_email valid_email NOT NULL,\n    minimum_order positive_usd NOT NULL\n);\n\n-- Valid insert:\nINSERT INTO vendors (billing_email, minimum_order) \nVALUES ('orders@acme.com', 500.00);\n\n-- Invalid insert raises: value for domain valid_email violates check constraint\n-- INSERT INTO vendors (billing_email, minimum_order) VALUES ('bad-email', 500.00);",
+    "breakdown": [
+      "DOMAIN encapsulates an underlying type (TEXT/NUMERIC) with built-in CHECK constraints.",
+      "Reused across 50 tables, standardizing validation rules.",
+      "If rules change, updating the DOMAIN updates validation globally across the entire database."
+    ],
+    "expectedOutput": "CREATE DOMAIN\nCREATE DOMAIN\nCREATE TABLE\nINSERT 0 1"
+  },
+  {
+    "id": "pg-ex-26",
+    "title": "Composite Types (CREATE TYPE AS) in PL/pgSQL Function Signatures",
+    "category": "Types & Constraints",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Declares a custom Composite Type to return structured multi-attribute output from stored procedures and PL/pgSQL functions.",
+    "conceptsCovered": [
+      "CREATE TYPE ... AS",
+      "Composite Types",
+      "PL/pgSQL Functions",
+      "Structured Return Values",
+      "Table Column Types"
+    ],
+    "code": "-- Define structured composite return type\nCREATE TYPE inventory_reorder_summary AS (\n    supplier_name TEXT,\n    item_count INT,\n    estimated_cost NUMERIC(12, 2)\n);\n\n-- Stored function returning the composite type\nCREATE OR REPLACE FUNCTION generate_reorder_quote(target_warehouse_id INT)\nRETURNS inventory_reorder_summary\nLANGUAGE plpgsql AS $$\nDECLARE\n    result inventory_reorder_summary;\nBEGIN\n    SELECT \n        s.name, \n        COUNT(i.id), \n        SUM(i.unit_cost * i.reorder_qty)\n    INTO result\n    FROM inventory i\n    JOIN suppliers s ON s.id = i.supplier_id\n    WHERE i.warehouse_id = target_warehouse_id AND i.stock_qty < i.reorder_threshold\n    GROUP BY s.name\n    LIMIT 1;\n\n    RETURN result;\nEND;\n$$;\n\n-- Query the composite result\nSELECT (generate_reorder_quote(1)).supplier_name, (generate_reorder_quote(1)).estimated_cost;",
+    "breakdown": [
+      "CREATE TYPE AS defines named field structures.",
+      "Functions return strongly typed record objects rather than generic untyped tuples.",
+      "Fields are accessed using (composite_col).field notation."
+    ],
+    "expectedOutput": "supplier_name       | estimated_cost\nIndustrial Supplies | 14500.00"
+  },
+  {
+    "id": "pg-ex-27",
+    "title": "Array Unnesting with Positional Tracking (WITH ORDINALITY)",
+    "category": "Types & Constraints",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Unpacks PostgreSQL arrays into relational rows while capturing the original 1-based element array positions using WITH ORDINALITY.",
+    "conceptsCovered": [
+      "unnest()",
+      "WITH ORDINALITY",
+      "Array Unpacking",
+      "Positional Tracking",
+      "Relational Normalization"
+    ],
+    "code": "-- Unpack prioritizing order of task tags\nSELECT \n    t.task_id, \n    tag.element_value AS tag_name, \n    tag.position_index AS priority_rank\nFROM project_tasks t,\nLATERAL unnest(t.tags_ordered) WITH ORDINALITY AS tag(element_value, position_index)\nWHERE t.task_id = 105\nORDER BY tag.position_index ASC;",
+    "breakdown": [
+      "unnest() expands array elements into separate rows.",
+      "WITH ORDINALITY appends a 1-based integer position tracking column.",
+      "Preserves original sequence/ranking of elements stored in the array."
+    ],
+    "expectedOutput": "task_id | tag_name | priority_rank\n105     | critical | 1\n105     | security | 2\n105     | backend  | 3"
+  },
+  {
+    "id": "pg-ex-28",
+    "title": "Case-Insensitive Unique Constraints via Expression Indexes",
+    "category": "Types & Constraints",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Enforces unique case-insensitive user accounts (preventing 'Alex@co.com' and 'alex@co.com') using an IMMUTABLE expression index.",
+    "conceptsCovered": [
+      "Expression Index",
+      "LOWER() Function",
+      "Unique Constraints",
+      "IMMUTABLE Functions",
+      "Optimizer Index Matching"
+    ],
+    "code": "-- Case-insensitive unique index\nCREATE TABLE user_credentials (\n    user_id SERIAL PRIMARY KEY,\n    raw_email TEXT NOT NULL,\n    password_hash TEXT NOT NULL\n);\n\n-- Unique expression index on LOWER(raw_email)\nCREATE UNIQUE INDEX idx_unique_lower_email \nON user_credentials (LOWER(raw_email));\n\n-- First insert succeeds\nINSERT INTO user_credentials (raw_email, password_hash) \nVALUES ('John.Doe@Example.com', 'hash_123');\n\n-- Colliding case variant fails with unique constraint violation!\n-- INSERT INTO user_credentials (raw_email, password_hash) \n-- VALUES ('john.doe@example.com', 'hash_456');\n\n-- Queries using LOWER(raw_email) automatically perform Index Scans\nEXPLAIN (ANALYZE, BUFFERS)\nSELECT * FROM user_credentials WHERE LOWER(raw_email) = LOWER('JOHN.DOE@example.com');",
+    "breakdown": [
+      "Indexes the computed result of LOWER(raw_email).",
+      "Enforces case-insensitive uniqueness without mutating the user's preferred casing.",
+      "The query planner recognizes the expression match and issues an Index Scan."
+    ],
+    "expectedOutput": "Index Scan using idx_unique_lower_email on user_credentials\n  Index Cond: (lower(raw_email) = 'john.doe@example.com'::text)"
+  },
+  {
+    "id": "pg-ex-29",
+    "title": "Partial Unique Indexes for Conditional Business Invariants",
+    "category": "Types & Constraints",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Enforces a strict business constraint that a user can have only ONE active subscription, while permitting unlimited expired or cancelled subscriptions.",
+    "conceptsCovered": [
+      "Partial Unique Index",
+      "Conditional Invariants",
+      "WHERE Predicate in Index",
+      "Index Size Optimization",
+      "Business Rule Enforcement"
+    ],
+    "code": "-- Enforce: Only ONE active subscription per user at any given time\nCREATE TABLE user_memberships (\n    id SERIAL PRIMARY KEY,\n    user_id INT NOT NULL,\n    plan_name TEXT NOT NULL,\n    status TEXT NOT NULL -- 'ACTIVE', 'CANCELLED', 'EXPIRED'\n);\n\n-- Partial unique index strictly on ACTIVE status\nCREATE UNIQUE INDEX idx_one_active_sub \nON user_memberships (user_id) \nWHERE status = 'ACTIVE';\n\n-- 1. Initial active subscription\nINSERT INTO user_memberships (user_id, plan_name, status) VALUES (101, 'Pro Plan', 'ACTIVE');\n\n-- 2. User cancels subscription\nUPDATE user_memberships SET status = 'CANCELLED' WHERE user_id = 101;\n\n-- 3. User subscribes again (allowed! because prior row is now CANCELLED)\nINSERT INTO user_memberships (user_id, plan_name, status) VALUES (101, 'Enterprise Plan', 'ACTIVE');\n\n-- 4. Attempting to insert a SECOND active subscription fails!\n-- INSERT INTO user_memberships (user_id, plan_name, status) VALUES (101, 'Extra Plan', 'ACTIVE');",
+    "breakdown": [
+      "The index only indexes rows matching WHERE status = 'ACTIVE'.",
+      "Non-active rows are omitted from the index, saving disk space.",
+      "Guarantees that no user ever has duplicate active subscriptions."
+    ],
+    "expectedOutput": "INSERT 0 1\nUPDATE 1\nINSERT 0 1\n-- Fourth insert fails:\n-- ERROR: duplicate key value violates unique constraint \"idx_one_active_sub\""
+  },
+  {
+    "id": "pg-ex-30",
+    "title": "Time-Ordered Sequential UUID Generation (UUIDv7) for B-Tree Locality",
+    "category": "Types & Constraints",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implements time-ordered UUIDv7 generation in PostgreSQL to prevent random B-Tree page splits and RAM buffer thrashing caused by standard random UUIDv4.",
+    "conceptsCovered": [
+      "UUIDv7",
+      "B-Tree Page Splits",
+      "Write Locality",
+      "Sequential Primary Keys",
+      "Storage Engine Performance"
+    ],
+    "code": "-- Pure SQL implementation of time-ordered UUIDv7\nCREATE OR REPLACE FUNCTION generate_uuid_v7() \nRETURNS UUID \nLANGUAGE plpgsql AS $$\nDECLARE\n    unix_ts_ms BIGINT;\n    uuid_bytes BYTEA;\nBEGIN\n    -- Extract current unix epoch milliseconds (48 bits)\n    unix_ts_ms := (EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::BIGINT;\n    \n    -- Construct 16-byte UUID with time prefix and random entropy\n    uuid_bytes := set_byte(\n        set_byte(\n            gen_random_bytes(16),\n            0, (unix_ts_ms >> 40)::INT\n        ),\n        1, (unix_ts_ms >> 32)::INT\n    );\n    \n    -- Format as standard UUID\n    RETURN encode(uuid_bytes, 'hex')::UUID;\nEND;\n$$;\n\n-- Table using sequential UUIDv7 primary keys\nCREATE TABLE event_stream (\n    event_id UUID PRIMARY KEY DEFAULT generate_uuid_v7(),\n    payload JSONB NOT NULL\n);\n\n-- Generated keys sort chronologically!\nINSERT INTO event_stream (payload) VALUES ('{\"event\": \"start\"}');\nSELECT event_id, payload FROM event_stream;",
+    "breakdown": [
+      "Standard UUIDv4 is completely random, causing inserts to scatter across random B-Tree leaf pages.",
+      "UUIDv7 embeds a 48-bit millisecond timestamp in the leading bits, ensuring inserts append to the right edge of the B-Tree.",
+      "Eliminates B-Tree page fragmentation and reduces disk I/O by 50%+ on high-throughput ingest tables."
+    ],
+    "expectedOutput": "event_id                             | payload\n018b3f8a-4a12-7000-8b1e-0123456789ab | {\"event\": \"start\"}"
+  },
+  {
+    "id": "pg-ex-31",
+    "title": "Session-Aware TIMESTAMPTZ Storage and Local Display Conversion",
+    "category": "Types & Constraints",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Demonstrates that TIMESTAMPTZ stores all datetimes in UTC internally and converts to client session timezones dynamically on retrieval.",
+    "conceptsCovered": [
+      "TIMESTAMPTZ vs TIMESTAMP",
+      "UTC Microsecond Storage",
+      "Session TimeZone Setting",
+      "AT TIME ZONE Operator",
+      "Global Application Architecture"
+    ],
+    "code": "-- Setup global events table\nCREATE TABLE global_meetings (\n    meeting_id SERIAL PRIMARY KEY,\n    title TEXT NOT NULL,\n    scheduled_at TIMESTAMPTZ NOT NULL\n);\n\n-- Tokyo coordinator schedules meeting at 3:00 PM JST (+09:00)\nINSERT INTO global_meetings (title, scheduled_at) \nVALUES ('Global All-Hands', '2026-06-15 15:00:00+09');\n\n-- Client session in London (UTC+1 / BST)\nSET timezone = 'Europe/London';\nSELECT title, scheduled_at FROM global_meetings;\n-- Output: 2026-06-15 07:00:00+01\n\n-- Client session in New York (UTC-4 / EDT)\nSET timezone = 'America/New_York';\nSELECT title, scheduled_at FROM global_meetings;\n-- Output: 2026-06-15 02:00:00-04\n\n-- Explicit conversion to any target timezone regardless of session\nSELECT scheduled_at AT TIME ZONE 'UTC' AS utc_time FROM global_meetings;",
+    "breakdown": [
+      "PostgreSQL stores all TIMESTAMPTZ values in exactly 8 bytes normalized to UTC.",
+      "Displays automatically in the client session's local timezone.",
+      "Guarantees that all users globally reference the exact same moment in absolute universal time."
+    ],
+    "expectedOutput": "title            | scheduled_at\nGlobal All-Hands | 2026-06-15 02:00:00-04"
+  },
+  {
+    "id": "pg-ex-32",
+    "title": "Exact Arbitrary-Precision Financial Calculations with NUMERIC",
+    "category": "Types & Constraints",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Contrasts binary floating-point rounding errors in DOUBLE PRECISION with exact accounting calculations using PostgreSQL NUMERIC(18, 4).",
+    "conceptsCovered": [
+      "NUMERIC vs DOUBLE PRECISION",
+      "Financial Ledger Math",
+      "Binary Rounding Imprecision",
+      "Exact Scale and Precision",
+      "Data Integrity in FinTech"
+    ],
+    "code": "-- 1. Demonstrate floating point rounding trap\nSELECT \n    (0.1::DOUBLE PRECISION + 0.2::DOUBLE PRECISION) AS float_sum,\n    (0.1::NUMERIC + 0.2::NUMERIC) AS numeric_sum,\n    (0.1::DOUBLE PRECISION + 0.2::DOUBLE PRECISION) = 0.3::DOUBLE PRECISION AS float_equal, -- FALSE!\n    (0.1::NUMERIC + 0.2::NUMERIC) = 0.3::NUMERIC AS numeric_equal; -- TRUE!\n\n-- 2. Production double-entry financial ledger schema\nCREATE TABLE general_ledger (\n    entry_id BIGSERIAL PRIMARY KEY,\n    account_number TEXT NOT NULL,\n    debit_amount NUMERIC(18, 4) NOT NULL DEFAULT 0.0000,\n    credit_amount NUMERIC(18, 4) NOT NULL DEFAULT 0.0000,\n    CONSTRAINT check_positive_debit CHECK (debit_amount >= 0),\n    CONSTRAINT check_positive_credit CHECK (credit_amount >= 0)\n);",
+    "breakdown": [
+      "DOUBLE PRECISION uses IEEE 754 binary floating point, where 0.1 + 0.2 evaluates to 0.30000000000000004.",
+      "NUMERIC stores digits in exact variable-length decimal chunks, guaranteeing penny-perfect precision.",
+      "Mandatory for all financial transactions, ledgers, and billing engines."
+    ],
+    "expectedOutput": "float_sum           | numeric_sum | float_equal | numeric_equal\n0.30000000000000004 | 0.3         | f           | t"
+  },
+  {
+    "id": "pg-ex-33",
+    "title": "High-Throughput Concurrent Job Queue with FOR UPDATE SKIP LOCKED",
+    "category": "Concurrency & Locking",
+    "difficulty": "must-know",
+    "whatThisCodeCovers": "Constructs an ACID-compliant, scalable message broker job queue where 50 background workers poll and lock distinct batches of jobs without blocking each other.",
+    "conceptsCovered": [
+      "FOR UPDATE SKIP LOCKED",
+      "Message Queue Pattern",
+      "Lock Contention Elimination",
+      "Writable CTE Worker Claim",
+      "Linear Scaling Concurrency"
+    ],
+    "code": "-- Job queue consumer query (Worker node poll)\nWITH claimed_jobs AS (\n    SELECT id \n    FROM background_tasks\n    WHERE status = 'QUEUED' \n      AND run_at <= NOW()\n    ORDER BY priority DESC, id ASC\n    LIMIT 5\n    FOR UPDATE SKIP LOCKED -- Key: skips any tasks already claimed by other workers!\n)\nUPDATE background_tasks bt\nSET status = 'PROCESSING',\n    locked_at = NOW(),\n    worker_node = 'worker-us-east-1a'\nFROM claimed_jobs\nWHERE bt.id = claimed_jobs.id\nRETURNING bt.id, bt.task_type, bt.payload;",
+    "breakdown": [
+      "FOR UPDATE locks the selected rows.",
+      "SKIP LOCKED causes PostgreSQL to transparently skip past rows currently locked by concurrent workers.",
+      "Workers never wait or deadlock on the queue table; workers scale linearly with CPU capacity.",
+      "Atomic CTE updates task status to 'PROCESSING' and returns payloads immediately."
+    ],
+    "expectedOutput": "id    | task_type     | payload\n10401 | SEND_INVOICE  | {\"invoice_id\": 994}\n10402 | SYNC_CRM      | {\"customer_id\": 412}"
+  },
+  {
+    "id": "pg-ex-34",
+    "title": "Non-Blocking Resource Reservation with SELECT FOR UPDATE NOWAIT",
+    "category": "Concurrency & Locking",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements an instantaneous seat reservation checkout that immediately aborts with an informative error if another customer is currently holding the seat.",
+    "conceptsCovered": [
+      "FOR UPDATE NOWAIT",
+      "Non-Blocking Concurrency",
+      "Error 55P03 (lock_not_available)",
+      "High-Traffic Ticketing",
+      "Fast Failure Recovery"
+    ],
+    "code": "-- Attempt to lock seat for checkout\nBEGIN;\n\n-- If seat is already locked by another checkout session, fail immediately without hanging!\nSELECT seat_number, status, price \nFROM concert_seats\nWHERE seat_number = 'A-12' \n  AND status = 'AVAILABLE'\nFOR UPDATE NOWAIT;\n\n-- If query succeeds, proceed to update:\nUPDATE concert_seats \nSET status = 'RESERVED', held_until = NOW() + INTERVAL '10 minutes'\nWHERE seat_number = 'A-12';\n\nCOMMIT;\n\n-- In client code (Node.js/Express):\n-- Catch error code '55P03' (lock_not_available) and return HTTP 409 Conflict:\n-- \"Seat A-12 is currently being checked out by another customer.\"",
+    "breakdown": [
+      "NOWAIT skips waiting for the row lock, failing immediately if locked.",
+      "Prevents API requests from hanging for seconds during flash ticket sales.",
+      "Returns SQLSTATE '55P03' so application code can immediately offer alternatives to the user."
+    ],
+    "expectedOutput": "seat_number | status    | price\nA-12        | AVAILABLE | 120.00\n-- If locked by another connection:\n-- ERROR: could not obtain lock on row in relation \"concert_seats\" (SQLSTATE 55P03)"
+  },
+  {
+    "id": "pg-ex-35",
+    "title": "Distributed Mutex & Cron Leader Election with Advisory Locks",
+    "category": "Concurrency & Locking",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Coordinates a distributed scheduled cron worker across 10 Kubernetes pods using non-blocking transaction advisory locks (pg_try_advisory_xact_lock).",
+    "conceptsCovered": [
+      "pg_try_advisory_xact_lock",
+      "Distributed Mutex",
+      "Cron Leader Election",
+      "Zero Table Locking",
+      "Transaction-Scoped Cleanup"
+    ],
+    "code": "-- Kubernetes pod leader election query\nBEGIN;\n\n-- Attempt to acquire lock on an arbitrary 64-bit integer hash\nSELECT pg_try_advisory_xact_lock(hashtext('daily_billing_cron_job')) AS is_leader;\n\n-- If is_leader is TRUE:\n-- Run the multi-million dollar billing calculation batch!\n-- Lock is automatically released at COMMIT or ROLLBACK.\n\n-- If is_leader is FALSE:\n-- Another pod is already executing the batch; exit immediately.\n\nCOMMIT;",
+    "breakdown": [
+      "pg_try_advisory_xact_lock is non-blocking; returns boolean TRUE if lock was acquired, FALSE otherwise.",
+      "Uses the shared memory advisory lock table; locks zero database rows and creates zero WAL.",
+      "Transaction scoping guarantees automatic lock release even if the Kubernetes pod crashes mid-execution."
+    ],
+    "expectedOutput": "is_leader\nt (or f if running concurrently on another node)"
+  },
+  {
+    "id": "pg-ex-36",
+    "title": "High-Concurrency Account Transfers using FOR NO KEY UPDATE",
+    "category": "Concurrency & Locking",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Executes double-entry balance transfers using FOR NO KEY UPDATE to prevent foreign key validation lock contention on parent tables.",
+    "conceptsCovered": [
+      "FOR NO KEY UPDATE",
+      "Foreign Key Lock Contention",
+      "Deadlock Prevention",
+      "Deterministic Ordering",
+      "ACID Ledger Transfer"
+    ],
+    "code": "-- Transfer $100 from Account 10 to Account 20\nBEGIN;\n\n-- 1. Lock accounts in deterministic sorted order to prevent deadlocks!\nSELECT account_id, balance \nFROM bank_accounts\nWHERE account_id IN (10, 20)\nORDER BY account_id\nFOR NO KEY UPDATE; -- Weaker lock: allows concurrent FK checks to read accounts!\n\n-- 2. Deduct from source\nUPDATE bank_accounts SET balance = balance - 100 WHERE account_id = 10;\n\n-- 3. Credit to destination\nUPDATE bank_accounts SET balance = balance + 100 WHERE account_id = 20;\n\n-- 4. Record audit entry\nINSERT INTO transfer_audit (from_acc, to_acc, amount) VALUES (10, 20, 100);\n\nCOMMIT;",
+    "breakdown": [
+      "ORDER BY account_id ensures all threads lock accounts in identical numerical order, preventing deadlocks.",
+      "FOR NO KEY UPDATE does not block concurrent foreign key checks (FOR KEY SHARE) from child order tables.",
+      "Significantly increases throughput compared to aggressive FOR UPDATE."
+    ],
+    "expectedOutput": "account_id | balance\n10         | 4900.00\n20         | 2600.00"
+  },
+  {
+    "id": "pg-ex-37",
+    "title": "Detecting and Terminating Root Blocking Queries with pg_blocking_pids",
+    "category": "Concurrency & Locking",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Diagnoses production lock contention, identifying the root query causing hundreds of incoming requests to freeze and terminating it cleanly.",
+    "conceptsCovered": [
+      "pg_blocking_pids()",
+      "pg_stat_activity",
+      "Lock Tree Diagnostics",
+      "Idle in Transaction",
+      "pg_terminate_backend()"
+    ],
+    "code": "-- Find all blocked queries and the exact root blocker holding the lock\nSELECT \n    blocked.pid AS blocked_pid,\n    blocked.usename AS blocked_user,\n    now() - blocked.query_start AS wait_duration,\n    blocked.query AS blocked_statement,\n    blocking.pid AS root_blocking_pid,\n    blocking.usename AS blocking_user,\n    blocking.state AS blocking_state,\n    blocking.query AS blocking_statement\nFROM pg_stat_activity blocked\nJOIN LATERAL unnest(pg_blocking_pids(blocked.pid)) AS blocker_pid ON true\nJOIN pg_stat_activity blocking ON blocking.pid = blocker_pid\nWHERE NOT blocked.wait_event IS NULL;\n\n-- Gracefully kill the root blocking process if stuck idle in transaction\nSELECT pg_terminate_backend(14205);",
+    "breakdown": [
+      "pg_blocking_pids(pid) traverses the PostgreSQL lock wait-graph.",
+      "LATERAL unnest joins against pg_stat_activity to show both blocked and blocking queries.",
+      "Pinpoints 'idle in transaction' processes that held locks and forgot to commit.",
+      "pg_terminate_backend terminates the connection immediately."
+    ],
+    "expectedOutput": "blocked_pid | blocked_user | wait_duration | root_blocking_pid | blocking_state       | blocking_statement\n25401       | app_user     | 00:02:14      | 14205             | idle in transaction  | SELECT * FROM orders FOR UPDATE;"
+  },
+  {
+    "id": "pg-ex-38",
+    "title": "Zero-Downtime Safe DDL Migration with lock_timeout",
+    "category": "Concurrency & Locking",
+    "difficulty": "must-know",
+    "whatThisCodeCovers": "Deploys a zero-downtime database migration that sets an aggressive lock_timeout to avoid Head-of-Line blocking and connection pool exhaustion.",
+    "conceptsCovered": [
+      "SET LOCAL lock_timeout",
+      "Head-of-Line Blocking",
+      "Safe DDL Deployment",
+      "PostgreSQL 11+ Default Optimization",
+      "Automated Migration Pipelines"
+    ],
+    "code": "-- Zero-Downtime Production Migration Script\nBEGIN;\n\n-- 1. If we cannot acquire the AccessExclusiveLock within 2 seconds, fail immediately!\nSET LOCAL lock_timeout = '2s';\n\n-- 2. If the operation itself takes longer than 15 seconds, abort\nSET LOCAL statement_timeout = '15s';\n\n-- 3. Add column with default (PostgreSQL 11+ metadata-only update: ZERO table rewrite!)\nALTER TABLE customer_accounts \nADD COLUMN loyalty_tier TEXT NOT NULL DEFAULT 'STANDARD';\n\nCOMMIT;\n\n-- Deployment script logic:\n-- If script throws 55P03 (lock_timeout), sleep 5 seconds and retry up to 5 times.",
+    "breakdown": [
+      "SET LOCAL lock_timeout prevents the DDL from waiting in the FIFO queue and blocking subsequent SELECTs.",
+      "In PG 11+, ADD COLUMN with constant DEFAULT is instant because the default is stored in pg_attribute without rewriting heap pages.",
+      "Prevents cascading connection pool exhaustion during peak web traffic."
+    ],
+    "expectedOutput": "ALTER TABLE\nCOMMIT"
+  },
+  {
+    "id": "pg-ex-39",
+    "title": "Zero-Downtime Foreign Key Creation with NOT VALID & VALIDATE CONSTRAINT",
+    "category": "Concurrency & Locking",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Adds a foreign key constraint to a 50-million row table in two phases without holding an exclusive table lock that blocks application writes.",
+    "conceptsCovered": [
+      "ADD CONSTRAINT ... NOT VALID",
+      "VALIDATE CONSTRAINT",
+      "Zero-Downtime DDL",
+      "ShareRowExclusiveLock Avoidance",
+      "Large Table Migrations"
+    ],
+    "code": "-- PHASE 1: Add constraint as NOT VALID (Instantaneous: no table scan, no lock!)\nBEGIN;\nSET LOCAL lock_timeout = '2s';\n\nALTER TABLE order_items \nADD CONSTRAINT fk_order_items_product \nFOREIGN KEY (product_id) REFERENCES products(id) NOT VALID;\n\nCOMMIT;\n-- At this point, new INSERTs and UPDATEs are validated, but existing rows have not been scanned.\n\n-- PHASE 2: Validate existing rows in the background without blocking writes!\n-- Takes only a weak ShareUpdateExclusiveLock (reads and writes run concurrently)\nALTER TABLE order_items \nVALIDATE CONSTRAINT fk_order_items_product;",
+    "breakdown": [
+      "Phase 1 registers the constraint in catalogs instantly without scanning the 50M rows.",
+      "Phase 2 scans existing rows under a weak lock that allows concurrent SELECT, INSERT, UPDATE, and DELETE.",
+      "Eliminates hours of production downtime on massive relations."
+    ],
+    "expectedOutput": "ALTER TABLE (Phase 1: 5ms)\nALTER TABLE (Phase 2: validated online in background)"
+  },
+  {
+    "id": "pg-ex-40",
+    "title": "Handling Serialization Failures (40001) in Repeatable Read Transactions",
+    "category": "Concurrency & Locking",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Demonstrates transaction isolation failure under REPEATABLE READ and provides a Node.js retry-loop pattern to catch and replay error 40001.",
+    "conceptsCovered": [
+      "REPEATABLE READ",
+      "Serialization Failure (40001)",
+      "First-Committer-Wins",
+      "Application Retry Loops",
+      "Exponential Backoff"
+    ],
+    "code": "-- Node.js / Express Service executing with Retry on 40001\nconst { db } = require('nexora');\n\nasync function executeWithRetry(fn, maxRetries = 5) {\n  let attempt = 0;\n  while (attempt < maxRetries) {\n    try {\n      return await db.transaction(async (tx) => {\n        // Enforce Repeatable Read isolation\n        await tx.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');\n        return await fn(tx);\n      });\n    } catch (err) {\n      // 40001: could not serialize access due to concurrent update\n      if (err.code === '40001' && attempt < maxRetries - 1) {\n        attempt++;\n        const backoff = Math.floor(Math.random() * 50 * Math.pow(2, attempt));\n        console.warn(`Serialization conflict detected (40001). Retrying attempt ${attempt} in ${backoff}ms...`);\n        await new Promise(resolve => setTimeout(resolve, backoff));\n      } else {\n        throw err;\n      }\n    }\n  }\n}",
+    "breakdown": [
+      "Under Repeatable Read, concurrent modifications to the same row trigger error code 40001.",
+      "The application must never crash on 40001; it must catch the error and replay the transaction.",
+      "Exponential backoff with jitter prevents thundering herd lock conflicts on replay."
+    ],
+    "expectedOutput": "Serialization conflict detected (40001). Retrying attempt 1 in 45ms...\nTransaction committed successfully on retry."
+  },
+  {
+    "id": "pg-ex-41",
+    "title": "Diagnosing and Resolving In-Flight Deadlocks from Logs",
+    "category": "Concurrency & Locking",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Simulates and catches a circular deadlock between two transactions, configuring log_lock_waits to capture the offending SQL statements in logs.",
+    "conceptsCovered": [
+      "Deadlock Detection (40P01)",
+      "deadlock_timeout",
+      "log_lock_waits",
+      "Deterministic Ordering Fix",
+      "Lock Wait Analysis"
+    ],
+    "code": "-- Configure postgresql.conf to capture lock waits and deadlocks\n-- log_lock_waits = on\n-- deadlock_timeout = 1000ms\n\n-- SESSION A:\nBEGIN;\nUPDATE inventory SET stock = stock - 1 WHERE item_id = 1; -- locks 1\n\n-- SESSION B:\nBEGIN;\nUPDATE inventory SET stock = stock - 1 WHERE item_id = 2; -- locks 2\n\n-- SESSION A:\nUPDATE inventory SET stock = stock - 1 WHERE item_id = 2; -- WAITING for Session B!\n\n-- SESSION B:\nUPDATE inventory SET stock = stock - 1 WHERE item_id = 1; \n-- DEADLOCK DETECTED!\n-- ERROR: deadlock detected (SQLSTATE 40P01)\n-- Detail: Process 101 waits for ShareLock on transaction 102; Process 102 waits for ShareLock on transaction 101.",
+    "breakdown": [
+      "PostgreSQL checks for deadlocks after deadlock_timeout (default 1 second).",
+      "Detects the circular wait graph and terminates Session B with error 40P01.",
+      "Fix: Always update items in deterministic order: UPDATE inventory ... WHERE item_id IN (1, 2) ORDER BY item_id."
+    ],
+    "expectedOutput": "ERROR: deadlock detected\nDETAIL: Process 101 waits for ExclusiveLock on tuple (0,2); Process 102 waits for ExclusiveLock on tuple (0,1)."
+  },
+  {
+    "id": "pg-ex-42",
+    "title": "Two-Phase Commit (2PC) Distributed Preparation & Orphan Cleanup",
+    "category": "Concurrency & Locking",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Prepares a distributed two-phase transaction using PREPARE TRANSACTION and provides an automated cleanup script for orphaned prepared transactions.",
+    "conceptsCovered": [
+      "Two-Phase Commit (2PC)",
+      "PREPARE TRANSACTION",
+      "COMMIT PREPARED",
+      "pg_prepared_xacts",
+      "Orphaned XID Horizon Bloat"
+    ],
+    "code": "-- 1. Application Coordinator prepares distributed transaction\nBEGIN;\nUPDATE ledgers SET balance = balance - 500 WHERE account_id = 'ACC-1';\nPREPARE TRANSACTION 'dist_tx_chase_to_wells_9901';\n\n-- 2. Inspect active prepared transactions (persisted across reboots!)\nSELECT \n    gid, \n    prepared, \n    owner, \n    database,\n    age(transaction) AS xid_age\nFROM pg_prepared_xacts;\n\n-- 3. Commit Phase 2 (Once external participants acknowledge)\nCOMMIT PREPARED 'dist_tx_chase_to_wells_9901';\n\n-- 4. EMERGENCY: Rollback abandoned orphan if coordinator crashed\n-- ROLLBACK PREPARED 'dist_tx_chase_to_wells_9901';",
+    "breakdown": [
+      "PREPARE TRANSACTION persists transaction state and locks to pg_twophase on disk.",
+      "Survives database restarts until explicitly committed or aborted.",
+      "Orphaned prepared transactions hold open the database xmin, causing catastrophic bloat; must be monitored via pg_prepared_xacts."
+    ],
+    "expectedOutput": "gid                             | prepared                | owner    | xid_age\ndist_tx_chase_to_wells_9901     | 2026-11-04 11:25:00+00  | app_user | 120"
+  },
+  {
+    "id": "pg-ex-43",
+    "title": "Declarative RANGE Table Partitioning with Automated Child Creation",
+    "category": "Partitioning & Administration",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs a monthly partitioned table for clickstream events with local indexes and demonstrates automatic row routing.",
+    "conceptsCovered": [
+      "PARTITION BY RANGE",
+      "Child Table Definitions",
+      "Local Index Propagation",
+      "Automatic Tuple Routing",
+      "Partition Pruning"
+    ],
+    "code": "-- Root partitioned table (holds no physical rows)\nCREATE TABLE user_clickstream (\n    event_id UUID NOT NULL,\n    user_id INT NOT NULL,\n    recorded_at TIMESTAMPTZ NOT NULL,\n    url TEXT,\n    PRIMARY KEY (event_id, recorded_at) -- Partition key MUST be in primary key!\n) PARTITION BY RANGE (recorded_at);\n\n-- Create month child partitions\nCREATE TABLE clickstream_2026_01 PARTITION OF user_clickstream\nFOR VALUES FROM ('2026-01-01 00:00:00+00') TO ('2026-02-01 00:00:00+00');\n\nCREATE TABLE clickstream_2026_02 PARTITION OF user_clickstream\nFOR VALUES FROM ('2026-02-01 00:00:00+00') TO ('2026-03-01 00:00:00+00');\n\n-- Index on parent propagates to all child tables automatically\nCREATE INDEX idx_clickstream_user ON user_clickstream (user_id);\n\n-- Insert into root table automatically routes to clickstream_2026_01\nINSERT INTO user_clickstream VALUES \n('018b3f8a-4a12-7000-8b1e-0123456789ab', 105, '2026-01-15 14:00:00+00', '/checkout');",
+    "breakdown": [
+      "PARTITION BY RANGE partitions table by continuous timestamp bounds.",
+      "Inserting into user_clickstream automatically routes the row into clickstream_2026_01.",
+      "idx_clickstream_user is created automatically across all child partitions."
+    ],
+    "expectedOutput": "CREATE TABLE\nCREATE TABLE\nCREATE TABLE\nCREATE INDEX\nINSERT 0 1"
+  },
+  {
+    "id": "pg-ex-44",
+    "title": "Zero-Downtime Data Purging with DETACH PARTITION CONCURRENTLY",
+    "category": "Partitioning & Administration",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Purges 100 million expired rows in milliseconds without write lockouts using PostgreSQL 14+ DETACH PARTITION CONCURRENTLY.",
+    "conceptsCovered": [
+      "DETACH PARTITION CONCURRENTLY",
+      "Zero-Downtime Retention",
+      "DROP TABLE on Detached Partition",
+      "Avoiding Massive DELETE Bloat",
+      "PostgreSQL 14+"
+    ],
+    "code": "-- 1. Detach old month online without taking exclusive lock on active table!\nALTER TABLE user_clickstream \nDETACH PARTITION clickstream_2026_01 CONCURRENTLY;\n\n-- 2. clickstream_2026_01 is now an isolated standalone table.\n-- Active queries on user_clickstream continue uninterrupted!\n\n-- 3. Drop table instantly (Frees 50GB of disk space in 10ms with ZERO dead tuples!)\nDROP TABLE clickstream_2026_01;",
+    "breakdown": [
+      "Standard DELETE generates gigabytes of WAL logs and dead tuples.",
+      "DETACH PARTITION CONCURRENTLY takes weak locks in two short phases.",
+      "DROP TABLE reclaims disk space instantly without autovacuum bloat."
+    ],
+    "expectedOutput": "ALTER TABLE (detached online in 150ms)\nDROP TABLE (instantaneous disk space reclamation)"
+  },
+  {
+    "id": "pg-ex-45",
+    "title": "Hardened Multi-Tenant Row-Level Security (RLS) with SET LOCAL",
+    "category": "Security & Multi-Tenancy",
+    "difficulty": "must-know",
+    "whatThisCodeCovers": "Implements production multi-tenant RLS where a web application sets the tenant ID via SET LOCAL app.current_tenant_id per transaction.",
+    "conceptsCovered": [
+      "ENABLE ROW LEVEL SECURITY",
+      "FORCE ROW LEVEL SECURITY",
+      "current_setting()",
+      "SET LOCAL Transaction Scope",
+      "Pool Poisoning Prevention"
+    ],
+    "code": "-- Setup RLS table\nCREATE TABLE tenant_invoices (\n    invoice_id SERIAL PRIMARY KEY,\n    tenant_id INT NOT NULL,\n    client_name TEXT NOT NULL,\n    amount NUMERIC(10, 2) NOT NULL\n);\n\nALTER TABLE tenant_invoices ENABLE ROW LEVEL SECURITY;\nALTER TABLE tenant_invoices FORCE ROW LEVEL SECURITY; -- Enforce even on table owners!\n\n-- Strict policy filtering on session parameter\nCREATE POLICY tenant_isolation_policy ON tenant_invoices\nFOR ALL\nUSING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::INT)\nWITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::INT);\n\n-- Web application request execution:\nBEGIN;\nSET LOCAL app.current_tenant_id = '42'; -- Scoped strictly to this transaction!\n\n-- Sees only tenant 42's invoices\nSELECT * FROM tenant_invoices;\n\n-- Inserting row with mismatched tenant_id fails with RLS policy violation\n-- INSERT INTO tenant_invoices (tenant_id, client_name, amount) VALUES (99, 'Bad Corp', 100);\n\nCOMMIT; -- Automatically resets app.current_tenant_id!",
+    "breakdown": [
+      "FORCE ROW LEVEL SECURITY ensures even connections running as table owner are restricted.",
+      "SET LOCAL app.current_tenant_id confines tenant context strictly to the single transaction, preventing connection pool leaks.",
+      "WITH CHECK prevents cross-tenant data tampering."
+    ],
+    "expectedOutput": "invoice_id | tenant_id | client_name | amount\n101        | 42        | Acme Corp   | 1450.00"
+  },
+  {
+    "id": "pg-ex-46",
+    "title": "InitPlan Performance Optimization for Row-Level Security Policies",
+    "category": "Security & Multi-Tenancy",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Optimizes slow RLS policies by wrapping session context calls in a scalar subquery, forcing evaluation as an O(1) InitPlan.",
+    "conceptsCovered": [
+      "RLS InitPlan Optimization",
+      "O(1) vs O(N) RLS Evaluation",
+      "Scalar Subquery in USING",
+      "Index Scan Promotion",
+      "EXPLAIN ANALYZE Verification"
+    ],
+    "code": "-- Index on tenant_id\nCREATE INDEX idx_invoices_tenant ON tenant_invoices (tenant_id);\n\n-- FAST OPTIMIZED POLICY:\n-- Wrapping current_setting in (SELECT ...) forces Postgres to evaluate it ONCE as an InitPlan!\nCREATE POLICY fast_tenant_rls ON tenant_invoices\nFOR ALL\nUSING (\n    tenant_id = (SELECT NULLIF(current_setting('app.current_tenant_id', true), '')::INT)\n);\n\n-- Verify execution plan:\nEXPLAIN (ANALYZE, BUFFERS)\nSELECT * FROM tenant_invoices;\n\n-- Plan reveals:\n-- InitPlan 1 (returns $0)\n--   -> Result (evaluates current_setting ONCE at startup)\n-- Index Scan using idx_invoices_tenant on tenant_invoices (condition: tenant_id = $0)",
+    "breakdown": [
+      "Without the subquery, current_setting() can be evaluated per row ($O(N)$).",
+      "The (SELECT ...) wrapper generates an InitPlan evaluated once at query startup ($O(1)$).",
+      "Promotes sequential scans into blazing fast Index Scans."
+    ],
+    "expectedOutput": "InitPlan 1 (returns $0)\n  ->  Result\nIndex Scan using idx_invoices_tenant on tenant_invoices (cost=... rows=... width=...)\n  Index Cond: (tenant_id = $0)"
+  },
+  {
+    "id": "pg-ex-47",
+    "title": "Dynamic Schema-per-Tenant Switching with SET LOCAL search_path",
+    "category": "Security & Multi-Tenancy",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implements the Nexora Schema-per-Tenant pattern, safely switching the active search_path per transaction without connection pool contamination.",
+    "conceptsCovered": [
+      "Schema-per-Tenant",
+      "SET LOCAL search_path",
+      "TenantWrapper Architecture",
+      "Transaction Boundaries",
+      "Pool Sanitation"
+    ],
+    "code": "-- Nexora Multi-Tenant Client Transaction Execution\nBEGIN;\n\n-- 1. Switch active tenant schema strictly for this single transaction\nSET LOCAL search_path = tenant_recover_client_101, public;\n\n-- 2. Execute business queries with unqualified table names\nSELECT debtor_id, total_outstanding, status \nFROM debtors \nWHERE status = 'ACTIVE';\n\n-- 3. Commit releases connection back to PgBouncer cleanly\nCOMMIT;\n\n-- Verify default path outside transaction remains untouched\nSHOW search_path; -- public, pg_catalog",
+    "breakdown": [
+      "SET LOCAL search_path dynamically maps unqualified table names (e.g. debtors) to the tenant schema.",
+      "Automatic rollback/commit reset prevents cross-tenant data contamination in recycled connection pools.",
+      "The foundational architecture of Nexora Recover Client pools."
+    ],
+    "expectedOutput": "debtor_id | total_outstanding | status\nD-8821    | 4500.00           | ACTIVE"
+  },
+  {
+    "id": "pg-ex-48",
+    "title": "Column-Level AES-256 Encryption & Blind Indexing with pgcrypto",
+    "category": "Security & Multi-Tenancy",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Encrypts sensitive customer SSNs using AES-256 with pgcrypto and implements an HMAC blind index for fast exact equality lookups.",
+    "conceptsCovered": [
+      "pgcrypto Extension",
+      "pgp_sym_encrypt / decrypt",
+      "HMAC Blind Index",
+      "BYTEA Storage",
+      "PCI-DSS / HIPAA Compliance"
+    ],
+    "code": "-- Enable cryptographic extension\nCREATE EXTENSION IF NOT EXISTS pgcrypto;\n\nCREATE TABLE secure_patients (\n    patient_id SERIAL PRIMARY KEY,\n    name TEXT NOT NULL,\n    ssn_encrypted BYTEA NOT NULL, -- AES-256 encrypted binary payload\n    ssn_blind_index TEXT NOT NULL -- SHA-256 HMAC hash for exact searching\n);\n\n-- Fast B-Tree index on the blind index string\nCREATE INDEX idx_patients_ssn_bindex ON secure_patients (ssn_blind_index);\n\n-- 1. Insert patient record with encryption and blind index\nINSERT INTO secure_patients (name, ssn_encrypted, ssn_blind_index)\nVALUES (\n    'John Doe',\n    pgp_sym_encrypt('987-65-4321', 'VAULT_MASTER_KEY_2026'),\n    encode(hmac('987-65-4321', 'HMAC_PEPPER_KEY', 'sha256'), 'hex')\n);\n\n-- 2. Search by SSN using blind index and decrypt result\nSELECT \n    name, \n    pgp_sym_decrypt(ssn_encrypted, 'VAULT_MASTER_KEY_2026') AS decrypted_ssn\nFROM secure_patients\nWHERE ssn_blind_index = encode(hmac('987-65-4321', 'HMAC_PEPPER_KEY', 'sha256'), 'hex');",
+    "breakdown": [
+      "pgp_sym_encrypt encrypts data using AES-256 with random salts, preventing frequency analysis.",
+      "Blind indexing with HMAC allows fast B-Tree equality lookups without decrypting all rows.",
+      "Guarantees that stolen database backups reveal zero plaintext SSNs."
+    ],
+    "expectedOutput": "name     | decrypted_ssn\nJohn Doe | 987-65-4321"
+  },
+  {
+    "id": "pg-ex-49",
+    "title": "Synchronous Audit Logging Trigger with pg_trigger_depth() Protection",
+    "category": "Security & Multi-Tenancy",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Captures full row mutation audit logs inside an ACID trigger, utilizing pg_trigger_depth() to prevent infinite trigger recursion loops.",
+    "conceptsCovered": [
+      "AFTER INSERT OR UPDATE OR DELETE",
+      "pg_trigger_depth()",
+      "JSONB Old/New Serialization",
+      "Session Context Capture",
+      "ACID Audit Trail"
+    ],
+    "code": "-- Audit log schema\nCREATE TABLE audit_log_entries (\n    log_id BIGSERIAL PRIMARY KEY,\n    table_name TEXT NOT NULL,\n    action TEXT NOT NULL,\n    user_id TEXT,\n    old_row JSONB,\n    new_row JSONB,\n    occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\n-- Trigger function\nCREATE OR REPLACE FUNCTION track_audit_history() \nRETURNS TRIGGER LANGUAGE plpgsql AS $$\nBEGIN\n    -- Prevent infinite trigger recursion loops if audit table triggers another trigger\n    IF pg_trigger_depth() > 1 THEN\n        RETURN NEW;\n    END IF;\n\n    INSERT INTO audit_log_entries (\n        table_name, \n        action, \n        user_id, \n        old_row, \n        new_row\n    ) VALUES (\n        TG_TABLE_NAME,\n        TG_OP,\n        NULLIF(current_setting('app.current_user_id', true), ''),\n        CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN to_jsonb(OLD) ELSE NULL END,\n        CASE WHEN TG_OP IN ('INSERT', 'UPDATE') THEN to_jsonb(NEW) ELSE NULL END\n    );\n\n    RETURN NEW;\nEND;\n$$;\n\n-- Attach trigger\nCREATE TRIGGER audit_accounts_trigger\nAFTER INSERT OR UPDATE OR DELETE ON user_accounts\nFOR EACH ROW EXECUTE FUNCTION track_audit_history();",
+    "breakdown": [
+      "Captures synchronous audit records in the same transaction as the modifying operation.",
+      "pg_trigger_depth() > 1 terminates cascading recursion safely.",
+      "to_jsonb(OLD) and to_jsonb(NEW) serialize row states automatically."
+    ],
+    "expectedOutput": "CREATE FUNCTION\nCREATE TRIGGER"
+  },
+  {
+    "id": "pg-ex-50",
+    "title": "Diagnosing Top System Load Queries with pg_stat_statements",
+    "category": "Partitioning & Administration",
+    "difficulty": "must-know",
+    "whatThisCodeCovers": "Configures and queries pg_stat_statements to identify the top 5 queries causing the highest cumulative CPU and disk I/O load.",
+    "conceptsCovered": [
+      "pg_stat_statements",
+      "Query Fingerprinting",
+      "Cumulative Execution Time",
+      "shared_blks_read vs hit",
+      "Performance Regressions"
+    ],
+    "code": "-- Enable pg_stat_statements\nCREATE EXTENSION IF NOT EXISTS pg_stat_statements;\n\n-- Top 5 queries consuming the most total execution time\nSELECT \n    round(total_exec_time::NUMERIC, 2) AS total_time_ms,\n    calls,\n    round(mean_exec_time::NUMERIC, 2) AS avg_time_ms,\n    round((100.0 * total_exec_time / sum(total_exec_time) OVER ())::NUMERIC, 2) AS pct_cluster_load,\n    shared_blks_hit,\n    shared_blks_read,\n    query\nFROM pg_stat_statements\nORDER BY total_exec_time DESC\nLIMIT 5;",
+    "breakdown": [
+      "Normalizes queries into parameter-agnostic signatures.",
+      "total_exec_time DESC highlights where database CPU and I/O capacity is being spent.",
+      "High shared_blks_read indicates missing indexes causing sequential disk reads."
+    ],
+    "expectedOutput": "total_time_ms | calls  | avg_time_ms | pct_cluster_load | query\n1452100.40    | 250000 | 5.81        | 42.15            | SELECT * FROM orders WHERE customer_id = $1"
+  },
+  {
+    "id": "pg-ex-51",
+    "title": "Accelerating Wildcard Substring Searches (LIKE '%term%') with pg_trgm",
+    "category": "JSONB & Indexing",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Deploys a GIN trigram index using pg_trgm to accelerate leading wildcard substring searches (LIKE '%pattern%') and regex queries.",
+    "conceptsCovered": [
+      "pg_trgm Extension",
+      "Trigram Decomposition",
+      "gin_trgm_ops",
+      "Wildcard Substring Search",
+      "Fuzzy Autocomplete"
+    ],
+    "code": "-- Enable trigram extension\nCREATE EXTENSION IF NOT EXISTS pg_trgm;\n\nCREATE TABLE customer_directory (\n    id SERIAL PRIMARY KEY,\n    full_name TEXT NOT NULL,\n    company TEXT NOT NULL\n);\n\n-- Create GIN trigram index on full_name\nCREATE INDEX idx_customers_name_trgm \nON customer_directory \nUSING gin (full_name gin_trgm_ops);\n\n-- Leading wildcard query: Uses GIN Index Scan instead of full table scan!\nEXPLAIN (ANALYZE, BUFFERS)\nSELECT id, full_name, company\nFROM customer_directory\nWHERE full_name ILIKE '%smith%';\n\n-- Fuzzy typo-tolerant search using similarity operator %\nSELECT full_name, similarity(full_name, 'jonathan') AS score\nFROM customer_directory\nWHERE full_name % 'jonathan'\nORDER BY full_name <-> 'jonathan'\nLIMIT 5;",
+    "breakdown": [
+      "Standard B-Tree cannot accelerate leading wildcard searches LIKE '%term%'.",
+      "gin_trgm_ops breaks text into 3-character trigrams and indexes them in an inverted tree.",
+      "Executes sub-millisecond substring lookups across millions of names."
+    ],
+    "expectedOutput": "Bitmap Heap Scan on customer_directory\n  ->  Bitmap Index Scan on idx_customers_name_trgm\n        Index Cond: (full_name ~~* '%smith%'::text)"
+  },
+  {
+    "id": "pg-ex-52",
+    "title": "AI Semantic Vector Similarity Search using pgvector & HNSW",
+    "category": "Partitioning & Administration",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Stores 1536-dimensional AI text embeddings with pgvector and performs nearest-neighbor semantic search using a cosine-distance HNSW index.",
+    "conceptsCovered": [
+      "pgvector Extension",
+      "vector(1536) Type",
+      "HNSW Multi-Layer Graph",
+      "Cosine Distance (<=>)",
+      "Semantic Hybrid Search"
+    ],
+    "code": "-- Enable pgvector extension\nCREATE EXTENSION IF NOT EXISTS vector;\n\nCREATE TABLE document_knowledge_chunks (\n    chunk_id BIGSERIAL PRIMARY KEY,\n    document_title TEXT NOT NULL,\n    chunk_text TEXT NOT NULL,\n    embedding VECTOR(1536) NOT NULL -- OpenAI ada-002 / text-embedding-3 dimension\n);\n\n-- State-of-the-art HNSW index for sub-millisecond approximate nearest neighbor search\nCREATE INDEX idx_docs_hnsw_cosine \nON document_knowledge_chunks \nUSING hnsw (embedding vector_cosine_ops)\nWITH (m = 16, ef_construction = 64);\n\n-- Query the 3 most semantically relevant text chunks to a user question vector\nSELECT \n    document_title, \n    chunk_text, \n    (1 - (embedding <=> '[0.0125, -0.0452, 0.0891, ...]'::VECTOR)) AS similarity_score\nFROM document_knowledge_chunks\nORDER BY embedding <=> '[0.0125, -0.0452, 0.0891, ...]'::VECTOR\nLIMIT 3;",
+    "breakdown": [
+      "vector(1536) stores AI embeddings natively in PostgreSQL.",
+      "HNSW constructs a hierarchical navigable small-world graph, providing >99% recall with sub-millisecond latency.",
+      "<=> operator calculates cosine distance, unified within the same ACID database as relational metadata."
+    ],
+    "expectedOutput": "document_title          | chunk_text                                          | similarity_score\nPostgreSQL Architecture | PostgreSQL processes connections using Postmaster... | 0.942"
+  }
+]
