@@ -1,0 +1,423 @@
+[
+  {
+    "id": "sql-deep-01",
+    "title": "The Relational Model, Mathematical Set Theory & Codd's Rules",
+    "category": "Relational Foundations",
+    "readTimeMinutes": 18,
+    "overview": "In 1970, Dr. Edgar F. Codd published 'A Relational Model of Data for Large Shared Data Banks', revolutionizing computing by untangling data representation from physical storage addresses. This chapter covers the set-theoretic mathematical foundations of relational algebra, the distinction between relations and multisets, and Codd's 12 rules that define relational database engines.",
+    "diagram": "+-------------------------------------------------------------------------+\n|                  THE RELATIONAL MODEL MATHEMATICAL MAPPING              |\n+-------------------------------------------------------------------------+\n|                                                                         |\n|  MATHEMATICAL SET THEORY            PHYSICAL SQL EQUIVALENT             |\n|  +-----------------------------+    +--------------------------------+  |\n|  | Relation                    |--->| Table                          |  |\n|  | - Unordered set of tuples   |    | - Multiset of rows (Bags)      |  |\n|  +-----------------------------+    +--------------------------------+  |\n|  | Tuple                       |--->| Row / Record                   |  |\n|  | - Attribute-value mapping   |    | - Field values                 |  |\n|  +-----------------------------+    +--------------------------------+  |\n|  | Attribute                   |--->| Column / Field                 |  |\n|  +-----------------------------+    +--------------------------------+  |\n|  | Domain                      |--->| Data Type / Domain Constraint |  |\n|  +-----------------------------+    +--------------------------------+  |\n|                                                                         |\n|  RELATIONAL ALGEBRA OPERATORS:                                          |\n|  - Selection (sigma): Filters tuples matching predicate -> WHERE        |\n|  - Projection (pi): Extracts specified attributes      -> SELECT col   |\n|  - Cartesian Product (x): Combinatorial pairs           -> CROSS JOIN   |\n|  - Join (bowtie): Theta join based on predicate         -> INNER JOIN   |\n|  - Set Operations: Union (U), Difference (-), Intersect (n)             |\n|                                                                         |\n+-------------------------------------------------------------------------+",
+    "deepDive": [
+      {
+        "subheading": "1. Relational Algebra Primitives vs SQL Implementations",
+        "explanation": "Relational algebra consists of procedural operators that transform one or more input relations into a new output relation. Selection ($\\sigma$) filters tuples matching a condition; Projection ($\\pi$) restricts attributes; Cartesian Product ($\\times$) forms all pair permutations; and Union ($\\cup$), Set Difference ($-$), and Intersection ($\\cap$) combine sets. In pure relational algebra, operations produce unique sets without duplicate tuples. SQL diverges from pure relational algebra by defaulting to Multisets (bags of rows), which permits duplicates unless `DISTINCT` or a `PRIMARY KEY` is enforced.",
+        "codeExample": "-- Relational Algebra: pi_{name, salary}(sigma_{salary > 50000}(Employees))\nSELECT name, salary\nFROM employees\nWHERE salary > 50000;"
+      },
+      {
+        "subheading": "2. Codd's Core Rules: The Foundation of RDBMS",
+        "explanation": "Codd defined twelve rules (Rule 0 to Rule 12) to determine if a database management system is truly relational. Key rules include: Rule 1 (The Information Rule: all data, including metadata, is represented strictly as table values); Rule 2 (Guaranteed Access: every datum is addressable by table name, primary key, and column name, with no pointer offsets); Rule 3 (Systematic Treatment of Null Values); and Rule 8/9 (Physical and Logical Data Independence: changing physical file layouts or table structures must not break application queries).",
+        "codeExample": "-- Information Rule (Rule 1): Metadata is stored as queryable relations\nSELECT table_name, column_name, data_type \nFROM information_schema.columns \nWHERE table_name = 'employees';"
+      },
+      {
+        "subheading": "3. Three-Valued Logic (3VL) & Set Inclusion",
+        "explanation": "Because physical data can be missing or unknown, Codd introduced `NULL` and Three-Valued Logic (`TRUE`, `FALSE`, `UNKNOWN`). Evaluating any comparison with `NULL` (including `NULL = NULL`) produces `UNKNOWN`. Set inclusion operators (`IN`) rely on boolean ORs: if a candidate set contains `NULL`, testing `NOT IN` expands to `col != 1 AND col != NULL`, which evaluates to `UNKNOWN` and discards all rows. Understanding 3VL is mandatory for writing bug-free SQL.",
+        "codeExample": "-- Demonstrating Three-Valued Logic Truth Value\nSELECT \n    CASE WHEN (1 = NULL) THEN 'TRUE' ELSE 'NOT TRUE (UNKNOWN)' END AS test_equality,\n    CASE WHEN (NULL IS NULL) THEN 'TRUE' ELSE 'FALSE' END AS test_is_null;"
+      }
+    ],
+    "edgeCasesAndPitfalls": [
+      "SQL defaults to multisets (bags); queries without `DISTINCT` or keys retain duplicate rows, violating pure set theory.",
+      "`NOT IN (SELECT col FROM table)` returns 0 rows if the subquery contains a single `NULL` value.",
+      "In relational theory, rows have no inherent physical order; queries without `ORDER BY` return rows non-deterministically."
+    ],
+    "keyTakeaways": [
+      "The Relational Model separates logical data presentation from physical disk storage.",
+      "Relational algebra operations (Selection, Projection, Join) form the logical blueprint of SQL execution plans.",
+      "SQL uses Three-Valued Logic (3VL); always use IS NULL / IS NOT NULL rather than equality operators."
+    ]
+  },
+  {
+    "id": "sql-deep-02",
+    "title": "SQL Query Engine Lifecycle & Physical Execution Order",
+    "category": "Relational Foundations",
+    "readTimeMinutes": 20,
+    "overview": "Writing SQL code is declarative: you describe WHAT data you want, not HOW the computer should retrieve it. This chapter analyzes the database compiler lifecycle: AST parsing, catalog resolution, cost-based optimization, the Volcano Iterator execution model, and the 10-step logical execution order.",
+    "diagram": "+-------------------------------------------------------------------------+\n|                  SQL COMPILATION & EXECUTION LIFECYCLE                  |\n+-------------------------------------------------------------------------+\n|                                                                         |\n|  SQL TEXT: SELECT dept, AVG(salary) FROM emp WHERE active=1 GROUP BY dept|\n|     |                                                                   |\n|     v                                                                   |\n|  [PARSER] ---------------------> Checks grammar; outputs AST            |\n|     |                                                                   |\n|     v                                                                   |\n|  [SEMANTIC ANALYZER] ----------> Validates tables/columns in catalogs   |\n|     |                                                                   |\n|     v                                                                   |\n|  [QUERY REWRITER] -------------> Flattens views, un-nests subqueries    |\n|     |                                                                   |\n|     v                                                                   |\n|  [COST-BASED OPTIMIZER (CBO)] -> Evaluates permutations (Join Order,    |\n|     |                            Scans, Indexes); chooses lowest cost   |\n|     v                                                                   |\n|  [PHYSICAL QUERY PLAN] --------> Tree of physical operators             |\n|     |                                                                   |\n|     v                                                                   |\n|  [EXECUTOR (Volcano Engine)] --> open() -> next() -> close() (Streams)  |\n|                                                                         |\n+-------------------------------------------------------------------------+",
+    "deepDive": [
+      {
+        "subheading": "1. The 10-Step Logical Execution Order",
+        "explanation": "Although SQL queries begin with `SELECT`, the database engine processes clauses in a distinct logical order: 1) `FROM` evaluates source tables; 2) `ON` applies join predicates; 3) `JOIN` merges tables; 4) `WHERE` filters individual rows; 5) `GROUP BY` collapses rows into buckets; 6) `HAVING` filters group metrics; 7) `SELECT` evaluates projection expressions; 8) `DISTINCT` deduplicates; 9) `ORDER BY` sorts the result set; and 10) `LIMIT / OFFSET` slices the final window. This explains why column aliases declared in `SELECT` cannot be referenced in `WHERE` or `GROUP BY`.",
+        "codeExample": "-- Understanding clause order in practice\nSELECT \n    department_id, \n    COUNT(*) AS active_count              -- Step 5: SELECT evaluates alias\nFROM employees                            -- Step 1: FROM binds table\nWHERE status = 'ACTIVE'                   -- Step 2: WHERE filters rows\nGROUP BY department_id                    -- Step 3: GROUP BY creates buckets\nHAVING COUNT(*) >= 5                      -- Step 4: HAVING filters buckets\nORDER BY active_count DESC                -- Step 6: ORDER BY can use the alias!\nOFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY;     -- Step 7: Slices top 5"
+      },
+      {
+        "subheading": "2. The Cost-Based Optimizer (CBO) & Search Space",
+        "explanation": "The query optimizer evaluates alternative execution strategies to identify the plan with the lowest estimated CPU and disk I/O cost. For a 4-table join, there are dozens of possible join order permutations ($A \\bowtie B \\bowtie C \\bowtie D$) and algorithm selections (Hash Join, Merge Join, Nested Loop). The optimizer calculates costs using histogram distributions and cardinality statistics stored in system catalogs.",
+        "codeExample": "-- Inspecting the physical query plan chosen by the optimizer\nEXPLAIN\nSELECT c.name, o.total_amount\nFROM customers c\nJOIN orders o ON c.id = o.customer_id\nWHERE c.country = 'Germany';"
+      },
+      {
+        "subheading": "3. The Volcano Iterator Execution Model",
+        "explanation": "Most relational engines execute physical plans using the Volcano Iterator Model (pipelined streaming). Each operator in the plan tree implements three interface methods: `open()`, `next()`, and `close()`. The root operator calls `next()` on its children, which pull rows up the tree one row (or vector batch) at a time. This allows queries to stream results immediately to clients without buffering millions of rows in memory.",
+        "codeExample": "-- Volcano pipeline: Index Scan feeds filter, which feeds projection stream\n-- Root: Result / Projection\n--   -> Filter (status = 'ACTIVE')\n--        -> Index Scan using idx_emp_dept (department_id = 10)"
+      }
+    ],
+    "edgeCasesAndPitfalls": [
+      "Referencing a column alias declared in `SELECT` inside a `WHERE` clause fails because `WHERE` executes before `SELECT`.",
+      "Placing non-aggregate filters in `HAVING` wastes memory by forcing the engine to group unneeded rows before discarding them.",
+      "Prepared statements bypass the Parser and Semantic Analyzer, reusing the cached physical plan for instant execution."
+    ],
+    "keyTakeaways": [
+      "SQL logical execution starts with FROM/WHERE and ends with ORDER BY/LIMIT.",
+      "The Cost-Based Optimizer evaluates candidate plans using catalog statistics to minimize I/O.",
+      "The Volcano Iterator model streams rows up an operator tree one tuple at a time."
+    ]
+  },
+  {
+    "id": "sql-deep-03",
+    "title": "Database Normalization & Normal Forms Decomposition (1NF to BCNF)",
+    "category": "Database Design & Normalization",
+    "readTimeMinutes": 22,
+    "overview": "Database normalization is the formal mathematical technique of organizing relational schemas to eliminate data redundancy and prevent insertion, update, and deletion anomalies. This chapter guides you through functional dependencies, 1NF, 2NF, 3NF, and Boyce-Codd Normal Form (BCNF) with real-world decomposition workflows.",
+    "diagram": "+-------------------------------------------------------------------------+\n|                  THE NORMALIZATION HIERARCHY & ANOMALIES                |\n+-------------------------------------------------------------------------+\n|                                                                         |\n|  UNNORMALIZED DATA (Non-atomic comma strings, repeating columns)        |\n|     |                                                                   |\n|     v (Eliminate repeating groups, ensure atomic values + PK)           |\n|  FIRST NORMAL FORM (1NF)                                                |\n|     |                                                                   |\n|     v (Eliminate partial dependencies on composite keys)                |\n|  SECOND NORMAL FORM (2NF)                                               |\n|     |                                                                   |\n|     v (Eliminate transitive dependencies: non-key -> non-key)           |\n|  THIRD NORMAL FORM (3NF)                                                |\n|     |                                                                   |\n|     v (Strict determinant rule: every X in X -> Y must be a Superkey)   |\n|  BOYCE-CODD NORMAL FORM (BCNF)                                          |\n|                                                                         |\n|  ANOMALIES PREVENTED:                                                   |\n|  - Insertion Anomaly: Cannot insert parent entity without dummy child   |\n|  - Deletion Anomaly: Deleting child inadvertently deletes parent entity |\n|  - Update Anomaly: Modifying one fact requires updating 10,000 rows     |\n|                                                                         |\n+-------------------------------------------------------------------------+",
+    "deepDive": [
+      {
+        "subheading": "1. 1NF and 2NF: Atomicity and Full Key Dependency",
+        "explanation": "1NF mandates atomic values and unique rows. 2NF applies strictly to tables with composite primary keys: every non-key column must depend on the entire candidate key, not a partial subset. In `order_items (order_id, product_id, qty, product_name)`, `product_name` depends only on `product_id`. This causes update anomalies: changing a product name requires modifying thousands of order records. Decomposing into `products` and `order_items` satisfies 2NF.",
+        "codeExample": "-- 2NF Compliant Schema Decomposition\nCREATE TABLE products (\n    product_id INT PRIMARY KEY,\n    product_name VARCHAR(100) NOT NULL,\n    list_price NUMERIC(10, 2) NOT NULL\n);\n\nCREATE TABLE order_items (\n    order_id INT NOT NULL,\n    product_id INT NOT NULL,\n    quantity INT NOT NULL,\n    PRIMARY KEY (order_id, product_id),\n    FOREIGN KEY (product_id) REFERENCES products(product_id)\n);"
+      },
+      {
+        "subheading": "2. 3NF: Eliminating Transitive Dependencies",
+        "explanation": "3NF requires that non-key attributes depend strictly on the primary key, and 'nothing but the key'. A transitive dependency occurs when Primary Key $A \\to B$ and $B \\to C$, making $A \\to C$ dependent through $B$. In `orders (order_id, customer_id, customer_city)`, city depends on `customer_id`. If all orders for a customer are deleted, the customer's city is lost (deletion anomaly). Decomposing into `customers` and `orders` achieves 3NF.",
+        "codeExample": "-- 3NF Compliant Schema Decomposition\nCREATE TABLE customers (\n    customer_id INT PRIMARY KEY,\n    name VARCHAR(100) NOT NULL,\n    city VARCHAR(100) NOT NULL\n);\n\nCREATE TABLE orders (\n    order_id INT PRIMARY KEY,\n    customer_id INT NOT NULL REFERENCES customers(customer_id),\n    order_date DATE NOT NULL\n);"
+      },
+      {
+        "subheading": "3. Boyce-Codd Normal Form (BCNF) & Overlapping Keys",
+        "explanation": "BCNF is a stricter version of 3NF. While 3NF permits attribute $Y$ in $X \\to Y$ to be part of a candidate key (prime attribute) even if $X$ is not a superkey, BCNF strictly demands that every determinant $X$ must be a superkey. BCNF anomalies arise when a table has multiple overlapping composite candidate keys.",
+        "codeExample": "-- BCNF Decomposition of overlapping candidate keys\nCREATE TABLE professor_specialties (\n    professor_id INT PRIMARY KEY,\n    subject_code VARCHAR(20) NOT NULL\n);\n\nCREATE TABLE student_advisors (\n    student_id INT NOT NULL,\n    professor_id INT NOT NULL REFERENCES professor_specialties(professor_id),\n    PRIMARY KEY (student_id, professor_id)\n);"
+      }
+    ],
+    "edgeCasesAndPitfalls": [
+      "Tables with single-column primary keys that satisfy 1NF are automatically in 2NF.",
+      "Over-normalizing OLAP reporting databases introduces multi-table join latency; denormalization into Star Schemas is justified for data lakes.",
+      "BCNF decomposition can sometimes sacrifice functional dependency preservation across tables."
+    ],
+    "keyTakeaways": [
+      "1NF: Atomic values and unique rows.",
+      "2NF: No partial dependencies on composite keys.",
+      "3NF: No transitive dependencies between non-key attributes.",
+      "BCNF: Every determinant must be a candidate superkey."
+    ]
+  },
+  {
+    "id": "sql-deep-04",
+    "title": "Relational Join Algorithms & Physical Execution Strategies",
+    "category": "Joins & Set Operations",
+    "readTimeMinutes": 20,
+    "overview": "Relational joins combine tuples from multiple relations based on predicate matching. While SQL syntax declares joins using INNER or LEFT JOIN, the physical engine executes them using three core algorithms: Nested Loop Join, Hash Join, and Sort-Merge Join. This chapter analyzes the physical mechanics, memory footprints, and optimization trade-offs of join algorithms.",
+    "diagram": "+-------------------------------------------------------------------------+\n|                  PHYSICAL JOIN ALGORITHM MECHANISMS                     |\n+-------------------------------------------------------------------------+\n|                                                                         |\n|  1. NESTED LOOP JOIN:                                                   |\n|     For each row in Outer Table A:                                      |\n|       Probe Inner Table B Index using A.key                             |\n|     - Best for: Small outer table (< 100 rows) + Indexed inner table    |\n|                                                                         |\n|  2. HASH JOIN:                                                          |\n|     Phase 1 (Build): Read smaller Table A into in-memory Hash Table     |\n|     Phase 2 (Probe): Stream larger Table B and probe Hash Table         |\n|     - Best for: Large unsorted equality joins (A.id = B.id)             |\n|                                                                         |\n|  3. SORT-MERGE JOIN:                                                    |\n|     Phase 1: Sort Table A by key; Sort Table B by key                   |\n|     Phase 2: Walk both sorted streams in lockstep (O(M + N))            |\n|     - Best for: Pre-sorted index streams or large non-equality ranges   |\n|                                                                         |\n+-------------------------------------------------------------------------+",
+    "deepDive": [
+      {
+        "subheading": "1. Nested Loop Join Architecture",
+        "explanation": "The Nested Loop Join is the simplest algorithm: it iterates through every row of an outer relation and scans or probes the inner relation for matching keys. If the inner relation has an index on the join key, each lookup takes $O(\\log N)$ time, making it exceptionally fast for small outer datasets. However, if the inner relation has no index, performance degrades to $O(M \\times N)$ Cartesian scanning.",
+        "codeExample": "-- Optimal Nested Loop: Small outer filtered set + indexed inner\nSELECT c.name, o.order_id\nFROM customers c -- 1 row matched by PK\nJOIN orders o ON c.customer_id = o.customer_id -- Probes index on orders(customer_id)\nWHERE c.customer_id = 42;"
+      },
+      {
+        "subheading": "2. In-Memory Hash Join & Hash Partitioning",
+        "explanation": "Hash Joins require equality predicates (`A.id = B.id`). The optimizer designates the smaller relation as the Build input, hashing its keys into an in-memory hash table. It then streams the larger Probe relation, hashing its join key and probing the hash table. If the hash table exceeds working memory limits, it spills to disk in multiple partition batches.",
+        "codeExample": "-- Hash Join execution on two large tables\nEXPLAIN\nSELECT o.order_id, p.product_name\nFROM orders o\nJOIN products p ON o.product_id = p.product_id;\n-- Plan: Hash Join\n--   Hash Cond: (o.product_id = p.product_id)"
+      },
+      {
+        "subheading": "3. Sort-Merge Join & Dual Stream Merging",
+        "explanation": "Sort-Merge Join sorts both relations by their join keys, then advances two cursor pointers simultaneously across both streams in linear $O(M + N)$ time. If relations are already pre-sorted by underlying B-Tree indexes, Sort-Merge skips the sorting phase entirely, outperforming Hash Joins on large datasets.",
+        "codeExample": "-- Sort-Merge Join on pre-sorted indexed columns\nEXPLAIN\nSELECT * \nFROM financial_ledger_a a\nJOIN financial_ledger_b b ON a.account_id = b.account_id\nORDER BY a.account_id;"
+      }
+    ],
+    "edgeCasesAndPitfalls": [
+      "Hash Joins only work for equality operators (`=`); Non-Equi Joins (`BETWEEN`, `<`, `>`) must use Nested Loop or Merge Joins.",
+      "If working memory is undersized, Hash Joins spill to disk into multiple batches, causing high I/O latency.",
+      "Accidental missing join predicates trigger full Cartesian Cross Joins ($M \\times N$ rows)."
+    ],
+    "keyTakeaways": [
+      "Nested Loop is fastest when outer table is small and inner table is indexed.",
+      "Hash Join is the workhorse for large unsorted equality joins.",
+      "Sort-Merge Join excels when input streams are already sorted by B-Tree indexes."
+    ]
+  },
+  {
+    "id": "sql-deep-05",
+    "title": "Advanced SQL Windowing Engine & Analytical Frames",
+    "category": "Window Functions & Analytics",
+    "readTimeMinutes": 20,
+    "overview": "Window functions compute aggregate calculations across partitions of rows while preserving the granular identity of each row. This chapter explores the internal windowing pipeline, frame boundary mechanics (`ROWS` vs `RANGE` vs `GROUPS`), and running metric algorithms.",
+    "diagram": "+-------------------------------------------------------------------------+\n|                  WINDOW FRAME BOUNDARY ARCHITECTURE                     |\n+-------------------------------------------------------------------------+\n|                                                                         |\n|  PARTITION STREAM (Ordered by Date):                                    |\n|  [Row 1: Jan 1]                                                         |\n|  [Row 2: Jan 2] <- UNBOUNDED PRECEDING (Start of partition)             |\n|  [Row 3: Jan 3] <- 1 PRECEDING                                          |\n|  [Row 4: Jan 4] <=== CURRENT ROW                                        |\n|  [Row 5: Jan 5] <- 1 FOLLOWING                                          |\n|  [Row 6: Jan 6] <- UNBOUNDED FOLLOWING (End of partition)               |\n|                                                                         |\n|  SLIDING WINDOW DEFINITIONS:                                            |\n|  - Cumulative:  ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW        |\n|  - 3-Day Mov:   ROWS BETWEEN 2 PRECEDING AND CURRENT ROW                |\n|  - Centered:    ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING                |\n|  - Entire Part: ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING|\n|                                                                         |\n+-------------------------------------------------------------------------+",
+    "deepDive": [
+      {
+        "subheading": "1. The Windowing Execution Pipeline",
+        "explanation": "Window functions evaluate after `WHERE`, `GROUP BY`, and `HAVING` clauses, but before final `ORDER BY` and `LIMIT`. The database engine sorts the dataset according to `PARTITION BY` and `ORDER BY` specifications. It maintains an active sliding window buffer over the pre-sorted stream, evaluating aggregate calculations without collapsing rows.",
+        "codeExample": "-- Sliding 3-day moving average\nSELECT \n    sold_at, \n    daily_revenue,\n    AVG(daily_revenue) OVER (\n        ORDER BY sold_at \n        ROWS BETWEEN 2 PRECEDING AND CURRENT ROW\n    ) AS rolling_3_day_avg\nFROM revenue_log;"
+      },
+      {
+        "subheading": "2. The Critical Framing Trap: ROWS vs RANGE",
+        "explanation": "`ROWS` counts physical row offsets. `RANGE` evaluates logical value differences of the `ORDER BY` column. When duplicate values exist, `RANGE` includes all ties in the calculation simultaneously. Because the default frame is `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`, running totals on duplicate dates will report identical, bundled sums for all tied rows unless `ROWS` is explicitly specified.",
+        "codeExample": "-- Demonstrating ROWS vs RANGE on duplicate dates\nSELECT \n    order_date, \n    amount,\n    -- Bundles all duplicate dates together:\n    SUM(amount) OVER (ORDER BY order_date RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS range_sum,\n    -- Increments row-by-row smoothly:\n    SUM(amount) OVER (ORDER BY order_date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS rows_sum\nFROM daily_sales;"
+      },
+      {
+        "subheading": "3. Top-N Per Group via ROW_NUMBER in a CTE",
+        "explanation": "Because window functions execute after `WHERE`, you cannot filter on `ROW_NUMBER() <= 3` in the same query block. The standard ANSI pattern encapsulates the window calculation inside a Common Table Expression, filtering the ranked column in the outer query.",
+        "codeExample": "-- Standard Top-3 per category pattern\nWITH ranked_catalog AS (\n    SELECT \n        category_id, \n        product_name, \n        price,\n        ROW_NUMBER() OVER (PARTITION BY category_id ORDER BY price DESC) AS rank_num\n    FROM products\n)\nSELECT * FROM ranked_catalog WHERE rank_num <= 3;"
+      }
+    ],
+    "edgeCasesAndPitfalls": [
+      "`LAST_VALUE()` returns the current row's own value unless `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING` is declared.",
+      "Window functions cannot be placed in `WHERE` or `HAVING` clauses directly.",
+      "Using `DENSE_RANK()` never skips rank numbers, while `RANK()` skips ranks after duplicate ties."
+    ],
+    "keyTakeaways": [
+      "Window functions preserve row-level granularity while computing group metrics.",
+      "Prefer `ROWS` over `RANGE` for deterministic running totals and better performance.",
+      "Use CTEs to filter on window function results."
+    ]
+  },
+  {
+    "id": "sql-deep-06",
+    "title": "Hierarchical Modeling: Recursive CTEs, Closure Tables & Adjacency Lists",
+    "category": "CTEs & Recursive Hierarchies",
+    "readTimeMinutes": 22,
+    "overview": "Relational tables are flat 2D structures, but real-world domain data is frequently hierarchical (organizational charts, category trees, bill-of-materials, threaded discussions). This chapter compares the four relational modeling strategies for hierarchies: Adjacency Lists with Recursive CTEs, Closure Tables, Nested Sets, and Path Enumeration.",
+    "diagram": "+-------------------------------------------------------------------------+\n|                  HIERARCHICAL MODEL COMPARISON MATRIX                   |\n+-------------------------------------------------------------------------+\n|                                                                         |\n|  1. ADJACENCY LIST (parent_id)                                          |\n|     - Insert: O(1) instant                                              |\n|     - Query Subtree: Requires WITH RECURSIVE                            |\n|                                                                         |\n|  2. CLOSURE TABLE (ancestor_id, descendant_id, depth)                   |\n|     - Insert: O(Depth) inserts to bridge table                          |\n|     - Query Subtree: O(1) single instant join                           |\n|                                                                         |\n|  3. NESTED SETS (lft, rgt intervals)                                    |\n|     - Insert: O(N) catastrophic (renumbers entire tree)                 |\n|     - Query Subtree: O(1) range scan (lft BETWEEN p.lft AND p.rgt)      |\n|                                                                         |\n|  4. PATH ENUMERATION (path = '/1/4/12/')                                |\n|     - Insert: O(1)                                                      |\n|     - Query Subtree: LIKE '/1/4/%'                                      |\n|                                                                         |\n+-------------------------------------------------------------------------+",
+    "deepDive": [
+      {
+        "subheading": "1. The Adjacency List & WITH RECURSIVE Lifecycle",
+        "explanation": "The Adjacency List pattern stores a simple `parent_id` foreign key. Querying subtrees requires `WITH RECURSIVE`. The Anchor member seeds the root nodes (`parent_id IS NULL`), and the Recursive member joins child rows to the working table until no rows remain.",
+        "codeExample": "-- Org-Chart traversal with depth and breadcrumb formatting\nWITH RECURSIVE org_chart AS (\n    SELECT emp_id, name, manager_id, 1 AS depth, CAST(name AS VARCHAR(500)) AS path\n    FROM employees WHERE manager_id IS NULL\n    UNION ALL\n    SELECT e.emp_id, e.name, e.manager_id, o.depth + 1, CAST(o.path || ' > ' || e.name AS VARCHAR(500))\n    FROM employees e JOIN org_chart o ON e.manager_id = o.emp_id\n)\nSELECT * FROM org_chart ORDER BY path;"
+      },
+      {
+        "subheading": "2. The Closure Table: The Enterprise Standard",
+        "explanation": "A Closure Table stores all ancestor-descendant paths in a dedicated junction table (`category_closure`). Finding all descendants of Node 5 requires a simple non-recursive join: `WHERE ancestor_id = 5`. It eliminates recursive CTE overhead without the write paralysis of Nested Sets.",
+        "codeExample": "-- Finding all descendants in a single instant join using Closure Table\nSELECT c.name, cl.depth\nFROM categories c\nJOIN category_closure cl ON c.category_id = cl.descendant_id\nWHERE cl.ancestor_id = 5;"
+      },
+      {
+        "subheading": "3. Cycle Detection & Graph Safeguards",
+        "explanation": "If a database hierarchy contains a circular foreign key (A -> B -> A), a recursive CTE enters an infinite loop. Safeguards require maintaining a visited path string or array to terminate the recursion if a duplicate node is encountered.",
+        "codeExample": "-- Cycle breaker check\nWITH RECURSIVE safe_tree AS (\n    SELECT id, parent_id, CAST('/' || id || '/' AS VARCHAR(1000)) AS visited\n    FROM nodes WHERE parent_id IS NULL\n    UNION ALL\n    SELECT n.id, n.parent_id, CAST(s.visited || n.id || '/' AS VARCHAR(1000))\n    FROM nodes n JOIN safe_tree s ON n.parent_id = s.id\n    WHERE s.visited NOT LIKE '%/' || n.id || '/%' -- Cycle prevention!\n)\nSELECT * FROM safe_tree;"
+      }
+    ],
+    "edgeCasesAndPitfalls": [
+      "Forgetting to CAST breadcrumb strings in the anchor member causes string truncation errors.",
+      "Recursive members cannot contain `GROUP BY`, `HAVING`, `DISTINCT`, or window functions.",
+      "Nested Sets are anti-patterns for write-heavy systems due to tree renumbering locks."
+    ],
+    "keyTakeaways": [
+      "Adjacency lists are simplest to write; require WITH RECURSIVE for reads.",
+      "Closure tables offer the best balance of fast reads and manageable writes for deep enterprise trees.",
+      "Always include cycle guards (depth < 50) in production recursive CTEs."
+    ]
+  },
+  {
+    "id": "sql-deep-07",
+    "title": "ACID Transaction Architecture, SQL-92 Isolation & Concurrency Anomalies",
+    "category": "Transactions & ACID Concurrency",
+    "readTimeMinutes": 22,
+    "overview": "ACID transactions provide the mathematical bedrock of reliable software engineering. This chapter deconstructs the four SQL-92 isolation levels, the five major concurrency anomalies (Dirty Read, Non-Repeatable Read, Phantom Read, Lost Update, Write Skew), and Two-Phase Locking.",
+    "diagram": "+-------------------------------------------------------------------------+\n|                  TRANSACTION ISOLATION & ANOMALY MATRIX                 |\n+-------------------------------------------------------------------------+\n|                                                                         |\n|  CONCURRENCY ANOMALY        READ UNCOMMITTED | READ COMMITTED | REPEATABLE READ | SERIALIZABLE\n|  -----------------------------------------------------------------------|\n|  Dirty Read (G1)            | Permitted      | PREVENTED      | PREVENTED       | PREVENTED\n|  Non-Repeatable Read (G2a)  | Permitted      | Permitted      | PREVENTED       | PREVENTED\n|  Phantom Read (A3)          | Permitted      | Permitted      | Permitted*      | PREVENTED\n|  Write Skew                 | Permitted      | Permitted      | Permitted       | PREVENTED\n|                                                                         |\n|  *Note: PostgreSQL and MySQL InnoDB prevent Phantoms at Repeatable Read |\n|                                                                         |\n+-------------------------------------------------------------------------+",
+    "deepDive": [
+      {
+        "subheading": "1. The Classical Anomalies: Dirty Reads vs Non-Repeatable Reads vs Phantoms",
+        "explanation": "A Dirty Read reads uncommitted data that is later rolled back. A Non-Repeatable Read occurs when a row's values change between two reads in the same transaction due to a concurrent commit. A Phantom Read occurs when new rows matching a search predicate appear between two reads. Read Committed prevents Dirty Reads; Repeatable Read prevents Non-Repeatable Reads.",
+        "codeExample": "-- Non-Repeatable Read under Read Committed:\nBEGIN;\nSELECT balance FROM accounts WHERE id = 1; -- Sees $100\n-- Concurrent session commits: UPDATE accounts SET balance = 500 WHERE id = 1;\nSELECT balance FROM accounts WHERE id = 1; -- Sees $500!\nCOMMIT;"
+      },
+      {
+        "subheading": "2. The Write Skew Anomaly & The Doctor-on-Call Problem",
+        "explanation": "Write Skew occurs when concurrent transactions read overlapping data, verify a global invariant, but update disjoint rows in a way that breaks the invariant. Because neither transaction modified the other's row, Repeatable Read permits both to commit, breaching the business rule. Only Serializable isolation prevents Write Skew.",
+        "codeExample": "-- Preventing Write Skew under SERIALIZABLE\nBEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;\nSELECT COUNT(*) FROM on_call_doctors; -- Invariant: at least 1 must remain\nUPDATE on_call_doctors SET active = false WHERE doctor_id = 'Alice';\nCOMMIT; -- Engine aborts with 40001 if Bob took off-call concurrently!"
+      },
+      {
+        "subheading": "3. Optimistic Concurrency Control (OCC) vs Pessimistic Locking",
+        "explanation": "Pessimistic locking uses `SELECT ... FOR UPDATE` to lock rows upfront. Optimistic locking uses a `version INT` column: updates match `WHERE id = ? AND version = ?`, checking rows affected. OCC is superior for web applications with human think time.",
+        "codeExample": "-- Optimistic Concurrency Control update\nUPDATE items \nSET stock = stock - 1, version = version + 1 \nWHERE item_id = 42 AND version = 5;"
+      }
+    ],
+    "edgeCasesAndPitfalls": [
+      "Never execute external HTTP API calls inside open database transactions; delays exhaust connection pools.",
+      "PostgreSQL treats `READ UNCOMMITTED` as `READ COMMITTED` because MVCC makes dirty reads impossible.",
+      "Deadlocks are prevented by always locking rows in deterministic sorted order (`ORDER BY id`)."
+    ],
+    "keyTakeaways": [
+      "Read Committed is the standard production default; Repeatable Read freezes transaction snapshots.",
+      "Write Skew passes Repeatable Read and requires Serializable isolation.",
+      "Use Optimistic Locking (version tokens) for stateless web APIs."
+    ]
+  },
+  {
+    "id": "sql-deep-08",
+    "title": "B-Tree Index Data Structures, Clustered Storage & SARGability",
+    "category": "Indexing & SARGability",
+    "readTimeMinutes": 20,
+    "overview": "Indexes are auxiliary physical data structures that accelerate search queries from $O(N)$ sequential table scans down to $O(\\log N)$ logarithmic seeks. This chapter covers B-Tree physical node layouts, Clustered vs Heap storage, composite index rules, and query SARGability.",
+    "diagram": "+-------------------------------------------------------------------------+\n|                  B-TREE INDEX & SARGABILITY ARCHITECTURE                |\n+-------------------------------------------------------------------------+\n|                                                                         |\n|  B-TREE TRAVERSAL:                                                      |\n|  [Root Node Page]                                                       |\n|     |                                                                   |\n|     v                                                                   |\n|  [Intermediate Branch Pages: Routing Keys]                              |\n|     |                                                                   |\n|     v                                                                   |\n|  [Leaf Pages: Doubly-Linked List of Sorted Keys + Pointers]             |\n|  [Key: 10 | ptr] <-> [Key: 20 | ptr] <-> [Key: 30 | ptr]                |\n|                                                                         |\n|  SARGABLE vs NON-SARGABLE:                                              |\n|  - SARGable:     WHERE date >= '2026-01-01'  (Direct Index Seek)        |\n|  - Non-SARGable: WHERE YEAR(date) = 2026     (Forces Full Table Scan!)  |\n|                                                                         |\n+-------------------------------------------------------------------------+",
+    "deepDive": [
+      {
+        "subheading": "1. B-Tree Multi-Way Search & Fan-Out",
+        "explanation": "B-Trees have high fan-out: each 8KB page holds hundreds of keys. As a result, searching among 100 million rows requires reading only 3 to 4 pages from disk into RAM. Leaf pages are doubly linked, enabling fast range scans (`BETWEEN`) by walking sibling pages horizontally.",
+        "codeExample": "-- B-Tree range query walking doubly-linked leaf pages\nSELECT * FROM orders WHERE order_date BETWEEN '2026-01-01' AND '2026-01-31';"
+      },
+      {
+        "subheading": "2. The Golden Rule of SARGability",
+        "explanation": "A predicate is SARGable if the indexed column is isolated on one side of the operator without functions or arithmetic. Wrapping a column in a function (`WHERE LOWER(name) = 'alex'`) prevents the engine from navigating the B-Tree, forcing a full table scan.",
+        "codeExample": "-- NON-SARGABLE:\n-- SELECT * FROM users WHERE created_at + INTERVAL '7 days' > NOW();\n\n-- SARGABLE REWRITE:\nSELECT * FROM users WHERE created_at > NOW() - INTERVAL '7 days';"
+      },
+      {
+        "subheading": "3. Composite Indexes: Leftmost Prefix & Column Ordering",
+        "explanation": "A composite index on `(A, B)` sorts by `A`, then `B`. Queries filtering on `A` or `(A, B)` use the index. Queries filtering strictly on `B` cannot seek the index. Rule: Place equality columns first, range columns second.",
+        "codeExample": "-- Optimal order: tenant_id (equality) FIRST, created_at (range) SECOND\nCREATE INDEX idx_tenant_time ON events (tenant_id, created_at);"
+      }
+    ],
+    "edgeCasesAndPitfalls": [
+      "Leading wildcards (`LIKE '%term'`) disable B-Tree index seeks.",
+      "Implicit type conversion (comparing VARCHAR column to integer literal) invalidates indexes.",
+      "If a query matches > 15-20% of rows, the optimizer intentionally chooses a Full Table Scan."
+    ],
+    "keyTakeaways": [
+      "B-Tree indexes provide logarithmic O(log N) search performance.",
+      "Keep indexed columns pure and isolated to ensure SARGability.",
+      "Order composite index columns: equality first, range second."
+    ]
+  },
+  {
+    "id": "sql-deep-09",
+    "title": "The Cost-Based Optimizer (CBO) & Query Execution Plans",
+    "category": "Indexing & SARGability",
+    "readTimeMinutes": 20,
+    "overview": "The Cost-Based Optimizer (CBO) is the cognitive engine of a relational database. It estimates the computational cost of alternative physical execution strategies using statistical histograms and selects the optimal path. This chapter explains cost formulas, cardinality estimation, and reading execution plans.",
+    "diagram": "+-------------------------------------------------------------------------+\n|                  COST-BASED OPTIMIZER ESTIMATION PIPELINE               |\n+-------------------------------------------------------------------------+\n|                                                                         |\n|  STATISTICAL CATALOGS (pg_stats / sys.statistics):                      |\n|  - Cardinality (n_distinct unique values)                               |\n|  - Null Fraction (null_frac)                                            |\n|  - Most Common Values (MCVs) & Frequencies                              |\n|  - Equi-Depth Histogram Bounds                                          |\n|     |                                                                   |\n|     v                                                                   |\n|  ESTIMATED CARDINALITY: Rows = Total_Rows * Selectivity                 |\n|     |                                                                   |\n|     v                                                                   |\n|  COST FORMULA: Cost = (Page Reads * page_cost) + (Tuples * cpu_cost)     |\n|     |                                                                   |\n|     v                                                                   |\n|  CHOSEN PLAN: Lowest estimated total cost operator tree                 |\n|                                                                         |\n+-------------------------------------------------------------------------+",
+    "deepDive": [
+      {
+        "subheading": "1. Statistics: MCVs and Equi-Depth Histograms",
+        "explanation": "During `ANALYZE`, the database samples pages and builds statistics. For high-frequency values, it stores Most Common Values (MCVs) and exact frequencies. For the remaining data, it divides values into equal-depth histogram buckets. The optimizer uses histograms to estimate row counts for range predicates (`WHERE price BETWEEN 50 AND 100`).",
+        "codeExample": "-- Inspecting statistics in catalogs\nSELECT attname, n_distinct, most_common_vals, histogram_bounds \nFROM pg_stats WHERE tablename = 'orders';"
+      },
+      {
+        "subheading": "2. The Cost Formula and Access Path Decisions",
+        "explanation": "Costs are computed in abstract units based on page I/O and CPU tuple evaluations. If estimated cardinality is small, the optimizer chooses an Index Seek + Nested Loop. If estimated cardinality is large, it chooses a Sequential Scan + Hash Join.",
+        "codeExample": "-- Reading EXPLAIN plan output:\n-- Seq Scan on orders (cost=0.00..185.00 rows=15 width=40)\n-- cost=startup_cost .. total_cost"
+      },
+      {
+        "subheading": "3. Identifying Plan Regressions",
+        "explanation": "A major indicator of a bad query plan is a huge discrepancy between estimated rows and actual rows (e.g. `rows=1 (actual rows=500000)`). This proves statistics are stale or columns are correlated, leading the optimizer to pick bad join strategies.",
+        "codeExample": "-- Refreshing statistics to fix bad plans\nANALYZE orders;"
+      }
+    ],
+    "edgeCasesAndPitfalls": [
+      "Stale statistics after mass data ingestion cause the optimizer to select catastrophic Cartesian plans.",
+      "Correlated columns (make + model) trick the optimizer into underestimating row counts; solve with multivariate statistics.",
+      "Hardware cost constants calibrated for HDDs (random_page_cost = 4.0) cause unnecessary table scans on NVMe SSDs."
+    ],
+    "keyTakeaways": [
+      "The CBO selects execution plans using statistical histograms and cost formulas.",
+      "Discrepancies between estimated and actual rows indicate stale statistics.",
+      "Regularly run ANALYZE after large data mutations to maintain accurate plans."
+    ]
+  },
+  {
+    "id": "sql-deep-10",
+    "title": "Relational Schema Design & Referential Integrity Constraints",
+    "category": "Database Design & Normalization",
+    "readTimeMinutes": 20,
+    "overview": "Relational integrity is enforced through mathematical declarative constraints. This chapter covers Primary Keys, Foreign Keys, referential cascade actions, Check constraints, domain types, and modeling complex multi-entity relationships.",
+    "diagram": "+-------------------------------------------------------------------------+\n|                  DATABASE CONSTRAINTS INTEGRITY ARCHITECTURE            |\n+-------------------------------------------------------------------------+\n|                                                                         |\n|  PRIMARY KEY: Enforces uniqueness + NOT NULL                            |\n|     ^                                                                   |\n|     | references                                                        |\n|  FOREIGN KEY: Enforces referential integrity                            |\n|  - ON DELETE CASCADE: Delete child rows automatically                   |\n|  - ON DELETE SET NULL: Orphan child rows safely                         |\n|  - ON DELETE RESTRICT: Abort parent deletion if children exist          |\n|                                                                         |\n|  CHECK CONSTRAINT: Asserts boolean predicate on row mutation            |\n|  UNIQUE CONSTRAINT: Enforces distinct non-null values                   |\n|  NOT NULL: Rejects missing/unknown attributes                           |\n|                                                                         |\n+-------------------------------------------------------------------------+",
+    "deepDive": [
+      {
+        "subheading": "1. Foreign Key Actions: CASCADE vs SET NULL vs RESTRICT",
+        "explanation": "`ON DELETE CASCADE` propagates deletions to child records (ideal for parent-child items). `ON DELETE SET NULL` sets the foreign key to NULL (ideal for optional references). `ON DELETE RESTRICT` (or `NO ACTION`) blocks parent deletions if children exist.",
+        "codeExample": "-- Cascade vs Restrict\nCREATE TABLE orders (order_id INT PRIMARY KEY);\nCREATE TABLE order_items (\n    order_id INT REFERENCES orders(order_id) ON DELETE CASCADE,\n    item_id INT,\n    PRIMARY KEY (order_id, item_id)\n);"
+      },
+      {
+        "subheading": "2. The Danger of Un-Indexed Foreign Keys",
+        "explanation": "Foreign key constraints do NOT automatically create indexes on the child referencing column. If child foreign keys are un-indexed, deleting a parent row forces the database to perform a Full Table Scan on the child table to check for referencing rows, causing severe lock contention.",
+        "codeExample": "-- ALWAYS index foreign key columns in child tables!\nCREATE INDEX idx_order_items_order_id ON order_items (order_id);"
+      },
+      {
+        "subheading": "3. CHECK Constraints & Multi-Column Domain Invariants",
+        "explanation": "`CHECK` constraints assert business invariants at the engine layer (e.g. `CHECK (end_date >= start_date)`). CHECK constraints must be deterministic and cannot query other tables or call non-deterministic functions.",
+        "codeExample": "-- Multi-column CHECK constraint\nCREATE TABLE contracts (\n    id INT PRIMARY KEY,\n    start_date DATE NOT NULL,\n    end_date DATE NOT NULL,\n    CONSTRAINT chk_dates CHECK (end_date >= start_date)\n);"
+      }
+    ],
+    "edgeCasesAndPitfalls": [
+      "Un-indexed foreign keys cause table write lockouts during parent record deletions.",
+      "Cascading deletions on high-traffic parent tables can accidentally delete millions of child rows, filling WAL logs.",
+      "CHECK constraints pass if the condition evaluates to UNKNOWN (NULL); always pair with NOT NULL."
+    ],
+    "keyTakeaways": [
+      "Foreign keys enforce referential integrity; always index foreign key columns.",
+      "Use ON DELETE CASCADE with caution on large datasets to prevent runaway deletions.",
+      "CHECK constraints enforce deterministic business invariants at the database layer."
+    ]
+  },
+  {
+    "id": "sql-deep-11",
+    "title": "Keyset Pagination vs Offset-Based Pagination at Scale",
+    "category": "Views, Security & Data Patterns",
+    "readTimeMinutes": 20,
+    "overview": "Paginating large datasets is a fundamental requirement of web APIs. While `OFFSET / LIMIT` is simple, it collapses at scale because the database must scan and discard all preceding rows. This chapter analyzes the $O(N)$ OFFSET bottleneck and explains how Keyset (Cursor-Based) Pagination achieves $O(1)$ constant-time performance.",
+    "diagram": "+-------------------------------------------------------------------------+\n|                  OFFSET PAGINATION vs KEYSET PAGINATION                 |\n+-------------------------------------------------------------------------+\n|                                                                         |\n|  OFFSET PAGINATION (O(N) Complexity - Severe Bottleneck):               |\n|  SELECT * FROM orders ORDER BY id LIMIT 10 OFFSET 1000000;              |\n|  - Engine reads 1,000,000 rows from disk -> THROWS THEM AWAY ->         |\n|    returns the last 10 rows! (Takes 15,000ms)                           |\n|                                                                         |\n|  KEYSET PAGINATION (O(1) Constant Time - Instant B-Tree Seek):          |\n|  SELECT * FROM orders WHERE id < last_seen_id ORDER BY id DESC LIMIT 10;|\n|  - Engine seeks B-Tree directly to last_seen_id in 3 page reads ->      |\n|    reads 10 rows! (Takes 1ms, even on page 1,000,000!)                  |\n|                                                                         |\n+-------------------------------------------------------------------------+",
+    "deepDive": [
+      {
+        "subheading": "1. The O(N) OFFSET Scanning Bottleneck",
+        "explanation": "Database tables are unordered sets. To satisfy `OFFSET 500000 LIMIT 20`, the engine has no magic shortcut: it must scan, sort, and count past 500,000 rows before emitting row 500,001. On multi-gigabyte tables, deep pagination degrades from 2ms to 20 seconds, causing timeouts.",
+        "codeExample": "-- SLOW: Reads and discards 500,000 rows!\nSELECT * FROM audit_logs \nORDER BY id DESC \nLIMIT 20 OFFSET 500000;"
+      },
+      {
+        "subheading": "2. Keyset (Cursor) Pagination Architecture",
+        "explanation": "Keyset pagination uses the last seen row's unique sorting values as a cursor anchor. The client passes `last_seen_id` in the next API request. The database executes `WHERE id < last_seen_id ORDER BY id DESC LIMIT 20`. Backed by an index, this is an instant B-Tree seek.",
+        "codeExample": "-- FAST: Direct B-Tree seek in O(1) time\nSELECT * FROM audit_logs \nWHERE id < 452100 \nORDER BY id DESC \nLIMIT 20;"
+      },
+      {
+        "subheading": "3. Multi-Column Keyset Pagination with Composite Tuples",
+        "explanation": "When sorting by non-unique columns (e.g. `created_at DESC`), ties must be broken using the primary key `id`. ANSI row constructors make this clean: `WHERE (created_at, id) < (last_date, last_id) ORDER BY created_at DESC, id DESC LIMIT 20`.",
+        "codeExample": "-- Composite keyset pagination backed by index (created_at DESC, id DESC)\nSELECT id, title, created_at\nFROM articles\nWHERE (created_at, id) < ('2026-06-01 10:00:00', 9840)\nORDER BY created_at DESC, id DESC\nLIMIT 20;"
+      }
+    ],
+    "edgeCasesAndPitfalls": [
+      "OFFSET pagination suffers from row drift: inserting rows while a user browses causes records to shift and repeat across pages.",
+      "Keyset pagination requires deterministic ordering; always append a unique primary key tie-breaker.",
+      "Keyset pagination does not allow jumping directly to 'Page 45'; it is designed for Infinite Scroll and 'Next' button navigation."
+    ],
+    "keyTakeaways": [
+      "OFFSET pagination is O(N) and degrades severely on deep pages.",
+      "Keyset pagination is O(1) and delivers 1ms responses on page 1,000,000.",
+      "Always use composite (sort_col, id) keyset pagination for high-scale APIs."
+    ]
+  },
+  {
+    "id": "sql-deep-12",
+    "title": "SQL Security, SQL Injection Prevention & View Layers",
+    "category": "Views, Security & Data Patterns",
+    "readTimeMinutes": 20,
+    "overview": "Database security requires defense-in-depth across the SQL layer. This chapter covers the mechanics of SQL Injection, why prepared statements provide AST-level immunity, role-based access control, updatable views with WITH CHECK OPTION, and secure auditing patterns.",
+    "diagram": "+-------------------------------------------------------------------------+\n|                  SQL INJECTION vs PREPARED STATEMENT DEFENSE            |\n+-------------------------------------------------------------------------+\n|                                                                         |\n|  VULNERABLE DYNAMIC STRING CONCATENATION:                               |\n|  \"SELECT * FROM users WHERE email = '\" + input + \"'\"                    |\n|  - Input: ' OR '1'='1                                                   |\n|  - AST is ALTERED: User input becomes executable code!                  |\n|                                                                         |\n|  PREPARED STATEMENT IMMUNITY:                                           |\n|  1. Compile AST: SELECT * FROM users WHERE email = $1                   |\n|  2. Pass Parameter: \"admin' OR '1'='1\"                                  |\n|  - AST is IMMUTABLE: Database treats input strictly as a literal string!|\n|                                                                         |\n+-------------------------------------------------------------------------+",
+    "deepDive": [
+      {
+        "subheading": "1. The Grammar Mechanics of SQL Injection",
+        "explanation": "SQL Injection occurs when user input alters the syntactic grammar of a SQL query. If input contains quotes and boolean operators (`' OR 1=1 --`), string concatenation modifies the Abstract Syntax Tree (AST), changing the query's logical meaning. Prepared statements pre-compile the AST with parameter placeholders, making AST alteration mathematically impossible.",
+        "codeExample": "-- Parameterized query in Node.js (Immune to injection)\nconst query = 'SELECT id, email FROM users WHERE email = $1';\nconst result = await db.query(query, [userInput]);"
+      },
+      {
+        "subheading": "2. Views with WITH CHECK OPTION as Security Firewalls",
+        "explanation": "Views can restrict tenant access: `CREATE VIEW vw_tenant AS SELECT * FROM data WHERE tenant_id = 42`. Adding `WITH CHECK OPTION` guarantees that any `INSERT` or `UPDATE` through the view cannot modify `tenant_id` to another customer's ID, preventing data tampering.",
+        "codeExample": "-- Secure updatable view\nCREATE VIEW vw_tenant_orders AS\nSELECT * FROM orders WHERE tenant_id = 42\nWITH CHECK OPTION;"
+      },
+      {
+        "subheading": "3. Role-Based Access Control (RBAC) & Column Permissions",
+        "explanation": "Enforce least privilege using DCL. Create distinct roles for applications, reporting, and migrations. Grant column-level permissions to restrict sensitive attributes like SSNs or salary columns.",
+        "codeExample": "-- Column-level security\nGRANT SELECT (id, name, email) ON users TO customer_support_role;\nREVOKE ALL ON user_salaries FROM customer_support_role;"
+      }
+    ],
+    "edgeCasesAndPitfalls": [
+      "Manual string escaping (e.g. replacing `'` with `''`) is vulnerable to multi-byte encoding attacks; always use parameterized queries.",
+      "Dynamic table or column names cannot be parameterized; validate dynamic identifiers against strict whitelists.",
+      "Never grant superuser privileges to web application database connections."
+    ],
+    "keyTakeaways": [
+      "SQL injection occurs when user input modifies the query Abstract Syntax Tree.",
+      "Prepared statements pre-compile the AST, treating inputs strictly as literal values.",
+      "Use WITH CHECK OPTION on updatable views to enforce multi-tenant isolation."
+    ]
+  }
+]

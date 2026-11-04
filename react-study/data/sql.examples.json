@@ -1,0 +1,1095 @@
+[
+  {
+    "id": "sql-ex-01",
+    "title": "Multi-Table Inner Join with Aliasing & Foreign Key Traversal",
+    "category": "Standard Joins & Set Operations",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Traverses a normalized 3-tier relational schema (customers -> orders -> order_items -> products) to aggregate customer purchases without data duplication.",
+    "conceptsCovered": [
+      "Explicit INNER JOIN",
+      "Table Aliasing",
+      "Referential Integrity Traversal",
+      "Compound Filtering"
+    ],
+    "code": "-- Querying customer order lines across normalized relational boundaries\nSELECT \n    c.customer_id,\n    c.full_name,\n    o.order_id,\n    o.order_date,\n    p.product_name,\n    oi.quantity,\n    oi.unit_price,\n    (oi.quantity * oi.unit_price) AS line_total\nFROM customers c\nINNER JOIN orders o \n    ON c.customer_id = o.customer_id\nINNER JOIN order_items oi \n    ON o.order_id = oi.order_id\nINNER JOIN products p \n    ON oi.product_id = p.product_id\nWHERE o.order_status = 'COMPLETED'\n  AND o.order_date >= '2026-01-01'\nORDER BY o.order_date DESC, oi.item_id ASC;",
+    "breakdown": [
+      "Uses ANSI explicit INNER JOIN syntax with clear ON predicates instead of legacy comma-joins in WHERE.",
+      "Traverses foreign keys from customers down to line items and dimension products in logical order.",
+      "Performs inline arithmetic (quantity * unit_price) on projection without modifying base relations.",
+      "Applies deterministic multi-column sorting (order_date DESC, item_id ASC)."
+    ],
+    "expectedOutput": "customer_id | full_name   | order_id | order_date | product_name   | quantity | unit_price | line_total\n101         | Alice Smith | 5001     | 2026-02-15 | PostgreSQL Pro | 2        | 49.99      | 99.98\n102         | Bob Jones   | 5002     | 2026-02-14 | ANSI SQL Guide | 1        | 39.50      | 39.50"
+  },
+  {
+    "id": "sql-ex-02",
+    "title": "Left Outer Join with IS NULL Filter for Unmatched Records (Anti-Join Pattern)",
+    "category": "Standard Joins & Set Operations",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Detects dormant or orphan records by preserving all left-table rows and filtering for NULLs generated on the unmatched right side.",
+    "conceptsCovered": [
+      "LEFT OUTER JOIN",
+      "IS NULL Filtering",
+      "Orphan Record Detection",
+      "Relational Difference"
+    ],
+    "code": "-- Find all registered customers who have never placed a single order\nSELECT \n    c.customer_id,\n    c.email,\n    c.registered_at\nFROM customers c\nLEFT OUTER JOIN orders o \n    ON c.customer_id = o.customer_id\nWHERE o.order_id IS NULL;",
+    "breakdown": [
+      "LEFT OUTER JOIN preserves every row from customers, populating order columns with NULL if no match exists.",
+      "The WHERE o.order_id IS NULL clause filters out any customer who had matching orders.",
+      "Testing the right table's primary key (order_id) guarantees NULL means 'no record found', not an optional attribute with NULL.",
+      "A classic relational difference pattern implemented via join mechanics."
+    ],
+    "expectedOutput": "customer_id | email               | registered_at\n204         | inactive@acme.com   | 2025-11-10 09:12:00\n319         | newuser@domain.org  | 2026-01-04 14:30:22"
+  },
+  {
+    "id": "sql-ex-03",
+    "title": "High-Performance Anti-Join using NOT EXISTS vs NOT IN with Nullable Columns",
+    "category": "Subqueries & Relational Existence",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Demonstrates safe relational exclusion using NOT EXISTS to avoid the three-valued logic (3VL) trap where NOT IN with a single NULL yields zero rows.",
+    "conceptsCovered": [
+      "NOT EXISTS Subquery",
+      "Three-Valued Logic Defense",
+      "Anti-Join Optimization",
+      "Correlated Execution"
+    ],
+    "code": "-- Safe and high-performance search for departments without active staff\n-- (NOT IN (SELECT ...) would return 0 rows if any employee had department_id IS NULL)\nSELECT \n    d.department_id,\n    d.department_name\nFROM departments d\nWHERE NOT EXISTS (\n    SELECT 1 \n    FROM employees e \n    WHERE e.department_id = d.department_id\n);",
+    "breakdown": [
+      "NOT EXISTS evaluates whether the correlated inner query returns at least one row, terminating immediately upon first match (short-circuit).",
+      "Immune to NULLs: Even if employees contains NULL department_id rows, NOT EXISTS evaluates accurately based on boolean existence.",
+      "SELECT 1 inside the subquery emphasizes that no actual columns need to be projected from the inner table.",
+      "The optimizer transforms this correlated subquery into an optimized hash anti-join or merge anti-join."
+    ],
+    "expectedOutput": "department_id | department_name\n14            | Research & Exploration\n22            | Strategic Acquisitions"
+  },
+  {
+    "id": "sql-ex-04",
+    "title": "Semi-Join Pattern with EXISTS for Conditional Parent Selection",
+    "category": "Subqueries & Relational Existence",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Uses a semi-join via EXISTS to filter parent entities based on child attributes without duplicating parent rows or requiring costly DISTINCT operations.",
+    "conceptsCovered": [
+      "Semi-Join Semantics",
+      "EXISTS Operator",
+      "Deduplication Prevention",
+      "Cardinality Preservation"
+    ],
+    "code": "-- Find all customers who have placed at least one high-value order (> $1000)\n-- Retaining exact 1-to-1 customer cardinality without using DISTINCT\nSELECT \n    c.customer_id,\n    c.full_name,\n    c.tier\nFROM customers c\nWHERE EXISTS (\n    SELECT 1 \n    FROM orders o\n    WHERE o.customer_id = c.customer_id\n      AND o.total_amount > 1000.00\n);",
+    "breakdown": [
+      "If solved with INNER JOIN, customers with 5 high-value orders would appear 5 times, requiring a wasteful DISTINCT.",
+      "EXISTS implements relational semi-join semantics: it preserves the exact row set of the left table without row expansion.",
+      "Stops scanning child records as soon as one order with total_amount > 1000 is encountered for that customer.",
+      "Preserves index seeks on (customer_id, total_amount)."
+    ],
+    "expectedOutput": "customer_id | full_name     | tier\n101         | Global Tech   | ENTERPRISE\n108         | Apex Logistics| VIP"
+  },
+  {
+    "id": "sql-ex-05",
+    "title": "Full Outer Join with COALESCE for Symmetrical Discrepancy Auditing",
+    "category": "Standard Joins & Set Operations",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Performs full reconciliation between an internal ledger and an external bank statement, identifying matching records, missing bank deposits, and missing internal entries.",
+    "conceptsCovered": [
+      "FULL OUTER JOIN",
+      "COALESCE Value Resolution",
+      "CASE Reconciliation Tagging",
+      "Audit Discrepancy Analysis"
+    ],
+    "code": "-- Symmetrical financial ledger reconciliation\nSELECT \n    COALESCE(l.transaction_ref, b.transaction_ref) AS transaction_ref,\n    l.amount AS ledger_amount,\n    b.amount AS bank_amount,\n    CASE \n        WHEN l.transaction_ref IS NOT NULL AND b.transaction_ref IS NOT NULL THEN 'MATCHED'\n        WHEN l.transaction_ref IS NOT NULL AND b.transaction_ref IS NULL THEN 'MISSING_IN_BANK'\n        ELSE 'MISSING_IN_LEDGER'\n    END AS reconciliation_status\nFROM internal_ledger l\nFULL OUTER JOIN bank_statement b \n    ON l.transaction_ref = b.transaction_ref\nWHERE l.transaction_ref IS NULL \n   OR b.transaction_ref IS NULL \n   OR l.amount <> b.amount;",
+    "breakdown": [
+      "FULL OUTER JOIN retains all rows from both tables, pairing matches and padding missing entries with NULL.",
+      "COALESCE ensures that whichever side supplied the transaction_ref is projected cleanly.",
+      "A CASE expression classifies each record into matched, missing-in-bank, or missing-in-ledger states.",
+      "Filtering for mismatches or amount discrepancies extracts the exact audit discrepancy report."
+    ],
+    "expectedOutput": "transaction_ref | ledger_amount | bank_amount | reconciliation_status\nTXN-901         | 450.00        | NULL        | MISSING_IN_BANK\nTXN-902         | NULL          | 1200.00     | MISSING_IN_LEDGER\nTXN-903         | 100.00        | 95.00       | MATCHED"
+  },
+  {
+    "id": "sql-ex-06",
+    "title": "Self-Join for Hierarchical Parent-Child Lookups Without CTEs",
+    "category": "Standard Joins & Set Operations",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Joins an employee table to itself on manager_id = employee_id to retrieve employees alongside their immediate supervisor's details.",
+    "conceptsCovered": [
+      "Self-Join",
+      "Role-Based Table Aliases",
+      "Hierarchical Adjacency",
+      "Root Node Handling"
+    ],
+    "code": "-- Retrieve employee name along with their direct manager's name\nSELECT \n    e.employee_id,\n    e.first_name || ' ' || e.last_name AS employee_name,\n    e.job_title,\n    COALESCE(m.first_name || ' ' || m.last_name, '[Top Executive / Board]') AS manager_name\nFROM employees e\nLEFT OUTER JOIN employees m \n    ON e.manager_id = m.employee_id\nORDER BY e.manager_id NULLS FIRST, e.employee_id;",
+    "breakdown": [
+      "Aliasing the employees table as 'e' (worker) and 'm' (manager) allows querying hierarchical adjacency in standard SQL.",
+      "LEFT OUTER JOIN is required because the CEO or top executives have manager_id IS NULL.",
+      "COALESCE provides a descriptive fallback label for root nodes.",
+      "Standard SQL string concatenation (||) formats full names."
+    ],
+    "expectedOutput": "employee_id | employee_name  | job_title      | manager_name\n1           | Sarah Connor   | Chief Exec     | [Top Executive / Board]\n2           | John Reese     | VP Engineering | Sarah Connor\n3           | Harold Finch   | Lead Architect | John Reese"
+  },
+  {
+    "id": "sql-ex-07",
+    "title": "Non-Equi Join for Historical Date-Range & Currency Exchange Rate Matching",
+    "category": "Standard Joins & Set Operations",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Joins sales transactions to an effective-dated currency rate dimension using inequality operators (BETWEEN) to accurately convert amounts to USD.",
+    "conceptsCovered": [
+      "Non-Equi JOIN",
+      "BETWEEN Range Predicate",
+      "Effective Dating / Temporal Matching",
+      "Currency Normalization"
+    ],
+    "code": "-- Join international orders with historical daily currency conversion rates\nSELECT \n    o.order_id,\n    o.order_date,\n    o.currency_code,\n    o.local_amount,\n    r.exchange_rate_to_usd,\n    ROUND(o.local_amount * r.exchange_rate_to_usd, 2) AS amount_usd\nFROM orders o\nINNER JOIN currency_rates r \n    ON o.currency_code = r.currency_code\n   AND o.order_date BETWEEN r.effective_from AND r.effective_to\nWHERE o.currency_code <> 'USD';",
+    "breakdown": [
+      "Unlike equi-joins that compare with '=' non-equi joins use range boundaries like BETWEEN.",
+      "Matches the exact currency rate record whose effective date span covers the transaction's order_date.",
+      "Enforces temporal consistency without mutating historic order records when exchange rates change.",
+      "Rounds resulting financial values to 2 decimal places per standard accounting guidelines."
+    ],
+    "expectedOutput": "order_id | order_date | currency_code | local_amount | exchange_rate_to_usd | amount_usd\n8801     | 2026-03-01 | EUR           | 100.00       | 1.0850               | 108.50\n8802     | 2026-03-02 | JPY           | 15000.00     | 0.0067               | 100.50"
+  },
+  {
+    "id": "sql-ex-08",
+    "title": "Cross Join for Dimension Matrix Cartesian Expansion (Grid Generation)",
+    "category": "Standard Joins & Set Operations",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs a full reporting grid (all branches cross all calendar quarters) combined with a LEFT JOIN to ensure quarters with zero sales are reported as 0 rather than omitted.",
+    "conceptsCovered": [
+      "CROSS JOIN",
+      "Cartesian Product Utility",
+      "Sparse Data Densification",
+      "COALESCE Zero Padding"
+    ],
+    "code": "-- Dense quarterly sales grid across all retail branches\nWITH branch_quarters AS (\n    SELECT \n        b.branch_id,\n        b.branch_name,\n        q.quarter_name,\n        q.start_date,\n        q.end_date\n    FROM branches b\n    CROSS JOIN fiscal_quarters q\n)\nSELECT \n    bq.branch_name,\n    bq.quarter_name,\n    COALESCE(SUM(s.sale_amount), 0.00) AS total_revenue\nFROM branch_quarters bq\nLEFT OUTER JOIN sales s \n    ON bq.branch_id = s.branch_id\n   AND s.sale_date BETWEEN bq.start_date AND bq.end_date\nGROUP BY bq.branch_name, bq.quarter_name\nORDER BY bq.branch_name, bq.quarter_name;",
+    "breakdown": [
+      "CROSS JOIN generates the Cartesian product of M branches and N quarters (M * N dimension cells).",
+      "LEFT OUTER JOIN attaches actual sales figures to the Cartesian grid.",
+      "COALESCE(SUM(...), 0.00) ensures branches with no sales in a given quarter yield a clear 0.00 instead of vanishing from reports.",
+      "Standard pattern for financial and BI reporting dashboards requiring zero-filled timelines."
+    ],
+    "expectedOutput": "branch_name | quarter_name | total_revenue\nDowntown    | 2026-Q1      | 245000.00\nDowntown    | 2026-Q2      | 0.00\nUptown      | 2026-Q1      | 185000.00"
+  },
+  {
+    "id": "sql-ex-09",
+    "title": "Set Operations: UNION ALL vs UNION Deduplication Performance Benchmark",
+    "category": "Standard Joins & Set Operations",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Demonstrates when to use UNION ALL (fast concatenation without sort-unique overhead) versus UNION (strict mathematical set deduplication).",
+    "conceptsCovered": [
+      "UNION vs UNION ALL",
+      "Deduplication Sorting Overhead",
+      "Schema Alignment in Set Ops",
+      "Data Pipeline Merging"
+    ],
+    "code": "-- 1. UNION ALL: Concatenate archive and active tables without expensive deduplication\nSELECT order_id, customer_id, order_date, total_amount, 'ACTIVE' AS source\nFROM current_orders\nWHERE order_date >= '2026-01-01'\n\nUNION ALL\n\nSELECT order_id, customer_id, order_date, total_amount, 'ARCHIVE' AS source\nFROM historical_orders\nWHERE order_date >= '2025-01-01'\nORDER BY order_date DESC;\n\n-- 2. UNION: Required when combining two distinct contact lists to eliminate duplicates\nSELECT email FROM customer_contacts\nUNION\nSELECT email FROM newsletter_subscribers;",
+    "breakdown": [
+      "UNION ALL simply appends result sets, running in O(N + M) time with zero sorting or hash tables required.",
+      "UNION enforces distinctness across all projected columns, requiring an O(N log N) sort or hash-unique operation.",
+      "Defaulting to UNION ALL unless duplicates are strictly impossible to tolerate is a key SQL performance rule.",
+      "Column counts and data types must match positionally in both branches."
+    ],
+    "expectedOutput": "order_id | customer_id | order_date | total_amount | source\n9001     | 104         | 2026-03-01 | 150.00       | ACTIVE\n4002     | 104         | 2025-12-20 | 220.00       | ARCHIVE"
+  },
+  {
+    "id": "sql-ex-10",
+    "title": "Set Operations: INTERSECT for Strict Audience Overlap Verification",
+    "category": "Standard Joins & Set Operations",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Finds the exact intersection of customer IDs who have made purchases in both 2025 and 2026 using the ANSI INTERSECT operator.",
+    "conceptsCovered": [
+      "INTERSECT Operator",
+      "Relational Conjunction",
+      "Cohort Retention Analysis",
+      "Set-Theoretic Filtering"
+    ],
+    "code": "-- Identify loyal customers who transacted in both fiscal year 2025 AND fiscal year 2026\nSELECT customer_id \nFROM orders \nWHERE order_date >= '2025-01-01' AND order_date < '2026-01-01'\n\nINTERSECT\n\nSELECT customer_id \nFROM orders \nWHERE order_date >= '2026-01-01' AND order_date < '2027-01-01';",
+    "breakdown": [
+      "INTERSECT returns only values that appear in both the left query result and the right query result.",
+      "Automatically eliminates duplicates from the intersection set.",
+      "Provides a clean set-theoretic alternative to self-joins or correlated subqueries for cohort retention.",
+      "Both queries must project the identical number of compatible data types."
+    ],
+    "expectedOutput": "customer_id\n101\n105\n209"
+  },
+  {
+    "id": "sql-ex-11",
+    "title": "Set Operations: EXCEPT / MINUS for Change Data Capture (CDC) Set Comparison",
+    "category": "Standard Joins & Set Operations",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Identifies rows that exist in the staging dataset but are completely absent from the production warehouse using the EXCEPT (MINUS) relational operator.",
+    "conceptsCovered": [
+      "EXCEPT / MINUS Operator",
+      "Relational Difference",
+      "Change Data Capture Validation",
+      "Data Synchronization Auditing"
+    ],
+    "code": "-- Find newly added or altered product catalog SKUs in staging not yet in production\nSELECT sku, product_name, category_id, base_price \nFROM staging_product_catalog\n\nEXCEPT\n\nSELECT sku, product_name, category_id, base_price \nFROM production_product_catalog;",
+    "breakdown": [
+      "EXCEPT (called MINUS in Oracle) returns all distinct rows from the first query that do not exist in the second query.",
+      "Compares every projected column across both relations simultaneously.",
+      "Ideal for quick sanity checks during batch ETL migrations to detect unsynced delta records.",
+      "Unlike ANTI-JOIN, compares all columns as an entirety rather than relying on key equality."
+    ],
+    "expectedOutput": "sku         | product_name           | category_id | base_price\nSKU-9901-X  | Ultra Ergonomic Mouse  | 3           | 79.99\nSKU-9942-Z  | Mechanical Keycaps V2  | 3           | 24.50"
+  },
+  {
+    "id": "sql-ex-12",
+    "title": "Multi-Metric Aggregation with COUNT, SUM, AVG, MIN, MAX",
+    "category": "Aggregations, Grouping & 3VL Logic",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Executes standard aggregate functions across partitioned product categories to generate executive inventory summaries.",
+    "conceptsCovered": [
+      "GROUP BY Clause",
+      "Standard Aggregates (COUNT, SUM, AVG, MIN, MAX)",
+      "ROUND Function",
+      "Aliasing Aggregate Expressions"
+    ],
+    "code": "-- Departmental inventory valuation metrics\nSELECT \n    category_id,\n    COUNT(*) AS total_items,\n    SUM(units_in_stock) AS total_inventory_units,\n    ROUND(AVG(unit_price), 2) AS average_price,\n    MIN(unit_price) AS lowest_price,\n    MAX(unit_price) AS highest_price,\n    SUM(units_in_stock * unit_price) AS total_inventory_value\nFROM products\nWHERE is_active = TRUE\nGROUP BY category_id\nORDER BY total_inventory_value DESC;",
+    "breakdown": [
+      "GROUP BY collapses multiple rows sharing identical category_id into single summary tuples.",
+      "COUNT(*) tallies all qualifying rows including rows with NULL attributes.",
+      "SUM, AVG, MIN, MAX ignore NULL values in calculation columns.",
+      "Computes composite metrics like units_in_stock * unit_price inside SUM before aggregation."
+    ],
+    "expectedOutput": "category_id | total_items | total_inventory_units | average_price | lowest_price | highest_price | total_inventory_value\n1           | 45          | 1250                  | 89.50         | 12.00        | 450.00        | 111875.00\n2           | 28          | 840                   | 42.10         | 5.50         | 180.00        | 35364.00"
+  },
+  {
+    "id": "sql-ex-13",
+    "title": "COUNT(*) vs COUNT(column) and Handling NULL Column Values",
+    "category": "Aggregations, Grouping & 3VL Logic",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Clarifies the critical distinction between counting table rows versus counting populated non-NULL attribute instances.",
+    "conceptsCovered": [
+      "COUNT(*) vs COUNT(expression)",
+      "NULL Elimination in Aggregates",
+      "Completion Percentage Calculation",
+      "COALESCE in Aggregation"
+    ],
+    "code": "-- Measure profile completion and optional field drop-off rates\nSELECT \n    COUNT(*) AS total_users,\n    COUNT(phone_number) AS users_with_phone,\n    COUNT(avatar_url) AS users_with_avatar,\n    ROUND(100.0 * COUNT(phone_number) / COUNT(*), 2) AS phone_completion_pct,\n    COUNT(*) - COUNT(phone_number) AS users_missing_phone\nFROM user_profiles;",
+    "breakdown": [
+      "COUNT(*) counts every row emitted by the query regardless of whether columns are NULL.",
+      "COUNT(phone_number) specifically evaluates the phone_number column and discards rows where it is NULL.",
+      "Multiplying by 100.0 casts integer math to numeric/float avoiding integer truncation in standard SQL division.",
+      "The difference COUNT(*) - COUNT(col) directly computes missing values without WHERE col IS NULL subqueries."
+    ],
+    "expectedOutput": "total_users | users_with_phone | users_with_avatar | phone_completion_pct | users_missing_phone\n10000       | 7450             | 4320              | 74.50                | 2550"
+  },
+  {
+    "id": "sql-ex-14",
+    "title": "Conditional Aggregation with CASE for Dynamic Column Pivot",
+    "category": "Aggregations, Grouping & 3VL Logic",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Pivots categorical row data into discrete columnar summaries using SUM(CASE ...) or COUNT(CASE ...) in standard ANSI SQL.",
+    "conceptsCovered": [
+      "Conditional Aggregation",
+      "CASE WHEN Expression",
+      "ANSI Column Pivoting",
+      "Matrix Reshaping"
+    ],
+    "code": "-- Pivot order statuses into distinct status columns per fiscal year\nSELECT \n    EXTRACT(YEAR FROM order_date) AS fiscal_year,\n    COUNT(*) AS total_orders,\n    SUM(CASE WHEN order_status = 'COMPLETED' THEN 1 ELSE 0 END) AS completed_orders,\n    SUM(CASE WHEN order_status = 'CANCELLED' THEN 1 ELSE 0 END) AS cancelled_orders,\n    SUM(CASE WHEN order_status = 'REFUNDED' THEN 1 ELSE 0 END) AS refunded_orders,\n    ROUND(\n        100.0 * SUM(CASE WHEN order_status = 'COMPLETED' THEN 1 ELSE 0 END) / COUNT(*), \n        2\n    ) AS completion_rate_pct\nFROM orders\nGROUP BY EXTRACT(YEAR FROM order_date)\nORDER BY fiscal_year DESC;",
+    "breakdown": [
+      "CASE WHEN inside an aggregate function acts as an inline filter per row before aggregation.",
+      "SUM(CASE WHEN condition THEN 1 ELSE 0 END) accurately tallies matching occurrences in a single table pass.",
+      "Avoids multiple separate queries or expensive self-joins to achieve column pivoting.",
+      "100% compliant across all standard ANSI SQL databases."
+    ],
+    "expectedOutput": "fiscal_year | total_orders | completed_orders | cancelled_orders | refunded_orders | completion_rate_pct\n2026        | 15200        | 13400            | 1200             | 600             | 88.16\n2025        | 48000        | 41800            | 4200             | 2000            | 87.08"
+  },
+  {
+    "id": "sql-ex-15",
+    "title": "Filtering Grouped Sets: WHERE vs HAVING Execution Order",
+    "category": "Aggregations, Grouping & 3VL Logic",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Demonstrates how pre-aggregation row filtering in WHERE dramatically reduces workload before post-aggregation group filtering in HAVING.",
+    "conceptsCovered": [
+      "WHERE vs HAVING",
+      "Logical Query Execution Phase",
+      "Pre-Filter Optimization",
+      "Aggregate Condition Assertion"
+    ],
+    "code": "-- Find high-volume corporate clients with over 5 completed enterprise purchases\nSELECT \n    c.customer_id,\n    c.company_name,\n    COUNT(o.order_id) AS qualified_orders,\n    SUM(o.total_amount) AS total_spend\nFROM customers c\nINNER JOIN orders o \n    ON c.customer_id = o.customer_id\nWHERE o.order_status = 'COMPLETED'     -- Step 1: Pre-aggregation filter (discards pending/cancelled early)\n  AND o.order_date >= '2026-01-01'      -- Step 2: Eliminates historical years\nGROUP BY c.customer_id, c.company_name\nHAVING COUNT(o.order_id) >= 5          -- Step 3: Post-aggregation filter on grouped results\n   AND SUM(o.total_amount) > 50000.00\nORDER BY total_spend DESC;",
+    "breakdown": [
+      "WHERE filters base table tuples prior to grouping, reducing the number of rows entered into the aggregation hash table.",
+      "HAVING executes after GROUP BY, filtering aggregate groupings based on group summaries.",
+      "Putting non-aggregate filters in HAVING is an anti-pattern because it forces the database to aggregate rows that could have been discarded early in WHERE.",
+      "Both clauses work together in standard SQL to isolate qualifying analytical cohorts."
+    ],
+    "expectedOutput": "customer_id | company_name        | qualified_orders | total_spend\n441         | Apex Global Corp    | 12               | 145000.00\n108         | Quantum Dynamics    | 7                | 82500.00"
+  },
+  {
+    "id": "sql-ex-16",
+    "title": "Advanced Multi-Dimensional Aggregation with GROUPING SETS",
+    "category": "Aggregations, Grouping & 3VL Logic",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Computes multiple levels of aggregation (by region, by product, and overall grand total) in a single unified table pass using GROUPING SETS.",
+    "conceptsCovered": [
+      "GROUP BY GROUPING SETS",
+      "GROUPING() Function",
+      "Unified Reporting Cube",
+      "Single-Pass Optimization"
+    ],
+    "code": "-- Multi-dimensional sales report: By region, by category, and grand total\nSELECT \n    COALESCE(region, '[All Regions]') AS region_label,\n    COALESCE(category, '[All Categories]') AS category_label,\n    GROUPING(region) AS is_region_subtotal,\n    GROUPING(category) AS is_category_subtotal,\n    SUM(sale_amount) AS total_sales\nFROM regional_sales\nGROUP BY GROUPING SETS (\n    (region, category),  -- Detail level\n    (region),            -- Subtotal per region\n    (category),          -- Subtotal per category\n    ()                   -- Grand total across all rows\n)\nORDER BY GROUPING(region), GROUPING(category), region, category;",
+    "breakdown": [
+      "GROUPING SETS computes specified aggregate combinations in one query, avoiding multiple UNION ALL statements.",
+      "GROUPING(col) returns 1 if the column is aggregated out in a subtotal, and 0 if it is part of the grouping key.",
+      "COALESCE tags subtotal rows with clean human-readable labels.",
+      "Drastically reduces I/O by scanning the underlying table only once."
+    ],
+    "expectedOutput": "region_label  | category_label  | is_region_subtotal | is_category_subtotal | total_sales\nEast          | Hardware        | 0                  | 0                    | 45000.00\nEast          | Software        | 0                  | 0                    | 30000.00\nEast          | [All Categories]| 0                  | 1                    | 75000.00\n[All Regions] | [All Categories]| 1                  | 1                    | 220000.00"
+  },
+  {
+    "id": "sql-ex-17",
+    "title": "Hierarchical Subtotals with ROLLUP for Financial Summaries",
+    "category": "Aggregations, Grouping & 3VL Logic",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Generates hierarchical financial subtotals progressing from Year down to Quarter, Month, and Grand Total using ANSI GROUP BY ROLLUP.",
+    "conceptsCovered": [
+      "GROUP BY ROLLUP",
+      "Hierarchical Aggregation",
+      "Financial Subtotals",
+      "Grand Total Projection"
+    ],
+    "code": "-- Hierarchical time-series revenue breakdown with progressive rollups\nSELECT \n    fiscal_year,\n    fiscal_quarter,\n    fiscal_month,\n    SUM(revenue) AS total_revenue\nFROM revenue_ledger\nGROUP BY ROLLUP (fiscal_year, fiscal_quarter, fiscal_month)\nORDER BY \n    fiscal_year NULLS LAST, \n    fiscal_quarter NULLS LAST, \n    fiscal_month NULLS LAST;",
+    "breakdown": [
+      "ROLLUP (A, B, C) automatically produces groupings for (A, B, C), (A, B), (A), and ().",
+      "Ideal for hierarchical dimensional data where smaller units roll up into parent containers.",
+      "Rows where fiscal_month IS NULL represent quarterly subtotals; rows where both quarter and month are NULL represent yearly totals.",
+      "A single row with all dimensions NULL represents the grand total across all records."
+    ],
+    "expectedOutput": "fiscal_year | fiscal_quarter | fiscal_month | total_revenue\n2026        | Q1             | 1            | 50000.00\n2026        | Q1             | 2            | 65000.00\n2026        | Q1             | NULL         | 115000.00\n2026        | NULL           | NULL         | 115000.00\nNULL        | NULL           | NULL         | 115000.00"
+  },
+  {
+    "id": "sql-ex-18",
+    "title": "Complete Combinatorial Aggregates with CUBE",
+    "category": "Aggregations, Grouping & 3VL Logic",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Computes all 2^N possible dimensional combinations across store locations, sales channels, and customer segments using ANSI CUBE.",
+    "conceptsCovered": [
+      "GROUP BY CUBE",
+      "Full Combinatorial Cross-Tabulation",
+      "Multi-Axis Business Intelligence",
+      "Data Warehouse Rollups"
+    ],
+    "code": "-- Cross-tabulation across sales channel and store tier\nSELECT \n    COALESCE(channel, 'ALL CHANNELS') AS channel_dim,\n    COALESCE(store_tier, 'ALL TIERS') AS tier_dim,\n    COUNT(*) AS total_orders,\n    SUM(order_value) AS aggregate_value\nFROM store_orders\nGROUP BY CUBE (channel, store_tier);",
+    "breakdown": [
+      "CUBE (channel, store_tier) computes all 4 possible permutations: (channel, tier), (channel), (tier), and ().",
+      "Provides complete cross-sectional visibility without running 4 separate queries.",
+      "Essential for OLAP analytical workloads feeding dynamic pivot-table dashboards.",
+      "COALESCE cleanly identifies marginal summary totals."
+    ],
+    "expectedOutput": "channel_dim  | tier_dim   | total_orders | aggregate_value\nONLINE       | FLAGSHIP   | 1400         | 210000.00\nONLINE       | STANDARD   | 3100         | 185000.00\nONLINE       | ALL TIERS  | 4500         | 395000.00\nALL CHANNELS | FLAGSHIP   | 2200         | 340000.00\nALL CHANNELS | ALL TIERS  | 6700         | 735000.00"
+  },
+  {
+    "id": "sql-ex-19",
+    "title": "Safe Ratio Calculations Defending Against Division-by-Zero (NULLIF)",
+    "category": "Aggregations, Grouping & 3VL Logic",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Defends mission-critical financial and analytical queries against fatal division-by-zero database errors using NULLIF and COALESCE.",
+    "conceptsCovered": [
+      "Division-by-Zero Prevention",
+      "NULLIF Function",
+      "COALESCE Default Values",
+      "Defensive Expression Evaluation"
+    ],
+    "code": "-- Calculating conversion rates and click-through rates safely\nSELECT \n    campaign_id,\n    impressions,\n    clicks,\n    conversions,\n    -- NULLIF returns NULL if clicks == 0, preventing division by zero crash\n    ROUND(\n        COALESCE(100.0 * clicks / NULLIF(impressions, 0), 0.0), \n        2\n    ) AS ctr_pct,\n    ROUND(\n        COALESCE(100.0 * conversions / NULLIF(clicks, 0), 0.0), \n        2\n    ) AS conversion_pct\nFROM ad_campaign_stats;",
+    "breakdown": [
+      "Dividing any number by 0 in SQL raises a fatal runtime exception (e.g., 'division by zero') terminating the query.",
+      "NULLIF(col, 0) transforms 0 into NULL. In SQL, any number divided by NULL yields NULL.",
+      "COALESCE(..., 0.0) captures the resulting NULL and converts it safely into 0.0 for UI display.",
+      "Standard bulletproof pattern for KPI calculations in reporting engines."
+    ],
+    "expectedOutput": "campaign_id | impressions | clicks | conversions | ctr_pct | conversion_pct\nCMP-101     | 50000       | 1200   | 180         | 2.40    | 15.00\nCMP-102     | 0           | 0      | 0           | 0.00    | 0.00\nCMP-103     | 1000        | 0      | 0           | 0.00    | 0.00"
+  },
+  {
+    "id": "sql-ex-20",
+    "title": "Three-Valued Logic Defense in Aggregates and Filtering",
+    "category": "Aggregations, Grouping & 3VL Logic",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Demonstrates how SQL three-valued logic (TRUE, FALSE, UNKNOWN) handles NULLs and how to safely compute boolean flag distributions.",
+    "conceptsCovered": [
+      "Three-Valued Logic (3VL)",
+      "IS TRUE / IS NOT TRUE",
+      "COALESCE in Boolean Filters",
+      "Truth Table Evaluation"
+    ],
+    "code": "-- Safe handling of tri-state flags: Verified, Unverified, and Unknown/Pending\nSELECT \n    COALESCE(is_email_verified, FALSE) AS verified_state,\n    COUNT(*) AS total_users,\n    SUM(CASE WHEN is_email_verified IS TRUE THEN 1 ELSE 0 END) AS strictly_true_count,\n    SUM(CASE WHEN is_email_verified IS NOT TRUE THEN 1 ELSE 0 END) AS not_true_count\nFROM users\nGROUP BY COALESCE(is_email_verified, FALSE);\n\n-- Query showing why WHERE flag <> TRUE misses NULL rows:\n-- Correct way to match all unverified users including NULL:\nSELECT user_id, email, is_email_verified\nFROM users\nWHERE is_email_verified IS NOT TRUE;",
+    "breakdown": [
+      "In SQL, comparing NULL = TRUE or NULL <> TRUE evaluates to UNKNOWN, which WHERE clauses reject.",
+      "IS NOT TRUE evaluates to TRUE for both FALSE and NULL rows.",
+      "COALESCE(is_email_verified, FALSE) normalizes 3VL down to 2-valued boolean logic for reliable GROUP BY buckets.",
+      "Essential for preventing silent record exclusion bugs in user authentication and security filters."
+    ],
+    "expectedOutput": "verified_state | total_users | strictly_true_count | not_true_count\nfalse          | 320         | 0                   | 320\ntrue           | 880         | 880                 | 0"
+  },
+  {
+    "id": "sql-ex-21",
+    "title": "String Aggregation Pattern with GROUP_CONCAT / LISTAGG",
+    "category": "Aggregations, Grouping & 3VL Logic",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Aggregates child string values into a single delimited list per parent row across SQL dialects.",
+    "conceptsCovered": [
+      "String Aggregation",
+      "Delimited Concatenation",
+      "Ordering Within Grouped Strings",
+      "Denormalized View Construction"
+    ],
+    "code": "-- Standard SQL aggregation of assigned tags per article\n-- In ANSI SQL: LISTAGG(tag_name, ', ') WITHIN GROUP (ORDER BY tag_name)\n-- In PostgreSQL: STRING_AGG(tag_name, ', ' ORDER BY tag_name)\n-- In MySQL: GROUP_CONCAT(tag_name ORDER BY tag_name SEPARATOR ', ')\nSELECT \n    a.article_id,\n    a.title,\n    -- ANSI SQL Standard syntax:\n    LISTAGG(t.tag_name, ', ') WITHIN GROUP (ORDER BY t.tag_name ASC) AS tags_list\nFROM articles a\nLEFT OUTER JOIN article_tags at ON a.article_id = at.article_id\nLEFT OUTER JOIN tags t ON at.tag_id = t.tag_id\nGROUP BY a.article_id, a.title;",
+    "breakdown": [
+      "LISTAGG aggregates string values from child rows into a formatted comma-delimited string.",
+      "WITHIN GROUP (ORDER BY ...) determines deterministic sorting of items inside the concatenated string.",
+      "Eliminates the need for client applications to stitch together child collections in memory.",
+      "Standard pattern for building denormalized search documents or CSV export feeds."
+    ],
+    "expectedOutput": "article_id | title                   | tags_list\n101        | Relational Algebra 101 | Database, Theory, Tutorials\n102        | Advanced SQL Windowing | Analytics, Data Warehousing, SQL"
+  },
+  {
+    "id": "sql-ex-22",
+    "title": "Distinct Cardinality Counting Across Grouped Dimensions",
+    "category": "Aggregations, Grouping & 3VL Logic",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Calculates true unique customer reach and distinct transaction days per store without double counting multiple purchases per customer.",
+    "conceptsCovered": [
+      "COUNT(DISTINCT column)",
+      "High Cardinality Grouping",
+      "Unique Reach Metrics",
+      "Memory Footprint Considerations"
+    ],
+    "code": "-- Unique customer engagement and shopping frequency per store\nSELECT \n    store_id,\n    COUNT(order_id) AS total_orders_placed,\n    COUNT(DISTINCT customer_id) AS unique_customers_reached,\n    COUNT(DISTINCT order_date) AS active_business_days,\n    ROUND(\n        1.0 * COUNT(order_id) / NULLIF(COUNT(DISTINCT customer_id), 0), \n        2\n    ) AS average_orders_per_customer\nFROM store_transactions\nWHERE transaction_year = 2026\nGROUP BY store_id\nORDER BY unique_customers_reached DESC;",
+    "breakdown": [
+      "COUNT(DISTINCT customer_id) builds a distinct set of customer IDs per group, ignoring duplicates.",
+      "Provides accurate unique reach metrics where total orders would wildly inflate customer counts.",
+      "COUNT(DISTINCT order_date) reveals true active trading days without storing a separate calendar dimension.",
+      "Requires internal hashing or sorting per group; use indexing on (store_id, customer_id) for high performance."
+    ],
+    "expectedOutput": "store_id | total_orders_placed | unique_customers_reached | active_business_days | average_orders_per_customer\nSTORE-01 | 4500                | 1200                     | 60                   | 3.75\nSTORE-02 | 3100                | 950                      | 58                   | 3.26"
+  },
+  {
+    "id": "sql-ex-23",
+    "title": "Top-N Rows Per Category Using ROW_NUMBER() in a Derived Table",
+    "category": "Window Functions & Analytical SQL",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Retrieves the top 2 highest-earning employees in each department deterministically using ROW_NUMBER() within a Common Table Expression.",
+    "conceptsCovered": [
+      "ROW_NUMBER()",
+      "PARTITION BY Clause",
+      "Top-N per Category Pattern",
+      "Tie-Breaking Determinism"
+    ],
+    "code": "-- Find top 2 highest-earning employees per department\nWITH ranked_employees AS (\n    SELECT \n        department_id,\n        employee_id,\n        full_name,\n        salary,\n        ROW_NUMBER() OVER (\n            PARTITION BY department_id \n            ORDER BY salary DESC, employee_id ASC\n        ) AS rank_in_dept\n    FROM employees\n)\nSELECT \n    department_id,\n    employee_id,\n    full_name,\n    salary\nFROM ranked_employees\nWHERE rank_in_dept <= 2\nORDER BY department_id, rank_in_dept;",
+    "breakdown": [
+      "ROW_NUMBER() produces a sequential integer starting at 1 for each row within its partition.",
+      "PARTITION BY department_id resets the ranking sequence independently for every department.",
+      "Including employee_id ASC in the ORDER BY ensures 100% deterministic ranking when two salaries are identical.",
+      "Filtering WHERE rank_in_dept <= 2 in the outer query yields the exact Top-2 per group."
+    ],
+    "expectedOutput": "department_id | employee_id | full_name       | salary\n1             | 104         | Diana Prince    | 165000.00\n1             | 102         | Bruce Wayne     | 145000.00\n2             | 205         | Clark Kent      | 110000.00\n2             | 201         | Lois Lane       | 105000.00"
+  },
+  {
+    "id": "sql-ex-24",
+    "title": "Handling Salary Ties with RANK() vs DENSE_RANK()",
+    "category": "Window Functions & Analytical SQL",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Contrasts the behavioral differences of RANK() (which skips positions after ties) and DENSE_RANK() (which maintains continuous numbering) across tied score sets.",
+    "conceptsCovered": [
+      "RANK() vs DENSE_RANK()",
+      "Tie Gap Handling",
+      "Deterministic Leaderboards",
+      "Competitive Scoring"
+    ],
+    "code": "-- Comparison of ranking algorithms on identical score values\nSELECT \n    player_id,\n    score,\n    ROW_NUMBER() OVER (ORDER BY score DESC) AS row_num,\n    RANK() OVER (ORDER BY score DESC) AS rank_with_gaps,\n    DENSE_RANK() OVER (ORDER BY score DESC) AS dense_rank_continuous\nFROM tournament_scores\nORDER BY score DESC;",
+    "breakdown": [
+      "ROW_NUMBER() assigns distinct sequential integers (1, 2, 3, 4) arbitrarily breaking ties.",
+      "RANK() assigns identical ranks to ties but skips subsequent numbers (e.g. 100, 100, 90 produces 1, 1, 3).",
+      "DENSE_RANK() assigns identical ranks to ties without skipping subsequent numbers (1, 1, 2).",
+      "Use DENSE_RANK() when you need medal tiers (Gold, Silver, Bronze) regardless of how many people tied for Gold."
+    ],
+    "expectedOutput": "player_id | score | row_num | rank_with_gaps | dense_rank_continuous\nP-88      | 100   | 1       | 1              | 1\nP-12      | 100   | 2       | 1              | 1\nP-45      | 95    | 3       | 3              | 2\nP-99      | 80    | 4       | 4              | 3"
+  },
+  {
+    "id": "sql-ex-25",
+    "title": "Month-Over-Month Growth & Velocity Calculation with LAG()",
+    "category": "Window Functions & Analytical SQL",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Calculates monthly recurring revenue (MRR) changes and percentage growth rates relative to the immediately preceding month using the LAG() window function.",
+    "conceptsCovered": [
+      "LAG() Function",
+      "Temporal Delta Calculation",
+      "Month-Over-Month (MoM) Growth",
+      "NULLIF / Division Protection"
+    ],
+    "code": "-- Month-over-month MRR growth and percentage velocity\nWITH monthly_mrr AS (\n    SELECT \n        billing_month,\n        SUM(mrr_amount) AS total_mrr\n    FROM subscription_ledger\n    GROUP BY billing_month\n)\nSELECT \n    billing_month,\n    total_mrr,\n    LAG(total_mrr, 1) OVER (ORDER BY billing_month) AS prev_month_mrr,\n    total_mrr - LAG(total_mrr, 1) OVER (ORDER BY billing_month) AS mrr_change,\n    ROUND(\n        100.0 * (total_mrr - LAG(total_mrr, 1) OVER (ORDER BY billing_month)) / \n        NULLIF(LAG(total_mrr, 1) OVER (ORDER BY billing_month), 0),\n        2\n    ) AS mom_growth_pct\nFROM monthly_mrr\nORDER BY billing_month;",
+    "breakdown": [
+      "LAG(total_mrr, 1) inspects the row located 1 step backward in the specified chronological order.",
+      "For the very first chronological record, LAG() returns NULL.",
+      "Computing (current - previous) / previous yields the exact month-over-month growth rate.",
+      "Avoids costly and fragile self-joins on date offsets (e.g. month = prev_month + 1)."
+    ],
+    "expectedOutput": "billing_month | total_mrr | prev_month_mrr | mrr_change | mom_growth_pct\n2026-01-01    | 50000.00  | NULL           | NULL       | NULL\n2026-02-01    | 57500.00  | 50000.00       | 7500.00    | 15.00\n2026-03-01    | 62000.00  | 57500.00       | 4500.00    | 7.83"
+  },
+  {
+    "id": "sql-ex-26",
+    "title": "Future Value Forecasting & Look-Ahead with LEAD()",
+    "category": "Window Functions & Analytical SQL",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Computes user session durations by reading the timestamp of the next consecutive user event with LEAD() without self-joining the event log.",
+    "conceptsCovered": [
+      "LEAD() Function",
+      "Event Stream Analytics",
+      "Look-Ahead Durations",
+      "Temporal Partitioning"
+    ],
+    "code": "-- Calculate duration spent on each screen by looking ahead to the next event timestamp\nSELECT \n    user_id,\n    event_time,\n    event_name,\n    LEAD(event_time, 1) OVER (\n        PARTITION BY user_id \n        ORDER BY event_time ASC\n    ) AS next_event_time,\n    ROUND(\n        EXTRACT(EPOCH FROM (\n            LEAD(event_time, 1) OVER (\n                PARTITION BY user_id \n                ORDER BY event_time ASC\n            ) - event_time\n        )), \n        0\n    ) AS seconds_spent\nFROM app_event_logs\nORDER BY user_id, event_time;",
+    "breakdown": [
+      "LEAD(event_time, 1) retrieves the timestamp of the subsequent event in the chronological order.",
+      "PARTITION BY user_id ensures that the look-ahead does not bleed across boundaries between different users.",
+      "Subtracting event_time from next_event_time yields exact session duration per interaction step.",
+      "The last event in the user's session evaluates to NULL, signaling session termination."
+    ],
+    "expectedOutput": "user_id | event_time          | event_name  | next_event_time     | seconds_spent\nU-1001  | 2026-03-01 10:00:00 | LOGIN       | 2026-03-01 10:01:25 | 85\nU-1001  | 2026-03-01 10:01:25 | VIEW_DASH   | 2026-03-01 10:05:00 | 215\nU-1001  | 2026-03-01 10:05:00 | LOGOUT      | NULL                | NULL"
+  },
+  {
+    "id": "sql-ex-27",
+    "title": "Running Cumulative Financial Total with Framing (ROWS BETWEEN UNBOUNDED PRECEDING)",
+    "category": "Window Functions & Analytical SQL",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Calculates an accurate cumulative ledger running balance using explicit window framing with ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW.",
+    "conceptsCovered": [
+      "Running Totals",
+      "ROWS vs RANGE Framing",
+      "UNBOUNDED PRECEDING Frame",
+      "Performance Overhead of Default Framing"
+    ],
+    "code": "-- Calculate running account balance across sequential deposits and withdrawals\nSELECT \n    transaction_id,\n    account_id,\n    transacted_at,\n    amount,\n    SUM(amount) OVER (\n        PARTITION BY account_id\n        ORDER BY transacted_at ASC, transaction_id ASC\n        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n    ) AS running_balance\nFROM bank_transactions\nORDER BY account_id, transacted_at;",
+    "breakdown": [
+      "Specifying ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW accumulates every row from the partition start up to the current row.",
+      "Crucial performance rule: The default SQL frame is 'RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW', which performs peers-checking and can trigger spooling overhead.",
+      "ROWS framing treats every physical row discretely, running in strict O(N) linear time.",
+      "Always include unique tie-breakers (like transaction_id) in ORDER BY to ensure deterministic balances."
+    ],
+    "expectedOutput": "transaction_id | account_id | transacted_at       | amount   | running_balance\nTXN-101        | ACC-99     | 2026-01-01 09:00:00 | 1000.00  | 1000.00\nTXN-102        | ACC-99     | 2026-01-02 14:30:00 | -250.00  | 750.00\nTXN-103        | ACC-99     | 2026-01-05 11:15:00 | 500.00   | 1250.00"
+  },
+  {
+    "id": "sql-ex-28",
+    "title": "Moving 7-Day Rolling Average with Symmetric Window Framing",
+    "category": "Window Functions & Analytical SQL",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Smooths out volatile daily server latency metrics by calculating a moving 7-row centered or trailing average using window frames.",
+    "conceptsCovered": [
+      "Moving Average",
+      "Trailing Window Frame (ROWS 6 PRECEDING)",
+      "Time-Series Smoothing",
+      "Bounded Window Aggregation"
+    ],
+    "code": "-- 7-day trailing moving average of daily API error counts\nSELECT \n    metric_date,\n    error_count,\n    ROUND(\n        AVG(error_count) OVER (\n            ORDER BY metric_date ASC\n            ROWS BETWEEN 6 PRECEDING AND CURRENT ROW\n        ),\n        2\n    ) AS trailing_7day_avg_errors,\n    MIN(error_count) OVER (\n        ORDER BY metric_date ASC\n        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW\n    ) AS rolling_min,\n    MAX(error_count) OVER (\n        ORDER BY metric_date ASC\n        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW\n    ) AS rolling_max\nFROM daily_system_metrics\nORDER BY metric_date;",
+    "breakdown": [
+      "ROWS BETWEEN 6 PRECEDING AND CURRENT ROW looks at exactly the current day plus the preceding 6 rows (7 items total).",
+      "For the first 6 days in the dataset, SQL gracefully calculates the average over whatever subset of preceding rows exists (e.g. 1 to 6 rows).",
+      "Simultaneously tracks rolling min and max within the same window frame without extra table scans.",
+      "Standard pattern for algorithm baseline computation and anomaly detection."
+    ],
+    "expectedOutput": "metric_date | error_count | trailing_7day_avg_errors | rolling_min | rolling_max\n2026-03-01  | 14          | 14.00                    | 14          | 14\n2026-03-02  | 20          | 17.00                    | 14          | 20\n2026-03-07  | 12          | 16.43                    | 10          | 22"
+  },
+  {
+    "id": "sql-ex-29",
+    "title": "Customer Quartile & Percentile Segmentation with NTILE()",
+    "category": "Window Functions & Analytical SQL",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Divides customers into 4 equal quartiles (Buckets 1 to 4) based on lifetime spending value using NTILE(4).",
+    "conceptsCovered": [
+      "NTILE(N) Function",
+      "Quartile / Decile Binning",
+      "Customer Segmentation",
+      "Equi-Sized Cohorts"
+    ],
+    "code": "-- Segment customers into 4 spending quartiles (Top 25% = Quartile 1)\nWITH customer_spend AS (\n    SELECT \n        customer_id,\n        SUM(total_amount) AS lifetime_value\n    FROM orders\n    GROUP BY customer_id\n)\nSELECT \n    customer_id,\n    lifetime_value,\n    NTILE(4) OVER (ORDER BY lifetime_value DESC) AS spending_quartile,\n    CASE NTILE(4) OVER (ORDER BY lifetime_value DESC)\n        WHEN 1 THEN 'PLATINUM (TOP 25%)'\n        WHEN 2 THEN 'GOLD (25%-50%)'\n        WHEN 3 THEN 'SILVER (50%-75%)'\n        WHEN 4 THEN 'BRONZE (BOTTOM 25%)'\n    END AS tier_label\nFROM customer_spend\nORDER BY spending_quartile, lifetime_value DESC;",
+    "breakdown": [
+      "NTILE(4) distributes ordered rows as equally as possible across 4 integer buckets from 1 to 4.",
+      "If the row count is not evenly divisible, earlier buckets receive one extra row.",
+      "Allows marketing and operations to target cohorts by relative performance without hardcoding arbitrary dollar thresholds.",
+      "CASE expressions map bucket numbers to customer-facing tier labels."
+    ],
+    "expectedOutput": "customer_id | lifetime_value | spending_quartile | tier_label\n108         | 95000.00       | 1                 | PLATINUM (TOP 25%)\n402         | 42000.00       | 2                 | GOLD (25%-50%)\n781         | 15000.00       | 3                 | SILVER (50%-75%)\n912         | 1200.00        | 4                 | BRONZE (BOTTOM 25%)"
+  },
+  {
+    "id": "sql-ex-30",
+    "title": "Boundary Value Retrieval: FIRST_VALUE() vs LAST_VALUE() with Proper Framing",
+    "category": "Window Functions & Analytical SQL",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Highlights the common LAST_VALUE() framing trap and illustrates how to retrieve both initial and most recent sensor readings within a partition.",
+    "conceptsCovered": [
+      "FIRST_VALUE() Function",
+      "LAST_VALUE() Framing Pitfall",
+      "UNBOUNDED FOLLOWING Framing",
+      "Boundary State Comparison"
+    ],
+    "code": "-- Compare each IoT sensor reading against the baseline reading and latest reading\nSELECT \n    device_id,\n    reading_time,\n    temperature_celsius,\n    -- First reading in session:\n    FIRST_VALUE(temperature_celsius) OVER (\n        PARTITION BY device_id \n        ORDER BY reading_time ASC\n    ) AS initial_baseline_temp,\n    -- Latest reading in session (MUST include UNBOUNDED FOLLOWING):\n    LAST_VALUE(temperature_celsius) OVER (\n        PARTITION BY device_id \n        ORDER BY reading_time ASC\n        ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING\n    ) AS latest_recorded_temp\nFROM device_telemetry\nORDER BY device_id, reading_time;",
+    "breakdown": [
+      "FIRST_VALUE() retrieves the value from the first row in the window frame.",
+      "CRITICAL TRAP: By default, the window frame ends at CURRENT ROW. Therefore, LAST_VALUE() simply returns the current row's value unless the frame is expanded!",
+      "Specifying 'ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING' allows LAST_VALUE() to see the true final record of the partition.",
+      "Calculates drift from initial baseline and drift towards the final reading in a single scan."
+    ],
+    "expectedOutput": "device_id | reading_time        | temperature_celsius | initial_baseline_temp | latest_recorded_temp\nIOT-01    | 2026-03-01 08:00:00 | 21.5                | 21.5                  | 26.8\nIOT-01    | 2026-03-01 12:00:00 | 24.2                | 21.5                  | 26.8\nIOT-01    | 2026-03-01 18:00:00 | 26.8                | 21.5                  | 26.8"
+  },
+  {
+    "id": "sql-ex-31",
+    "title": "Percentage Contribution of Row to Partition Total (SUM() OVER ())",
+    "category": "Window Functions & Analytical SQL",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Calculates the exact percentage of sales revenue a single product line contributes to its parent department without performing a self-join or extra subquery.",
+    "conceptsCovered": [
+      "Partition-Level Aggregates",
+      "Percentage Contribution Calculation",
+      "OVER (PARTITION BY ...)",
+      "Zero-Subquery Denormalization"
+    ],
+    "code": "-- Product revenue percentage relative to total departmental sales\nSELECT \n    department_id,\n    product_id,\n    product_name,\n    revenue,\n    SUM(revenue) OVER (PARTITION BY department_id) AS department_total_revenue,\n    ROUND(\n        100.0 * revenue / SUM(revenue) OVER (PARTITION BY department_id),\n        2\n    ) AS pct_of_department_revenue,\n    SUM(revenue) OVER () AS company_wide_revenue,\n    ROUND(100.0 * revenue / SUM(revenue) OVER (), 2) AS pct_of_company_revenue\nFROM product_sales\nORDER BY department_id, revenue DESC;",
+    "breakdown": [
+      "SUM(revenue) OVER (PARTITION BY department_id) computes the department sum across all rows in that partition without collapsing them into a single row.",
+      "SUM(revenue) OVER () with an empty specification computes the global total across the entire table.",
+      "Dividing the individual row's revenue by the partition sum yields exact relative contribution percentages.",
+      "Runs in a single query pass with zero temporary tables or JOIN operations."
+    ],
+    "expectedOutput": "department_id | product_id | product_name   | revenue   | department_total_revenue | pct_of_department_revenue | pct_of_company_revenue\n1             | P-10       | Enterprise Hub | 150000.00 | 200000.00                | 75.00                     | 30.00\n1             | P-12       | Support Addon  | 50000.00  | 200000.00                | 25.00                     | 10.00"
+  },
+  {
+    "id": "sql-ex-32",
+    "title": "Named Reusable Window Specifications (WINDOW w AS (...))",
+    "category": "Window Functions & Analytical SQL",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Uses the ANSI WINDOW clause to define a named, reusable window specification referenced by multiple window functions in the same SELECT statement.",
+    "conceptsCovered": [
+      "WINDOW Clause",
+      "DRY Window Specifications",
+      "Maintainable Analytical SQL",
+      "Multiple Window Functions"
+    ],
+    "code": "-- Clean analytical reporting using named reusable WINDOW clauses\nSELECT \n    department_id,\n    employee_id,\n    salary,\n    ROW_NUMBER() OVER dept_window AS dept_seq,\n    DENSE_RANK() OVER dept_window AS dept_rank,\n    AVG(salary) OVER dept_window AS dept_avg_salary,\n    MIN(salary) OVER dept_window AS dept_min_salary,\n    MAX(salary) OVER dept_window AS dept_max_salary\nFROM employees\nWINDOW dept_window AS (\n    PARTITION BY department_id \n    ORDER BY salary DESC\n)\nORDER BY department_id, salary DESC;",
+    "breakdown": [
+      "The WINDOW clause sits between HAVING and ORDER BY in logical SQL syntax.",
+      "Defines a single named specification (dept_window) reused across 5 analytical functions.",
+      "Prevents copy-paste errors when modifying partition keys or sorting criteria across complex reports.",
+      "Standard ANSI SQL feature fully supported across modern relational database engines."
+    ],
+    "expectedOutput": "department_id | employee_id | salary    | dept_seq | dept_rank | dept_avg_salary | dept_min_salary | dept_max_salary\n1             | 101         | 120000.00 | 1        | 1         | 105000.00       | 90000.00        | 120000.00\n1             | 102         | 105000.00 | 2        | 2         | 105000.00       | 90000.00        | 120000.00\n1             | 103         | 90000.00  | 3        | 3         | 105000.00       | 90000.00        | 120000.00"
+  },
+  {
+    "id": "sql-ex-33",
+    "title": "Linear Multi-Step Data Processing Pipeline with Chained CTEs",
+    "category": "Common Table Expressions & Recursion",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Constructs a clean, readable data transformation pipeline using comma-separated Common Table Expressions (CTEs) instead of deeply nested subqueries.",
+    "conceptsCovered": [
+      "Chained CTEs",
+      "Modular Query Composition",
+      "Readable ETL Pipelines",
+      "Intermediate Materialization Semantics"
+    ],
+    "code": "-- Multi-stage financial aggregation pipeline\nWITH raw_payments AS (\n    -- Step 1: Filter and sanitize verified transactions\n    SELECT \n        customer_id,\n        amount,\n        payment_date\n    FROM customer_ledger\n    WHERE payment_status = 'SETTLED'\n      AND payment_date >= '2026-01-01'\n),\ncustomer_totals AS (\n    -- Step 2: Aggregate by customer\n    SELECT \n        customer_id,\n        COUNT(*) AS transaction_count,\n        SUM(amount) AS total_settled_amount\n    FROM raw_payments\n    GROUP BY customer_id\n),\ncustomer_tiers AS (\n    -- Step 3: Segment customers into business tiers\n    SELECT \n        ct.*,\n        c.full_name,\n        c.email,\n        CASE \n            WHEN ct.total_settled_amount >= 50000 THEN 'TIER_1_VIP'\n            WHEN ct.total_settled_amount >= 10000 THEN 'TIER_2_PRO'\n            ELSE 'TIER_3_STANDARD'\n        END AS loyalty_segment\n    FROM customer_totals ct\n    INNER JOIN customers c ON ct.customer_id = c.customer_id\n)\n-- Step 4: Final executive summary\nSELECT \n    loyalty_segment,\n    COUNT(*) AS total_customers,\n    SUM(total_settled_amount) AS segment_revenue,\n    ROUND(AVG(total_settled_amount), 2) AS avg_spend_per_customer\nFROM customer_tiers\nGROUP BY loyalty_segment\nORDER BY segment_revenue DESC;",
+    "breakdown": [
+      "Comma-separated CTEs execute top-to-bottom as a literate, self-documenting data pipeline.",
+      "Replaces confusing 4-level nested FROM (SELECT (SELECT ...)) subqueries with clear named stages.",
+      "Enables developers to inspect intermediate stages during debugging by simply changing the final SELECT.",
+      "The query optimizer can inline or optimize across CTE boundaries in modern engines."
+    ],
+    "expectedOutput": "loyalty_segment  | total_customers | segment_revenue | avg_spend_per_customer\nTIER_1_VIP       | 18              | 1450000.00      | 80555.56\nTIER_2_PRO       | 85              | 1870000.00      | 22000.00\nTIER_3_STANDARD  | 420             | 1260000.00      | 3000.00"
+  },
+  {
+    "id": "sql-ex-34",
+    "title": "Organization Hierarchy Management Tree Traversal with WITH RECURSIVE",
+    "category": "Common Table Expressions & Recursion",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Traverses an organizational management hierarchy of arbitrary depth starting from the CEO down to individual contributors using ANSI WITH RECURSIVE.",
+    "conceptsCovered": [
+      "WITH RECURSIVE",
+      "Anchor Member & Recursive Member",
+      "UNION ALL Recursive Stepping",
+      "Depth Level Tracking",
+      "Hierarchy Breadcrumb Indentation"
+    ],
+    "code": "-- Traverse corporate reporting hierarchy from CEO down to junior staff\nWITH RECURSIVE org_tree AS (\n    -- 1. Anchor Member: Find the top-level executives (manager_id IS NULL)\n    SELECT \n        employee_id,\n        full_name,\n        manager_id,\n        job_title,\n        1 AS hierarchy_level,\n        CAST(full_name AS VARCHAR(1000)) AS reporting_chain\n    FROM employees\n    WHERE manager_id IS NULL\n\n    UNION ALL\n\n    -- 2. Recursive Member: Join subordinates to their managers in org_tree\n    SELECT \n        e.employee_id,\n        e.full_name,\n        e.manager_id,\n        e.job_title,\n        ot.hierarchy_level + 1,\n        CAST(ot.reporting_chain || ' -> ' || e.full_name AS VARCHAR(1000))\n    FROM employees e\n    INNER JOIN org_tree ot \n        ON e.manager_id = ot.employee_id\n)\nSELECT \n    REPEAT('  ', hierarchy_level - 1) || full_name AS indented_org_chart,\n    job_title,\n    hierarchy_level,\n    reporting_chain\nFROM org_tree\nORDER BY reporting_chain;",
+    "breakdown": [
+      "The Anchor Member seeds the recursion with the root node(s) where manager_id IS NULL.",
+      "The Recursive Member joins employees to the working result set (ot) matching e.manager_id = ot.employee_id.",
+      "Recursion terminates automatically when the join yields zero rows (leaf nodes reached).",
+      "Tracks hierarchy_level and full reporting_chain string path at every iteration."
+    ],
+    "expectedOutput": "indented_org_chart    | job_title      | hierarchy_level | reporting_chain\nSarah Connor          | CEO            | 1               | Sarah Connor\n  John Reese          | VP Engineering | 2               | Sarah Connor -> John Reese\n    Harold Finch      | Staff Architect| 3               | Sarah Connor -> John Reese -> Harold Finch"
+  },
+  {
+    "id": "sql-ex-35",
+    "title": "Generating Continuous Date Sequences / Calendars Without Physical Tables",
+    "category": "Common Table Expressions & Recursion",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Dynamically constructs a 31-day contiguous calendar sequence using ANSI recursive CTEs and left-joins it to sales data to uncover zero-sale days.",
+    "conceptsCovered": [
+      "Synthetic Calendar Generation",
+      "WITH RECURSIVE Counter Loop",
+      "Time-Series Gap Filling",
+      "ANSI-Compliant Sequence Generation"
+    ],
+    "code": "-- Generate a full 31-day calendar for March 2026 and detect zero-sales trading days\nWITH RECURSIVE date_series AS (\n    -- Anchor: Start date\n    SELECT CAST('2026-03-01' AS DATE) AS calendar_date\n    \n    UNION ALL\n    \n    -- Recursive Step: Increment date by 1 day until end of month\n    SELECT CAST(calendar_date + INTERVAL '1' DAY AS DATE)\n    FROM date_series\n    WHERE calendar_date < CAST('2026-03-31' AS DATE)\n)\nSELECT \n    ds.calendar_date,\n    COALESCE(COUNT(s.sale_id), 0) AS total_transactions,\n    COALESCE(SUM(s.amount), 0.00) AS total_daily_revenue\nFROM date_series ds\nLEFT OUTER JOIN sales s \n    ON ds.calendar_date = CAST(s.sale_timestamp AS DATE)\nGROUP BY ds.calendar_date\nORDER BY ds.calendar_date ASC;",
+    "breakdown": [
+      "Generates continuous daily time intervals without requiring physical numbers or calendar tables.",
+      "LEFT OUTER JOIN attaches actual sales transactions to the synthetic calendar.",
+      "Guarantees that days with zero sales appear in reports with 0 count and $0.00 revenue instead of missing entirely.",
+      "Works in any ANSI SQL database supporting standard recursive queries."
+    ],
+    "expectedOutput": "calendar_date | total_transactions | total_daily_revenue\n2026-03-01    | 45                 | 8950.00\n2026-03-02    | 0                  | 0.00\n2026-03-03    | 32                 | 6120.00"
+  },
+  {
+    "id": "sql-ex-36",
+    "title": "Bill of Materials (BOM) Subassembly Cost Rollup with Recursion",
+    "category": "Common Table Expressions & Recursion",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Explodes a multi-level manufacturing bill of materials (components within subassemblies within finished goods) to calculate total unit production costs.",
+    "conceptsCovered": [
+      "Bill of Materials (BOM)",
+      "Multi-Level Assembly Explosion",
+      "Cumulative Quantity Multiplication",
+      "Manufacturing Cost Rollup"
+    ],
+    "code": "-- Compute total parts and rolled-up cost for a manufactured laptop (assembly_id = 1)\nWITH RECURSIVE bom_explosion AS (\n    -- 1. Anchor: Top-level subcomponents\n    SELECT \n        parent_assembly_id,\n        component_id,\n        quantity,\n        quantity AS total_quantity_needed\n    FROM assembly_components\n    WHERE parent_assembly_id = 1\n\n    UNION ALL\n\n    -- 2. Recursive step: Subcomponents of subcomponents\n    SELECT \n        ac.parent_assembly_id,\n        ac.component_id,\n        ac.quantity,\n        b.total_quantity_needed * ac.quantity\n    FROM assembly_components ac\n    INNER JOIN bom_explosion b \n        ON ac.parent_assembly_id = b.component_id\n)\nSELECT \n    p.part_name,\n    p.part_type,\n    b.total_quantity_needed,\n    p.unit_cost,\n    (b.total_quantity_needed * p.unit_cost) AS total_cost_contribution\nFROM bom_explosion b\nINNER JOIN parts p \n    ON b.component_id = p.part_id\nORDER BY total_cost_contribution DESC;",
+    "breakdown": [
+      "Solves the classic manufacturing parts explosion problem across unbounded hierarchy depth.",
+      "Multiplies quantities down the tree: if 1 laptop needs 2 motherboards, and each motherboard needs 4 screws, total screws needed = 8.",
+      "Joins to the catalog parts table to compute final line item costs.",
+      "Provides exact unit economics for engineering and supply chain teams."
+    ],
+    "expectedOutput": "part_name            | part_type  | total_quantity_needed | unit_cost | total_cost_contribution\nOLED Display Panel   | COMPONENT  | 1                     | 220.00    | 220.00\nLithium Battery Pack | COMPONENT  | 1                     | 65.00     | 65.00\nM2 Brass Standoffs   | FASTENER   | 16                    | 0.25      | 4.00"
+  },
+  {
+    "id": "sql-ex-37",
+    "title": "Cycle Detection and Loop Termination in Graph Traversal",
+    "category": "Common Table Expressions & Recursion",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Prevents infinite loops and stack overflow crashes during recursive graph traversal by tracking visited nodes in an array or string path.",
+    "conceptsCovered": [
+      "Infinite Recursion Defense",
+      "Cycle Detection",
+      "Visited Node Path Tracking",
+      "Graph Loop Short-Circuiting"
+    ],
+    "code": "-- Traverse directed graph nodes while safely terminating if a cycle is detected\nWITH RECURSIVE graph_path AS (\n    -- Anchor: Starting node\n    SELECT \n        source_node,\n        target_node,\n        CAST('/' || source_node || '/' || target_node || '/' AS VARCHAR(1000)) AS path_string,\n        FALSE AS is_cycle\n    FROM graph_edges\n    WHERE source_node = 'A'\n\n    UNION ALL\n\n    -- Recursive Step: Advance along edges, halting if target already exists in path\n    SELECT \n        e.source_node,\n        e.target_node,\n        CAST(gp.path_string || e.target_node || '/' AS VARCHAR(1000)),\n        CASE \n            WHEN gp.path_string LIKE '%/' || e.target_node || '/%' THEN TRUE \n            ELSE FALSE \n        END\n    FROM graph_edges e\n    INNER JOIN graph_path gp \n        ON e.source_node = gp.target_node\n    WHERE NOT gp.is_cycle -- Halt branch if cycle was detected in previous step\n      AND gp.path_string NOT LIKE '%/' || e.target_node || '/%' -- Prevent expanding cycle node\n)\nSELECT \n    source_node,\n    target_node,\n    path_string,\n    is_cycle\nFROM graph_path;",
+    "breakdown": [
+      "Graphs with cycles (e.g. A -> B -> C -> A) cause naive recursive CTEs to loop infinitely until system memory or max-recursion limits trigger.",
+      "Maintains a path_string breadcrumb recording every traversed node delimiter: '/A/B/'.",
+      "Tests `path_string NOT LIKE '%/' || target || '/%'` to terminate recursion before re-visiting an already encountered vertex.",
+      "Safely isolates circular dependencies without bringing down database workers."
+    ],
+    "expectedOutput": "source_node | target_node | path_string    | is_cycle\nA           | B           | /A/B/          | false\nB           | C           | /A/B/C/        | false\nC           | D           | /A/B/C/D/      | false"
+  },
+  {
+    "id": "sql-ex-38",
+    "title": "Shortest Path / Breadth-First Search (BFS) in Relational Flight Graphs",
+    "category": "Common Table Expressions & Recursion",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Finds the minimum number of layovers and cheapest route between two flight hubs using recursive breadth-first traversal.",
+    "conceptsCovered": [
+      "Breadth-First Search (BFS)",
+      "Shortest Path in SQL",
+      "Cumulative Cost Minimization",
+      "Hop Count Bounding"
+    ],
+    "code": "-- Find flight routes between SFO and JFK with at most 2 layovers\nWITH RECURSIVE flight_search AS (\n    -- Anchor: Direct departures from SFO\n    SELECT \n        origin,\n        destination,\n        cost,\n        1 AS num_hops,\n        CAST(origin || ' -> ' || destination AS VARCHAR(500)) AS itinerary\n    FROM flight_legs\n    WHERE origin = 'SFO'\n\n    UNION ALL\n\n    -- Recursive Member: Connect connecting flights\n    SELECT \n        fs.origin,\n        fl.destination,\n        fs.cost + fl.cost,\n        fs.num_hops + 1,\n        CAST(fs.itinerary || ' -> ' || fl.destination AS VARCHAR(500))\n    FROM flight_search fs\n    INNER JOIN flight_legs fl \n        ON fs.destination = fl.origin\n    WHERE fs.num_hops < 3 -- Maximum 2 layovers (3 hops)\n      AND fs.destination <> 'JFK' -- Stop traversing if destination reached\n)\nSELECT \n    itinerary,\n    num_hops,\n    cost\nFROM flight_search\nWHERE destination = 'JFK'\nORDER BY cost ASC, num_hops ASC;",
+    "breakdown": [
+      "Explores flight legs layer by layer from the origin city.",
+      "Accumulates monetary cost (`fs.cost + fl.cost`) and hops count at each connecting flight.",
+      "Enforces a hard boundary condition (`num_hops < 3`) to bound the computational search space.",
+      "Sorts by cost and num_hops to identify optimal itineraries."
+    ],
+    "expectedOutput": "itinerary               | num_hops | cost\nSFO -> JFK              | 1        | 350.00\nSFO -> ORD -> JFK       | 2        | 295.00\nSFO -> DEN -> ORD -> JFK| 3        | 240.00"
+  },
+  {
+    "id": "sql-ex-39",
+    "title": "Category Breadcrumb Path Construction (/Electronics/Audio/Headphones)",
+    "category": "Common Table Expressions & Recursion",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Reconstructs full URL SEO breadcrumb paths for deeply nested e-commerce product categories from child up to root.",
+    "conceptsCovered": [
+      "Hierarchical Breadcrumb Construction",
+      "Bottom-Up Tree Traversal",
+      "String Concatenation in Recursion",
+      "Catalog Navigation"
+    ],
+    "code": "-- Generate breadcrumb navigation paths for all leaf product categories\nWITH RECURSIVE category_path AS (\n    -- Anchor: Start at the category itself\n    SELECT \n        category_id,\n        parent_id,\n        category_name,\n        CAST('/' || slug AS VARCHAR(1000)) AS full_path\n    FROM product_categories\n\n    UNION ALL\n\n    -- Recursive Member: Walk up to parent\n    SELECT \n        cp.category_id,\n        p.parent_id,\n        p.category_name,\n        CAST('/' || p.slug || cp.full_path AS VARCHAR(1000))\n    FROM category_path cp\n    INNER JOIN product_categories p \n        ON cp.parent_id = p.category_id\n)\nSELECT \n    category_id,\n    full_path\nFROM category_path\nWHERE parent_id IS NULL -- Only select rows where the root ancestor was reached\nORDER BY category_id;",
+    "breakdown": [
+      "Performs bottom-up tree traversal starting from all categories simultaneously.",
+      "Walks up parent links, prepending each ancestor's slug to the front of full_path.",
+      "Filtering WHERE parent_id IS NULL in the outer query extracts the completely resolved paths.",
+      "Prepares hierarchical URL routing for frontend e-commerce storefronts."
+    ],
+    "expectedOutput": "category_id | full_path\n1           | /electronics\n5           | /electronics/audio\n14          | /electronics/audio/noise-cancelling-headphones"
+  },
+  {
+    "id": "sql-ex-40",
+    "title": "Cumulative Discount / Interest Calculation via Recursive Iteration",
+    "category": "Common Table Expressions & Recursion",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Simulates an amortization schedule or compound interest accrual month-by-month using iterative mathematical recursion in SQL.",
+    "conceptsCovered": [
+      "Iterative Amortization Schedule",
+      "Compound Interest Simulation",
+      "Mathematical State Progression",
+      "Financial Modeling in SQL"
+    ],
+    "code": "-- Calculate 12-month loan amortization schedule for a $10,000 loan at 1% monthly interest\nWITH RECURSIVE amortization AS (\n    -- Anchor: Month 0 (Starting loan balance)\n    SELECT \n        0 AS month_num,\n        CAST(10000.00 AS NUMERIC(12,2)) AS remaining_balance,\n        CAST(0.00 AS NUMERIC(12,2)) AS interest_paid,\n        CAST(0.00 AS NUMERIC(12,2)) AS principal_paid\n    \n    UNION ALL\n    \n    -- Recursive Step: Advance month by month with $888.49 fixed payment\n    SELECT \n        a.month_num + 1,\n        CAST(\n            a.remaining_balance + (a.remaining_balance * 0.01) - 888.49 \n            AS NUMERIC(12,2)\n        ),\n        CAST(a.remaining_balance * 0.01 AS NUMERIC(12,2)),\n        CAST(888.49 - (a.remaining_balance * 0.01) AS NUMERIC(12,2))\n    FROM amortization a\n    WHERE a.month_num < 12\n)\nSELECT \n    month_num,\n    remaining_balance,\n    interest_paid,\n    principal_paid\nFROM amortization\nWHERE month_num > 0\nORDER BY month_num;",
+    "breakdown": [
+      "Emulates imperative looping directly within declarative SQL.",
+      "Each iterative step receives the previous month's remaining balance, applies interest, deducts payment, and passes state to the next row.",
+      "Terminates deterministically when month_num reaches 12.",
+      "Computes complete amortization schedules without pulling data out to Python or Excel."
+    ],
+    "expectedOutput": "month_num | remaining_balance | interest_paid | principal_paid\n1         | 9211.51           | 100.00        | 788.49\n2         | 8415.14           | 92.12         | 796.37\n12        | 0.00              | 8.80          | 879.69"
+  },
+  {
+    "id": "sql-ex-41",
+    "title": "Querying Closure Tables for High-Speed Arbitrary Depth Subtree Lookups",
+    "category": "Common Table Expressions & Recursion",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Demonstrates querying a relational Closure Table (ancestor, descendant, depth) to fetch an entire subtree instantaneously in O(1) joins without recursive overhead.",
+    "conceptsCovered": [
+      "Closure Table Pattern",
+      "Arbitrary Subtree Fetching",
+      "Precomputed Hierarchy",
+      "High-Performance Relational Read Design"
+    ],
+    "code": "-- Retrieve all descendants under 'Engineering' (dept_id = 10) at any depth\nSELECT \n    d.department_id,\n    d.department_name,\n    c.depth\nFROM department_closure c\nINNER JOIN departments d \n    ON c.descendant_id = d.department_id\nWHERE c.ancestor_id = 10\nORDER BY c.depth ASC, d.department_name ASC;",
+    "breakdown": [
+      "The closure table pre-stores every ancestor-descendant pair along with the path length (depth).",
+      "Eliminates the CPU cost of recursive CTEs during high-frequency read operations.",
+      "Fetching an entire subtree of 10,000 nodes requires a simple indexed equi-join on ancestor_id.",
+      "A classic relational design trade-off: slight write amplification on insert in exchange for lightning-fast reads."
+    ],
+    "expectedOutput": "department_id | department_name       | depth\n10            | Engineering           | 0\n12            | Frontend Core         | 1\n13            | Backend Platform      | 1\n24            | Database Engineering  | 2"
+  },
+  {
+    "id": "sql-ex-42",
+    "title": "Recursive Number Series Generation for Missing Sequence Gap Detection",
+    "category": "Common Table Expressions & Recursion",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Finds missing invoice numbers in a sequential sequence to detect deleted records or fraud using a recursive numbers tally CTE.",
+    "conceptsCovered": [
+      "Gap Detection in Sequences",
+      "Recursive Number Generator",
+      "Anti-Join on Sequence Tally",
+      "Audit & Compliance Queries"
+    ],
+    "code": "-- Find missing invoice numbers in the range 1001 to 1010\nWITH RECURSIVE expected_numbers AS (\n    SELECT 1001 AS invoice_num\n    UNION ALL\n    SELECT invoice_num + 1 \n    FROM expected_numbers \n    WHERE invoice_num < 1010\n)\nSELECT \n    en.invoice_num AS missing_invoice_number\nFROM expected_numbers en\nLEFT OUTER JOIN invoices inv \n    ON en.invoice_num = inv.invoice_number\nWHERE inv.invoice_number IS NULL;",
+    "breakdown": [
+      "expected_numbers generates the unbroken sequence from MIN to MAX integer bounds.",
+      "LEFT OUTER JOIN ... WHERE inv.invoice_number IS NULL isolates missing values.",
+      "Essential compliance check for legally required consecutive document number sequences (invoices, checks, receipts).",
+      "Identifies missing rows in seconds without external procedural scripts."
+    ],
+    "expectedOutput": "missing_invoice_number\n1004\n1007"
+  },
+  {
+    "id": "sql-ex-43",
+    "title": "Keyset Cursor Pagination on Composite Unique Keys",
+    "category": "Views, Security & Real-World SQL Patterns",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Replaces slow, skipping-prone OFFSET pagination with deterministic, constant-time O(1) keyset (cursor) pagination using row comparison predicates.",
+    "conceptsCovered": [
+      "Keyset / Cursor Pagination",
+      "Composite Row Comparison (Tuple Comparison)",
+      "OFFSET Anti-Pattern Elimination",
+      "Deterministic Feed Ordering"
+    ],
+    "code": "-- Fetch page 2 of 20 items where the last seen item had (created_at = '2026-03-01 14:00:00', order_id = 4590)\nSELECT \n    order_id,\n    customer_id,\n    created_at,\n    total_amount\nFROM orders\nWHERE (created_at, order_id) < ('2026-03-01 14:00:00', 4590)\nORDER BY created_at DESC, order_id DESC\nLIMIT 20;\n\n-- Equivalent standard expansion if database lacks tuple comparison:\n-- WHERE created_at < '2026-03-01 14:00:00' \n--    OR (created_at = '2026-03-01 14:00:00' AND order_id < 4590)",
+    "breakdown": [
+      "OFFSET 10000 forces the database to read, sort, and discard 10,000 physical rows before returning results (O(N) cost).",
+      "Keyset pagination seeks directly to the index position following the last seen cursor tuple in O(log N) time.",
+      "Pairing created_at with the primary key order_id ensures deterministic ordering even when timestamps collide.",
+      "Completely eliminates pagination drift when new items are inserted concurrently."
+    ],
+    "expectedOutput": "order_id | customer_id | created_at          | total_amount\n4589     | 109         | 2026-03-01 13:58:22 | 149.50\n4588     | 214         | 2026-03-01 13:55:10 | 89.00"
+  },
+  {
+    "id": "sql-ex-44",
+    "title": "Batch Chunked Data Archival & Deletion Loop",
+    "category": "Views, Security & Real-World SQL Patterns",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Purges millions of expired records safely in small bounded chunks of 5,000 rows to prevent table lock escalation, transaction log exhaustion, and replication lag.",
+    "conceptsCovered": [
+      "Chunked Bounded Deletions",
+      "Lock Escalation Prevention",
+      "Transaction Log Preservation",
+      "Subquery LIMIT Target"
+    ],
+    "code": "-- Purge expired audit logs in bounded chunks of 5,000 rows (run repeatedly in a script until rows_affected == 0)\nDELETE FROM audit_logs\nWHERE log_id IN (\n    SELECT log_id\n    FROM audit_logs\n    WHERE log_timestamp < CURRENT_DATE - INTERVAL '90' DAY\n    ORDER BY log_id ASC\n    LIMIT 5000\n);",
+    "breakdown": [
+      "A raw 'DELETE FROM audit_logs WHERE log_timestamp < ...' on 50 million rows creates a massive lock, explodes the undo/redo log, and stalls queries.",
+      "Bounding deletes to 5,000 rows per transaction releases row locks frequently, allowing concurrent business writes to proceed.",
+      "Sorting by primary key log_id ASC prevents deadlocks between concurrent archival jobs.",
+      "Applications execute this statement in a loop until row count affected is 0."
+    ],
+    "expectedOutput": "Query executed successfully. 5000 rows deleted. (Duration: 42ms)"
+  },
+  {
+    "id": "sql-ex-45",
+    "title": "Optimistic Concurrency Control (OCC) with Version Stamp",
+    "category": "Transactions, ACID & Isolation Levels",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Prevents lost updates in concurrent environments by asserting that the row version stamp has not changed between reading and updating.",
+    "conceptsCovered": [
+      "Optimistic Concurrency Control (OCC)",
+      "Lost Update Prevention",
+      "Version Counter / Timestamp",
+      "Zero-Locking Scalability"
+    ],
+    "code": "-- Thread A and Thread B read customer with version = 4\n-- Thread A executes update:\nUPDATE customer_accounts\nSET \n    account_balance = account_balance - 50.00,\n    version = version + 1,\n    updated_at = CURRENT_TIMESTAMP\nWHERE account_id = 'ACC-1001'\n  AND version = 4; -- Assert version matches what was read\n\n-- Application checks affected row count:\n-- If affected_rows == 1: Success.\n-- If affected_rows == 0: Concurrent update conflict! Roll back and retry with refreshed state.",
+    "breakdown": [
+      "Avoids heavy database pessimistic locks (like SELECT FOR UPDATE) across long client interaction times.",
+      "The version predicate acts as an atomic compare-and-swap (CAS) check.",
+      "If a concurrent user updated the account first, the version is already 5, so WHERE version = 4 matches 0 rows.",
+      "The client detects zero affected rows and safely prompts the user or retries without corrupting balance."
+    ],
+    "expectedOutput": "UPDATE 1 (Success: row balance decremented, version bumped from 4 to 5)"
+  },
+  {
+    "id": "sql-ex-46",
+    "title": "Parameterized Defense Against SQL Injection Attacks",
+    "category": "Views, Security & Real-World SQL Patterns",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Contrasts catastrophic dynamic string concatenation with parameterized prepared statements across relational SQL drivers.",
+    "conceptsCovered": [
+      "SQL Injection (SQLi) Vulnerability",
+      "Parameterized Queries / Placeholders",
+      "Prepared Statements",
+      "Query Plan Caching"
+    ],
+    "code": "-- 1. VULNERABLE ANTI-PATTERN: String concatenation (Never do this!)\n-- Input payload: user_input = \"' OR '1'='1\"\n-- Query executed: SELECT * FROM users WHERE email = '' OR '1'='1' AND is_active = TRUE;\n-- Result: Leaks all accounts, bypassing authentication!\n\n-- 2. SECURE PRODUCTION PATTERN: Parameterized Query\n-- In PostgreSQL: $1, $2\n-- In MySQL/SQLite: ?\n-- In SQL Server/Oracle: @p1 or :p1\nSELECT user_id, full_name, email, password_hash\nFROM users\nWHERE email = $1 \n  AND is_active = TRUE;",
+    "breakdown": [
+      "Dynamic string concatenation treats user input as executable SQL code, enabling malicious query injection.",
+      "Parameterized queries separate SQL structure from data: parameters are sent in a separate protocol packet after compilation.",
+      "The database parser treats parameter values strictly as literal values, never as syntax tokens or operators.",
+      "Additionally enables query execution plan reuse, speeding up high-frequency transactional lookups."
+    ],
+    "expectedOutput": "user_id | full_name | email            | password_hash\n42      | Alice     | alice@target.com | $2b$12$e8Y..."
+  },
+  {
+    "id": "sql-ex-47",
+    "title": "Updatable SQL View with WITH CHECK OPTION Security Guard",
+    "category": "Views, Security & Real-World SQL Patterns",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Creates an updatable security view that restricts tenant updates to their own organization and uses WITH CHECK OPTION to prevent privilege leakage.",
+    "conceptsCovered": [
+      "Updatable Views",
+      "WITH CHECK OPTION",
+      "Multi-Tenant Partitioning",
+      "Constraint Leak Prevention"
+    ],
+    "code": "-- 1. Create updatable view for EMEA sales team\nCREATE VIEW emea_sales_view AS\nSELECT \n    sale_id,\n    sales_rep_id,\n    region,\n    deal_value,\n    status\nFROM sales_opportunities\nWHERE region = 'EMEA'\nWITH CHECK OPTION;\n\n-- 2. Legitimate update:\nUPDATE emea_sales_view \nSET deal_value = deal_value * 1.10\nWHERE sale_id = 501;\n\n-- 3. Unauthorized attempt to hijack record into another region (BLOCKED!):\n-- UPDATE emea_sales_view SET region = 'NORTH_AMERICA' WHERE sale_id = 501;\n-- ERROR: new row violates WITH CHECK OPTION for view \"emea_sales_view\"",
+    "breakdown": [
+      "Standard views with simple 1-to-1 projections without aggregates are natively updatable.",
+      "Without 'WITH CHECK OPTION', a user could UPDATE a row to change its region to 'NORTH_AMERICA', causing the row to disappear from their view and bypass boundaries.",
+      "WITH CHECK OPTION forces every INSERT and UPDATE through the view to satisfy the view's WHERE predicate.",
+      "Provides robust database-enforced row isolation for specific database users or roles."
+    ],
+    "expectedOutput": "View emea_sales_view created. Updates strictly enforced against region = 'EMEA'."
+  },
+  {
+    "id": "sql-ex-48",
+    "title": "SARGable vs Non-SARGable Range Predicates on Timestamps",
+    "category": "Indexing Theory & SARGability",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Fixes a notorious query performance disaster by refactoring a function-wrapped date filter into an index-friendly SARGable range predicate.",
+    "conceptsCovered": [
+      "SARGability (Search Argument Ability)",
+      "Index Seek vs Table Scan",
+      "Function Wrapping on Columns Anti-Pattern",
+      "Half-Open Interval [Start, End)"
+    ],
+    "code": "-- 1. NON-SARGABLE ANTI-PATTERN: Function on column kills index seek!\n-- The database must execute DATE() on every single row in the table (Full Table Scan)\nSELECT order_id, order_date, total_amount\nFROM orders\nWHERE CAST(order_date AS DATE) = '2026-03-01';\n\n-- 2. SARGABLE HIGH-PERFORMANCE REFACTOR: Leaves column bare!\n-- Executes an instantaneous B-Tree Range Seek on the index (order_date)\nSELECT order_id, order_date, total_amount\nFROM orders\nWHERE order_date >= '2026-03-01 00:00:00'\n  AND order_date < '2026-03-02 00:00:00';",
+    "breakdown": [
+      "Wrapping indexed columns in functions (CAST, YEAR, UPPER, ROUND) hides the values from the B-Tree index structure.",
+      "A bare column compared against evaluated constant boundaries is SARGable, enabling O(log N) index seeks.",
+      "The half-open interval [2026-03-01, 2026-03-02) accurately captures all millisecond/microsecond variations without BETWEEN edge bugs.",
+      "Can improve query latency from 12 seconds to 2 milliseconds on large tables."
+    ],
+    "expectedOutput": "order_id | order_date          | total_amount\n8001     | 2026-03-01 04:12:00 | 120.00\n8002     | 2026-03-01 23:59:58 | 450.00"
+  },
+  {
+    "id": "sql-ex-49",
+    "title": "Row-Level Locking Patterns: SELECT FOR UPDATE vs Share Locks",
+    "category": "Transactions, ACID & Isolation Levels",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Acquires an exclusive row lock using SELECT ... FOR UPDATE within a transaction to safely deduct inventory without double allocation.",
+    "conceptsCovered": [
+      "Pessimistic Locking",
+      "SELECT ... FOR UPDATE",
+      "Row-Level Lock Contention",
+      "Race Condition Elimination"
+    ],
+    "code": "-- Inventory deduction routine in high-concurrency flash sale\nBEGIN TRANSACTION;\n\n-- Step 1: Lock the specific inventory row exclusively\nSELECT product_id, stock_quantity\nFROM product_inventory\nWHERE product_id = 99\nFOR UPDATE;\n\n-- Step 2: Check stock and decrement within the same protected transaction\nUPDATE product_inventory\nSET stock_quantity = stock_quantity - 1\nWHERE product_id = 99\n  AND stock_quantity >= 1;\n\n-- Step 3: Record allocation\nINSERT INTO stock_allocations (order_id, product_id, allocated_at)\nVALUES (1001, 99, CURRENT_TIMESTAMP);\n\nCOMMIT;",
+    "breakdown": [
+      "SELECT FOR UPDATE places an exclusive row-level lock on the selected row until the transaction commits or aborts.",
+      "Other concurrent transactions attempting to read with FOR UPDATE on the same row will wait until the lock is released.",
+      "Prevents flash sale over-selling race conditions where two threads read stock = 1 simultaneously and both decrement.",
+      "Always ensure transactions with FOR UPDATE are kept minimal and fast to prevent lock queues."
+    ],
+    "expectedOutput": "COMMIT completed. Inventory deducted safely without race conditions."
+  },
+  {
+    "id": "sql-ex-50",
+    "title": "Multi-Table Transaction with Rollback and Savepoints",
+    "category": "Transactions, ACID & Isolation Levels",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Demonstrates transaction management with partial rollback to a SAVEPOINT, allowing non-critical operations to fail without aborting the main transaction.",
+    "conceptsCovered": [
+      "ACID Transactions",
+      "SAVEPOINT & ROLLBACK TO SAVEPOINT",
+      "Partial Rollback Recovery",
+      "Atomic Consistency"
+    ],
+    "code": "-- Transfer funds between bank accounts with optional promotional reward logging\nBEGIN TRANSACTION;\n\n-- Step 1: Mandatory balance transfer\nUPDATE bank_accounts SET balance = balance - 500.00 WHERE account_id = 'ACC-A';\nUPDATE bank_accounts SET balance = balance + 500.00 WHERE account_id = 'ACC-B';\n\n-- Step 2: Set savepoint before attempting non-critical promotional bonus\nSAVEPOINT promo_savepoint;\n\n-- Attempt bonus insert (may fail if promo rule constraint violated)\nINSERT INTO promotional_credits (account_id, bonus_amount, reason)\nVALUES ('ACC-B', 25.00, 'SPRING_PROMO_2026');\n\n-- If bonus fails in application logic:\n-- ROLLBACK TO SAVEPOINT promo_savepoint;\n-- The $500 balance transfer remains intact and can proceed to commit!\n\nCOMMIT;",
+    "breakdown": [
+      "BEGIN TRANSACTION initiates an atomic block guaranteeing all-or-nothing execution.",
+      "SAVEPOINT marks an intermediate milestone within the transaction.",
+      "ROLLBACK TO SAVEPOINT undoes changes made after the savepoint without discarding the preceding updates.",
+      "COMMIT persists all active changes durably to disk."
+    ],
+    "expectedOutput": "Transaction committed successfully. Primary funds transfer guaranteed."
+  },
+  {
+    "id": "sql-ex-51",
+    "title": "Least Privilege Security: Granting Granular Table and Column Permissions",
+    "category": "Views, Security & Real-World SQL Patterns",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Enforces the principle of least privilege by granting specific read/write permissions to custom application roles and masking sensitive columns.",
+    "conceptsCovered": [
+      "Role-Based Access Control (RBAC)",
+      "GRANT & REVOKE Statements",
+      "Column-Level Permissions",
+      "Principle of Least Privilege"
+    ],
+    "code": "-- 1. Create restricted reporting role\nCREATE ROLE reporting_readonly_user;\n\n-- 2. Grant table-level read access to dimensions\nGRANT SELECT ON products, categories TO reporting_readonly_user;\n\n-- 3. Grant column-level read access on customers, withholding SSN and password hashes!\nGRANT SELECT (customer_id, full_name, email, city, country) \nON customers TO reporting_readonly_user;\n\n-- 4. Revoke public default privileges\nREVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;",
+    "breakdown": [
+      "Never connect production applications using the superuser ('postgres' or 'root') account.",
+      "GRANT SELECT (col1, col2) restricts the role from projecting sensitive columns like ssn or password_hash.",
+      "Attempting 'SELECT ssn FROM customers' using reporting_readonly_user raises an immediate SQL permission denied error.",
+      "Revoking defaults from PUBLIC ensures defense-in-depth across the entire schema."
+    ],
+    "expectedOutput": "Roles and granular permissions configured. Sensitive fields masked from reporting user."
+  },
+  {
+    "id": "sql-ex-52",
+    "title": "Schema Evolution: Adding Non-Null Columns with Defaults Without Locking",
+    "category": "Normalization, Keys & DDL Constraints",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Analyzes modern ANSI and relational patterns for non-blocking DDL migrations when adding NOT NULL columns with default values to massive tables.",
+    "conceptsCovered": [
+      "Zero-Downtime DDL Migration",
+      "Metadata-Only Default Addition",
+      "NOT NULL Constraint Phasing",
+      "Table Lock Avoidance"
+    ],
+    "code": "-- Modern Zero-Downtime Migration Pattern:\n-- In modern SQL engines, ALTER TABLE ADD COLUMN with DEFAULT and NOT NULL is a metadata-only change (O(1)).\n-- In legacy databases, breaking it into phased steps prevents full-table rewrite:\n\n-- Step 1: Add column as nullable (instantaneous metadata update)\nALTER TABLE user_accounts \nADD COLUMN is_mfa_enabled BOOLEAN DEFAULT FALSE;\n\n-- Step 2: Backfill existing rows in bounded batches (if legacy engine did not backfill in metadata)\n-- UPDATE user_accounts SET is_mfa_enabled = FALSE WHERE is_mfa_enabled IS NULL;\n\n-- Step 3: Add NOT NULL constraint once existing rows are compliant\nALTER TABLE user_accounts \nALTER COLUMN is_mfa_enabled SET NOT NULL;",
+    "breakdown": [
+      "In older database engines, ADD COLUMN ... DEFAULT ... NOT NULL locked the entire table while rewriting every row on disk.",
+      "Modern relational engines (PostgreSQL 11+, modern MySQL/SQL Server) optimize constant defaults as fast metadata updates.",
+      "Breaking large migrations into nullable addition, batch backfilling, and constraint enforcement prevents production table deadlocks.",
+      "Fundamental standard practice for zero-downtime continuous deployment pipelines."
+    ],
+    "expectedOutput": "ALTER TABLE completed. Column added without table rewrite lock."
+  }
+]

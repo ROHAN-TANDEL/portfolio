@@ -49,7 +49,11 @@
     "icon": "SQL",
     "iconColor": "bg-blue-600 text-white",
     "description": "Relational queries, joins, indexes, normalization & aggregation",
-    "dataFile": "sql.json"
+    "dataFile": "sql.json",
+    "qaFile": "sql.qa.json",
+    "deepFile": "sql.deep.json",
+    "examplesFile": "sql.examples.json",
+    "productionFile": "sql.production.json"
   },
   {
     "id": "awsiam",
@@ -85,7 +89,11 @@
     "icon": "PG",
     "iconColor": "bg-sky-700 text-white",
     "description": "Advanced queries, indexing techniques, transactions & JSONB",
-    "dataFile": "pgsql.json"
+    "dataFile": "pgsql.json",
+    "qaFile": "pgsql.qa.json",
+    "deepFile": "pgsql.deep.json",
+    "examplesFile": "pgsql.examples.json",
+    "productionFile": "pgsql.production.json"
   },
   {
     "id": "awss3",
