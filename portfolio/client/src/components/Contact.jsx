@@ -7,7 +7,19 @@ export default function Contact({ contact, identity, resumes = [] }) {
   const githubHandle = identity.github.replace(/^https?:\/\/(www\.)?/, '');
 
   return (
-    <section id="contact" className="py-[100px] sm:py-[125px] border-t border-[var(--border)]">
+    <section id="contact" className="py-[100px] sm:py-[125px] border-t border-[var(--border)] relative overflow-hidden">
+      {/* Background laptop illustration with 0.05 opacity */}
+      <div
+        className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-12 sm:translate-x-6 lg:translate-x-0 w-[340px] sm:w-[480px] lg:w-[600px] pointer-events-none select-none -z-10 opacity-[0.05]"
+        aria-hidden="true"
+      >
+        <img
+          src={`${import.meta.env.BASE_URL}lap.png`}
+          alt=""
+          className="w-full h-auto object-contain dark:mix-blend-screen mix-blend-multiply filter dark:invert-0 invert"
+        />
+      </div>
+
       <div className="uppercase tracking-[2px] text-[13px] font-semibold text-[var(--muted)] mb-7">
         05 / Get in touch
       </div>
