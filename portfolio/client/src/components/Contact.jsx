@@ -75,7 +75,7 @@ export default function Contact({ contact, identity, resumes = [] }) {
               {resumes.map((resume) => (
                 <a
                   key={resume.id}
-                  href={`/${resume.filename}`}
+                  href={`${import.meta.env.BASE_URL}${resume.filename}`}
                   download={resume.filename}
                   className="text-[13px] sm:text-[14px] text-[var(--text)] hover:text-[var(--accent)] transition-colors font-medium underline underline-offset-4 decoration-[var(--border)] hover:decoration-[var(--accent)] inline-flex items-center gap-1.5"
                   title={`Download ${resume.title}`}
@@ -87,7 +87,7 @@ export default function Contact({ contact, identity, resumes = [] }) {
             </div>
           ) : (
             <a
-              href="/Rohan_Tandel_Resume.pdf"
+              href={`${import.meta.env.BASE_URL}Rohan_Tandel_Resume.pdf`}
               download="Rohan_Tandel_Resume.pdf"
               className="text-[15px] sm:text-[16px] text-[var(--text)] hover:text-[var(--accent)] transition-colors font-medium underline underline-offset-4 decoration-[var(--border)] hover:decoration-[var(--accent)] inline-flex items-center gap-1.5"
               title="Download PDF version of résumé"

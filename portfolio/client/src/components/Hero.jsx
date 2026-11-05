@@ -19,7 +19,7 @@ export default function Hero({ hero, resumes = [] }) {
           }}
         >
           <img
-            src="/boat.png"
+            src={`${import.meta.env.BASE_URL}boat.png`}
             alt="Paper boat illustration"
             className="w-full h-auto object-contain dark:mix-blend-screen mix-blend-multiply filter dark:invert-0 invert contrast-125 dark:contrast-110"
           />
@@ -62,7 +62,7 @@ export default function Hero({ hero, resumes = [] }) {
             {resumes.map((resume) => (
               <a
                 key={resume.id}
-                href={`/${resume.filename}`}
+                href={`${import.meta.env.BASE_URL}${resume.filename}`}
                 download={resume.filename}
                 className="inline-flex items-center gap-2 px-3.5 py-2 rounded-md border border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-hover)] hover:border-[var(--accent)] transition-all group text-[13px] font-medium text-[var(--text)]"
                 title={`Download ${resume.title} (${resume.role})`}
