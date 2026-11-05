@@ -1,0 +1,1120 @@
+[
+  {
+    "id": "next-ex-01",
+    "title": "Root Layout with Global Font, Metadata & Theme Provider",
+    "category": "App Router & RSC",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "A production Root Layout (app/layout.tsx) configuring zero-layout-shift Google Fonts via next/font, static OpenGraph metadata, and a client-side ThemeProvider context bridge.",
+    "conceptsCovered": [
+      "Root Layout",
+      "next/font/google",
+      "Metadata",
+      "Client Context Provider",
+      "Zero-CLS"
+    ],
+    "code": "// app/layout.tsx\nimport type { Metadata } from \"next\";\nimport { Inter } from \"next/font/google\";\nimport { ThemeProvider } from \"@/components/ThemeProvider\";\nimport \"@/app/globals.css\";\n\n// 1. Configure Inter font with display swap and CSS variable\nconst inter = Inter({\n  subsets: [\"latin\"],\n  display: \"swap\",\n  variable: \"--font-inter\"\n});\n\n// 2. Static Root Metadata\nexport const metadata: Metadata = {\n  title: {\n    template: \"%s | Acme Enterprise\",\n    default: \"Acme Enterprise Platform\"\n  },\n  description: \"Next-generation cloud management platform.\",\n  metadataBase: new URL(\"https://acme.com\"),\n  openGraph: {\n    type: \"website\",\n    locale: \"en_US\",\n    url: \"https://acme.com\",\n    siteName: \"Acme Enterprise\"\n  }\n};\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang=\"en\" className={inter.variable} suppressHydrationWarning>\n      <body className=\"min-h-screen bg-slate-50 text-slate-900 font-sans antialiased\">\n        {/* Client Provider wraps children without converting children into Client Components! */}\n        <ThemeProvider attribute=\"class\" defaultTheme=\"system\" enableSystem>\n          <header className=\"border-b p-4 flex justify-between items-center bg-white\">\n            <span className=\"font-bold text-lg\">Acme Corp</span>\n          </header>\n          <main>{children}</main>\n        </ThemeProvider>\n      </body>\n    </html>\n  );\n}",
+    "breakdown": [
+      "Sets up Next.js root layout with mandatory <html> and <body> tags.",
+      "Self-hosts Inter font automatically via next/font to eliminate font swap layout shifts.",
+      "Configures title template ('%s | Acme Enterprise') inherited by all child pages.",
+      "Mounts ThemeProvider client boundary cleanly at the root."
+    ],
+    "expectedOutput": "Renders universal application shell with pre-loaded font and theme context."
+  },
+  {
+    "id": "next-ex-02",
+    "title": "Nested Dashboard Layout with Preserved Sidebar State",
+    "category": "Routing Conventions",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A nested dashboard layout with a collapsible interactive client sidebar that preserves open/closed state across navigations between sibling child pages.",
+    "conceptsCovered": [
+      "Nested Layout",
+      "State Preservation",
+      "Client Sidebar",
+      "Partial Rendering",
+      "Sub-routes"
+    ],
+    "code": "// 1. Interactive Client Sidebar: components/DashboardSidebar.tsx\n\"use client\";\n\nimport { useState } from \"react\";\nimport Link from \"next/link\";\nimport { usePathname } from \"next/navigation\";\n\nexport function DashboardSidebar() {\n  const [collapsed, setCollapsed] = useState(false);\n  const pathname = usePathname();\n\n  const links = [\n    { href: \"/dashboard\", label: \"Overview\" },\n    { href: \"/dashboard/analytics\", label: \"Analytics\" },\n    { href: \"/dashboard/billing\", label: \"Billing\" }\n  ];\n\n  return (\n    <aside className={`border-r bg-white p-4 transition-all ${collapsed ? \"w-16\" : \"w-64\"}`}>\n      <button\n        onClick={() => setCollapsed(!collapsed)}\n        className=\"mb-4 text-xs font-bold text-slate-500 hover:text-black\"\n      >\n        {collapsed ? \"▶\" : \"◀ COLLAPSE\"}\n      </button>\n      <nav className=\"flex flex-col gap-2\">\n        {links.map(l => (\n          <Link\n            key={l.href}\n            href={l.href}\n            className={`p-2 rounded font-medium ${pathname === l.href ? \"bg-slate-900 text-white\" : \"hover:bg-slate-100\"}`}\n          >\n            {collapsed ? l.label[0] : l.label}\n          </Link>\n        ))}\n      </nav>\n    </aside>\n  );\n}\n\n// 2. Nested Layout: app/dashboard/layout.tsx\nimport { DashboardSidebar } from \"@/components/DashboardSidebar\";\n\nexport default function DashboardLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <div className=\"flex min-h-[calc(100vh-65px)]\">\n      {/* Sidebar instance is preserved when user navigates between /analytics and /billing! */}\n      <DashboardSidebar />\n      <div className=\"flex-1 p-8 bg-slate-50\">{children}</div>\n    </div>\n  );\n}",
+    "breakdown": [
+      "Demonstrates App Router partial rendering: only children swap during navigation.",
+      "Sidebar collapse state remains completely intact when navigating between dashboard tabs.",
+      "Uses usePathname hook to highlight the active link in the sidebar.",
+      "Wraps dashboard routes without altering the public URL paths."
+    ],
+    "expectedOutput": "Collapsible sidebar persists state while switching between /dashboard/analytics and /billing."
+  },
+  {
+    "id": "next-ex-03",
+    "title": "Animated Page Transitions using `template.tsx`",
+    "category": "Routing Conventions",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Using template.tsx with Framer Motion to trigger enter and exit animations on every sub-route navigation where layout.tsx would normally persist.",
+    "conceptsCovered": [
+      "template.tsx",
+      "layout.tsx vs template.tsx",
+      "Framer Motion",
+      "Page Transitions",
+      "Re-mounting"
+    ],
+    "code": "// app/portfolio/template.tsx\n\"use client\";\n\nimport { motion } from \"framer-motion\";\n\nexport default function PortfolioTemplate({ children }: { children: React.ReactNode }) {\n  return (\n    // Unlike layout.tsx, template.tsx generates a brand-new component instance\n    // on EVERY route change, triggering this animation on every click!\n    <motion.div\n      initial={{ opacity: 0, y: 20 }}\n      animate={{ opacity: 1, y: 0 }}\n      exit={{ opacity: 0, y: -20 }}\n      transition={{ ease: \"easeInOut\", duration: 0.35 }}\n      className=\"w-full\"\n    >\n      {children}\n    </motion.div>\n  );\n}\n\n// app/portfolio/projects/page.tsx:\nexport default function ProjectsPage() {\n  return <div><h1 className=\"text-2xl font-bold\">Featured Projects</h1></div>;\n}\n\n// app/portfolio/about/page.tsx:\nexport default function AboutPage() {\n  return <div><h1 className=\"text-2xl font-bold\">About the Creator</h1></div>;\n}",
+    "breakdown": [
+      "Contrasts template.tsx against layout.tsx: templates re-mount on every navigation.",
+      "Applies smooth fade-in and slide-up transition via Framer Motion.",
+      "Ideal for re-triggering entrance animations and pageview tracking effects.",
+      "Does not interfere with parent layout navigation."
+    ],
+    "expectedOutput": "Navigating between /portfolio/projects and /portfolio/about smoothly fades and slides content."
+  },
+  {
+    "id": "next-ex-04",
+    "title": "Granular Route Segment Error Boundary with `reset()`",
+    "category": "Routing Conventions",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A dedicated error.tsx error boundary catching server rendering failures in a specific route segment, logging errors to Sentry, and providing a reset() retry handler.",
+    "conceptsCovered": [
+      "error.tsx",
+      "reset()",
+      "Error Boundary",
+      "Sentry",
+      "Blast Radius Isolation"
+    ],
+    "code": "// app/dashboard/billing/error.tsx\n\"use client\"; // Error boundaries MUST be Client Components!\n\nimport { useEffect } from \"react\";\n\nexport default function BillingErrorBoundary({\n  error,\n  reset\n}: {\n  error: Error & { digest?: string };\n  reset: () => void;\n}) {\n  useEffect(() => {\n    // Log exception to observability platform with unique error digest\n    console.error(`[BillingError] Digest: ${error.digest}`, error);\n  }, [error]);\n\n  return (\n    <div className=\"p-8 border border-red-200 bg-red-50 rounded-lg max-w-lg mx-auto mt-10 text-center\">\n      <div className=\"text-red-500 text-4xl mb-2\">⚠</div>\n      <h2 className=\"text-xl font-bold text-red-900\">Failed to Load Billing Records</h2>\n      <p className=\"text-sm text-red-700 mt-2\">\n        {error.message || \"An unexpected error occurred while communicating with Stripe.\"}\n      </p>\n      {error.digest && (\n        <p className=\"text-xs text-slate-400 mt-1\">Error Reference: {error.digest}</p>\n      )}\n      <div className=\"mt-6 flex justify-center gap-4\">\n        <button\n          onClick={() => reset()} // Re-attempts to execute Server Component render pass\n          className=\"px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded shadow\"\n        >\n          Retry Connection\n        </button>\n        <a href=\"/dashboard\" className=\"px-4 py-2 border border-slate-300 rounded hover:bg-white\">\n          Back to Overview\n        </a>\n      </div>\n    </div>\n  );\n}",
+    "breakdown": [
+      "Catches unhandled errors thrown inside billing/page.tsx.",
+      "Restricts the failure strictly to the billing view; header and sidebar remain fully interactive.",
+      "Exposes reset() function which prompts Next.js to re-render the Server Component tree.",
+      "Safely captures and displays error digest reference for production triage."
+    ],
+    "expectedOutput": "Catches billing fetch crash; displays isolated error UI with interactive Retry button."
+  },
+  {
+    "id": "next-ex-05",
+    "title": "Instant Skeleton Loading UI with `loading.tsx`",
+    "category": "Routing Conventions",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "An instant loading skeleton component colocated in loading.tsx that automatically streams to the browser while the route's async Server Component resolves.",
+    "conceptsCovered": [
+      "loading.tsx",
+      "Suspense Boundary",
+      "Skeleton UI",
+      "Streaming SSR",
+      "Instant Feedback"
+    ],
+    "code": "// app/analytics/loading.tsx\nexport default function AnalyticsLoadingSkeleton() {\n  return (\n    <div className=\"p-8 space-y-6 animate-pulse\">\n      {/* Page Header Skeleton */}\n      <div className=\"h-8 bg-slate-200 rounded w-1/3\"></div>\n      \n      {/* 4 Metric Card Skeletons */}\n      <div className=\"grid grid-cols-4 gap-4\">\n        {[...Array(4)].map((_, i) => (\n          <div key={i} className=\"h-28 bg-slate-200 rounded-lg\"></div>\n        ))}\n      </div>\n\n      {/* Large Chart Skeleton */}\n      <div className=\"h-96 bg-slate-200 rounded-lg\"></div>\n    </div>\n  );\n}\n\n// app/analytics/page.tsx:\n// While fetchSlowMetrics() awaits on server, loading.tsx displays instantly!\nexport default async function AnalyticsPage() {\n  const metrics = await fetchSlowMetrics(); // takes 750ms\n  return <AnalyticsDashboard metrics={metrics} />;\n}",
+    "breakdown": [
+      "Next.js automatically wraps analytics/page.tsx in a Suspense boundary with this fallback.",
+      "The skeleton streams to the client in < 25ms.",
+      "Prevents layout shift by pre-allocating the exact dimensions of cards and charts.",
+      "Replaced seamlessly by the real page when the async data finishes resolving."
+    ],
+    "expectedOutput": "Displays pulse animation skeleton instantly on navigation until data finishes loading."
+  },
+  {
+    "id": "next-ex-06",
+    "title": "Dynamic Segment `[id]` with Async Params in Next.js 15",
+    "category": "Routing Conventions",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A dynamic route page component implementing Next.js 15's asynchronous params Promise pattern, with static pre-generation via generateStaticParams.",
+    "conceptsCovered": [
+      "Dynamic Routes",
+      "Next.js 15",
+      "Async Params",
+      "generateStaticParams",
+      "notFound()"
+    ],
+    "code": "// app/posts/[postId]/page.tsx\nimport { db } from \"@/lib/db\";\nimport { notFound } from \"next/navigation\";\n\n// Next.js 15: params is a Promise!\ninterface PageProps {\n  params: Promise<{ postId: string }>;\n}\n\nexport async function generateStaticParams() {\n  // Pre-render the first 20 posts at build time (SSG)\n  const posts = await db.post.findMany({ select: { id: true }, take: 20 });\n  return posts.map(post => ({ postId: post.id }));\n}\n\nexport default async function PostDetailPage({ params }: PageProps) {\n  // MUST await params in Next.js 15!\n  const { postId } = await params;\n\n  const post = await db.post.findUnique({ where: { id: postId } });\n\n  // If record does not exist in DB, trigger not-found.tsx UI\n  if (!post) {\n    notFound();\n  }\n\n  return (\n    <article className=\"max-w-2xl mx-auto py-8\">\n      <h1 className=\"text-3xl font-extrabold\">{post.title}</h1>\n      <p className=\"mt-4 text-slate-700 leading-relaxed\">{post.content}</p>\n    </article>\n  );\n}",
+    "breakdown": [
+      "Adheres to Next.js 15 specification by awaiting params promise.",
+      "Implements generateStaticParams() for high-speed SSG build compilation.",
+      "Invokes notFound() to safely trigger 404 handler when database query returns null.",
+      "Combines static speed with dynamic database lookup fallback."
+    ],
+    "expectedOutput": "Renders post detail for /posts/123; triggers 404 if post does not exist."
+  },
+  {
+    "id": "next-ex-07",
+    "title": "Catch-All Documentation Route `[...slug]`",
+    "category": "Routing Conventions",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A multi-level documentation route using catch-all segments [...slug] to dynamically resolve arbitrarily deep nested markdown articles.",
+    "conceptsCovered": [
+      "Catch-All",
+      "[...slug]",
+      "Nested Docs",
+      "Breadcrumbs",
+      "Dynamic Segments"
+    ],
+    "code": "// app/docs/[...slug]/page.tsx\nimport { notFound } from \"next/navigation\";\n\ninterface DocsPageProps {\n  params: Promise<{ slug: string[] }>;\n}\n\nexport default async function DocsPage({ params }: DocsPageProps) {\n  const { slug } = await params;\n\n  // e.g. /docs/auth/jwt/refresh -> slug = ['auth', 'jwt', 'refresh']\n  const docPath = slug.join(\"/\");\n  const docContent = await fetchDocFromCms(docPath);\n\n  if (!docContent) {\n    notFound();\n  }\n\n  return (\n    <div className=\"p-8\">\n      {/* Dynamic Breadcrumbs */}\n      <nav className=\"text-sm text-slate-400 mb-4\">\n        Docs &gt; {slug.map((s, idx) => (\n          <span key={idx} className=\"capitalize\">{s} {idx < slug.length - 1 && \"&gt; \"}</span>\n        ))}\n      </nav>\n      <h1 className=\"text-3xl font-bold capitalize\">{slug[slug.length - 1]}</h1>\n      <div className=\"prose mt-6\">{docContent.body}</div>\n    </div>\n  );\n}\n\nasync function fetchDocFromCms(path: string) {\n  // Simulating CMS lookup\n  return { body: `Documentation article content for: ${path}` };\n}",
+    "breakdown": [
+      "Matches /docs/a, /docs/a/b, /docs/a/b/c dynamically.",
+      "Receives slug as an array of string path segments.",
+      "Generates dynamic breadcrumbs directly from the URL hierarchy.",
+      "Fetches article content dynamically based on the full nested path."
+    ],
+    "expectedOutput": "Resolves nested documentation paths into hierarchical article views with breadcrumbs."
+  },
+  {
+    "id": "next-ex-08",
+    "title": "Optional Catch-All E-Commerce Route `[[...slug]]`",
+    "category": "Routing Conventions",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "An optional catch-all route [[...slug]] handling both the root store landing page (/store) and all sub-category levels (/store/shoes/running) in a single page.",
+    "conceptsCovered": [
+      "Optional Catch-All",
+      "[[...slug]]",
+      "Catalog Index",
+      "Route Unification",
+      "E-Commerce"
+    ],
+    "code": "// app/store/[[...slug]]/page.tsx\ninterface StorePageProps {\n  params: Promise<{ slug?: string[] }>;\n}\n\nexport default async function StorePage({ params }: StorePageProps) {\n  const { slug } = await params;\n\n  // 1. Root case: /store (slug is undefined)\n  if (!slug || slug.length === 0) {\n    return (\n      <div className=\"p-8\">\n        <h1 className=\"text-2xl font-bold\">Store Home: All Categories</h1>\n        <p>Select a department below to begin shopping.</p>\n      </div>\n    );\n  }\n\n  // 2. Department case: /store/electronics (slug = ['electronics'])\n  // 3. Subcategory case: /store/electronics/phones (slug = ['electronics', 'phones'])\n  const department = slug[0];\n  const subCategory = slug[1];\n\n  return (\n    <div className=\"p-8\">\n      <h1 className=\"text-2xl font-bold capitalize\">Department: {department}</h1>\n      {subCategory && <h2 className=\"text-lg text-slate-600 capitalize\">Subcategory: {subCategory}</h2>}\n    </div>\n  );\n}",
+    "breakdown": [
+      "Uses double brackets [[...slug]] to make the parameter optional.",
+      "Matches both /store and all nested /store/a/b/c routes without duplicate page files.",
+      "Gracefully handles the undefined root case.",
+      "Simplifies CMS and catalog architecture."
+    ],
+    "expectedOutput": "/store renders main catalog; /store/men/shoes renders filtered department view."
+  },
+  {
+    "id": "next-ex-09",
+    "title": "Route Groups Layout Partitioning: `(marketing)` vs `(app)`",
+    "category": "Routing Conventions",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Organizing an enterprise Next.js codebase into two distinct route groups with separate root layouts: a public marketing shell and a secure app dashboard.",
+    "conceptsCovered": [
+      "Route Groups",
+      "Parentheses Folders",
+      "Layout Partitioning",
+      "Multiple Root Layouts",
+      "Architecture"
+    ],
+    "code": "// Project Directory:\n// app/\n//   ├── (marketing)/\n//   │     ├── layout.tsx  <-- Marketing Layout: Light theme, public navbar, footer\n//   │     ├── page.tsx    <-- URL: /\n//   │     └── about/page.tsx <-- URL: /about\n//   └── (app)/\n//         ├── layout.tsx  <-- App Layout: Dark theme, auth guard, collapsed sidebar\n//         └── dashboard/page.tsx <-- URL: /dashboard\n\n// app/(marketing)/layout.tsx:\nexport default function MarketingLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <div className=\"min-h-screen flex flex-col bg-white\">\n      <nav className=\"p-4 border-b flex justify-between\">\n        <span className=\"font-bold\">Public Brand</span>\n        <a href=\"/dashboard\" className=\"text-blue-600\">Login</a>\n      </nav>\n      <main className=\"flex-1\">{children}</main>\n      <footer className=\"p-4 border-t text-center text-sm\">© 2026 Acme Corp</footer>\n    </div>\n  );\n}\n\n// app/(app)/layout.tsx:\nexport default function AppLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <div className=\"min-h-screen flex bg-slate-900 text-white\">\n      <aside className=\"w-64 border-r border-slate-800 p-4\">App Navigation</aside>\n      <main className=\"flex-1 p-6\">{children}</main>\n    </div>\n  );\n}",
+    "breakdown": [
+      "Eliminates layout contamination between marketing pages and private application views.",
+      "Route groups omit parentheses from the URL: /about and /dashboard remain clean.",
+      "Allows independent providers, styling, and navigation bars per domain area.",
+      "Maintains clean code separation across team boundaries."
+    ],
+    "expectedOutput": "/ renders public marketing shell; /dashboard renders private dark-themed app layout."
+  },
+  {
+    "id": "next-ex-10",
+    "title": "Async SearchParams Filtering & Pagination in Next.js 15",
+    "category": "Routing Conventions",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A search and pagination catalog page consuming asynchronous searchParams in Next.js 15, executing database queries with page limits and offsets.",
+    "conceptsCovered": [
+      "searchParams",
+      "Pagination",
+      "Next.js 15",
+      "Query Strings",
+      "Dynamic Rendering"
+    ],
+    "code": "// app/catalog/page.tsx\nimport { db } from \"@/lib/db\";\nimport Link from \"next/link\";\n\ninterface CatalogPageProps {\n  searchParams: Promise<{\n    q?: string;\n    page?: string;\n  }>;\n}\n\nexport default async function CatalogPage({ searchParams }: CatalogPageProps) {\n  // MUST await searchParams in Next.js 15!\n  const { q = \"\", page = \"1\" } = await searchParams;\n\n  const currentPage = Math.max(1, parseInt(page, 10));\n  const pageSize = 8;\n  const skip = (currentPage - 1) * pageSize;\n\n  // Execute database query with search filter and pagination\n  const [items, totalCount] = await Promise.all([\n    db.item.findMany({\n      where: q ? { name: { contains: q, mode: \"insensitive\" } } : undefined,\n      take: pageSize,\n      skip,\n      orderBy: { createdAt: \"desc\" }\n    }),\n    db.item.count({\n      where: q ? { name: { contains: q, mode: \"insensitive\" } } : undefined\n    })\n  ]);\n\n  const totalPages = Math.ceil(totalCount / pageSize);\n\n  return (\n    <div className=\"p-8\">\n      <h1 className=\"text-2xl font-bold mb-4\">Catalog Search {q && `for \"${q}\"`}</h1>\n      <div className=\"grid grid-cols-4 gap-4\">\n        {items.map(item => (\n          <div key={item.id} className=\"p-4 border rounded\">{item.name}</div>\n        ))}\n      </div>\n\n      {/* Pagination Controls */}\n      <div className=\"flex justify-between items-center mt-8\">\n        <Link\n          href={`/catalog?q=${q}&page=${currentPage - 1}`}\n          className={`btn ${currentPage <= 1 ? \"pointer-events-none opacity-50\" : \"\"}`}\n        >\n          Previous\n        </Link>\n        <span>Page {currentPage} of {totalPages}</span>\n        <Link\n          href={`/catalog?q=${q}&page=${currentPage + 1}`}\n          className={`btn ${currentPage >= totalPages ? \"pointer-events-none opacity-50\" : \"\"}`}\n        >\n          Next\n        </Link>\n      </div>\n    </div>\n  );\n}",
+    "breakdown": [
+      "Awaits searchParams promise per Next.js 15 breaking change specification.",
+      "Safely parses page and query string parameters with default fallbacks.",
+      "Performs parallel database queries for paginated items and total counts.",
+      "Builds shareable, bookmarkable pagination URLs without client state."
+    ],
+    "expectedOutput": "/catalog?q=laptop&page=2 queries database with skip=8 and renders page 2 of search results."
+  },
+  {
+    "id": "next-ex-11",
+    "title": "Parallel Routes Named Slots with Split Dashboard Views",
+    "category": "Parallel & Intercepting Routes",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A multi-view split dashboard using parallel route named slots (@analytics and @team) with independent loading skeletons and isolated error boundaries.",
+    "conceptsCovered": [
+      "Parallel Routes",
+      "Named Slots",
+      "@slot",
+      "Independent Loading",
+      "Layout Props"
+    ],
+    "code": "// app/dashboard/layout.tsx:\nexport default function DashboardLayout({\n  children,\n  analytics, // Injected from app/dashboard/@analytics/page.tsx\n  team       // Injected from app/dashboard/@team/page.tsx\n}: {\n  children: React.ReactNode;\n  analytics: React.ReactNode;\n  team: React.ReactNode;\n}) {\n  return (\n    <div className=\"p-8 space-y-6\">\n      <header className=\"border-b pb-4\"><h1 className=\"text-3xl font-bold\">Executive Dashboard</h1></header>\n      \n      {/* Main children slot */}\n      <section>{children}</section>\n\n      {/* Parallel Split Screen Slots */}\n      <div className=\"grid grid-cols-2 gap-6\">\n        <div className=\"border rounded-xl p-4 bg-white shadow-sm\">{analytics}</div>\n        <div className=\"border rounded-xl p-4 bg-white shadow-sm\">{team}</div>\n      </div>\n    </div>\n  );\n}\n\n// app/dashboard/@analytics/page.tsx:\nexport default async function AnalyticsSlot() {\n  const data = await fetchAnalytics(); // Async fetch\n  return <div><h2 className=\"font-bold text-lg\">Live Analytics</h2><p>Active Users: {data.users}</p></div>;\n}\n\n// app/dashboard/@team/page.tsx:\nexport default async function TeamSlot() {\n  const members = await fetchTeam();\n  return <div><h2 className=\"font-bold text-lg\">Team Directory</h2><p>Total Members: {members.length}</p></div>;\n}",
+    "breakdown": [
+      "Defines named slots @analytics and @team alongside children in layout props.",
+      "Slots render simultaneously and stream independently over HTTP.",
+      "A slow query in Analytics does not block Team directory from rendering.",
+      "Slots can colocate their own loading.tsx and error.tsx boundaries."
+    ],
+    "expectedOutput": "Renders main dashboard overview with side-by-side Analytics and Team cards."
+  },
+  {
+    "id": "next-ex-12",
+    "title": "Intercepting Route Photo Modal with Shareable URL",
+    "category": "Parallel & Intercepting Routes",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A complete Instagram-style photo feed that intercepts clicks to display an overlay modal while keeping the feed visible, with a standalone fallback page for direct visits.",
+    "conceptsCovered": [
+      "Intercepting Routes",
+      "(.) Prefix",
+      "Modal Pattern",
+      "Shareable URL",
+      "Parallel Routing"
+    ],
+    "code": "// 1. Root Layout: app/layout.tsx\nexport default function RootLayout({\n  children,\n  modal // Parallel slot for modal overlay\n}: {\n  children: React.ReactNode;\n  modal: React.ReactNode;\n}) {\n  return (\n    <html lang=\"en\">\n      <body>\n        {children}\n        {modal} {/* Renders modal when route is intercepted */}\n      </body>\n    </html>\n  );\n}\n\n// 2. Default slot view: app/@modal/default.tsx\nexport default function DefaultModal() {\n  return null; // Empty when modal is closed\n}\n\n// 3. Intercepted Route: app/@modal/(.)photos/[id]/page.tsx\n// Intercepts /photos/123 on the same level!\nimport { ModalWrapper } from \"@/components/ModalWrapper\";\nimport { PhotoView } from \"@/components/PhotoView\";\n\nexport default async function PhotoModal({ params }: { params: Promise<{ id: string }> }) {\n  const { id } = await params;\n  return (\n    <ModalWrapper>\n      <PhotoView photoId={id} isModal={true} />\n    </ModalWrapper>\n  );\n}\n\n// 4. Standalone Full Page: app/photos/[id]/page.tsx\n// Rendered on hard refresh or direct URL share!\nexport default async function StandalonePhotoPage({ params }: { params: Promise<{ id: string }> }) {\n  const { id } = await params;\n  return (\n    <div className=\"max-w-4xl mx-auto py-12\">\n      <PhotoView photoId={id} isModal={false} />\n    </div>\n  );\n}",
+    "breakdown": [
+      "Uses (.)photos/[id] to intercept client-side clicks from the feed.",
+      "Renders modal inside @modal parallel slot without leaving the feed page.",
+      "Updates browser URL to /photos/123 so the modal view is linkable.",
+      "Provides app/photos/[id]/page.tsx as a full-page view for hard refreshes and SEO."
+    ],
+    "expectedOutput": "Clicking photo opens popup modal; refreshing page loads standalone full-screen photo."
+  },
+  {
+    "id": "next-ex-13",
+    "title": "Modal Backdrop Dismissal & `router.back()` History Sync",
+    "category": "Parallel & Intercepting Routes",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "An accessible modal overlay component that listens for Escape key presses and backdrop clicks, calling router.back() to pop history and unmount the modal.",
+    "conceptsCovered": [
+      "Modal Dismiss",
+      "router.back()",
+      "Escape Key Listener",
+      "Backdrop Click",
+      "Keyboard Accessibility"
+    ],
+    "code": "// components/ModalWrapper.tsx\n\"use client\";\n\nimport { useRouter } from \"next/navigation\";\nimport { useEffect, useCallback } from \"react\";\n\nexport function ModalWrapper({ children }: { children: React.ReactNode }) {\n  const router = useRouter();\n\n  // Dismiss modal and pop browser history back to the feed\n  const onDismiss = useCallback(() => {\n    router.back();\n  }, [router]);\n\n  useEffect(() => {\n    const handleKeyDown = (e: KeyboardEvent) => {\n      if (e.key === \"Escape\") onDismiss();\n    };\n    window.addEventListener(\"keydown\", handleKeyDown);\n    return () => window.removeEventListener(\"keydown\", handleKeyDown);\n  }, [onDismiss]);\n\n  return (\n    <div className=\"fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4\">\n      {/* Invisible backdrop click catcher */}\n      <div className=\"fixed inset-0\" onClick={onDismiss} aria-hidden=\"true\" />\n\n      {/* Modal Dialog Card */}\n      <div className=\"relative z-10 bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 overflow-hidden\">\n        <button\n          onClick={onDismiss}\n          className=\"absolute top-4 right-4 text-slate-400 hover:text-black font-bold text-xl\"\n        >\n          ✕\n        </button>\n        {children}\n      </div>\n    </div>\n  );\n}",
+    "breakdown": [
+      "Invokes router.back() to dismiss the modal and update the URL history stack.",
+      "Listens for global Escape key presses and cleans up event listeners on unmount.",
+      "Implements accessible backdrop click to close overlay.",
+      "Unmounts cleanly as the @modal slot returns to default.tsx (null)."
+    ],
+    "expectedOutput": "Clicking outside the modal or pressing Escape closes the modal and restores feed URL."
+  },
+  {
+    "id": "next-ex-14",
+    "title": "Fallback Handling in Parallel Slots with `default.tsx`",
+    "category": "Parallel & Intercepting Routes",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Configuring default.tsx fallback files across parallel slots to prevent 404 crashes during hard refreshes and sub-route transitions.",
+    "conceptsCovered": [
+      "default.tsx",
+      "Hard Navigation",
+      "404 Prevention",
+      "Slot Fallbacks",
+      "Parallel Routing"
+    ],
+    "code": "// Directory Structure:\n// app/admin/\n//   ├── layout.tsx\n//   ├── page.tsx\n//   ├── @sidebar/\n//   │     ├── page.tsx\n//   │     └── default.tsx  <-- CRITICAL!\n//   └── @main/\n//         ├── page.tsx\n//         ├── users/page.tsx\n//         └── default.tsx  <-- CRITICAL!\n\n// app/admin/@sidebar/default.tsx:\n// Rendered when URL is /admin/users (where @sidebar has no nested /users folder)\nexport default function DefaultSidebar() {\n  return (\n    <nav className=\"p-4 bg-slate-100 rounded\">\n      <h3 className=\"font-bold text-sm text-slate-500 uppercase\">Admin Menu</h3>\n      <ul className=\"mt-2 space-y-1\">\n        <li><a href=\"/admin\">Dashboard Home</a></li>\n        <li><a href=\"/admin/users\">User Management</a></li>\n      </ul>\n    </nav>\n  );\n}\n\n// app/admin/@main/default.tsx:\nexport default function DefaultMain() {\n  return <div>Select an administrative view from the sidebar.</div>;\n}",
+    "breakdown": [
+      "Prevents Next.js from throwing a 404 when navigating to sub-routes.",
+      "Provides explicit fallback UI when the URL segment does not match a slot's folder tree.",
+      "Maintains the sidebar UI during deep navigation into /admin/users.",
+      "Essential safeguard for production parallel routes."
+    ],
+    "expectedOutput": "Hard-refreshing /admin/users correctly renders the default sidebar and the users main slot."
+  },
+  {
+    "id": "next-ex-15",
+    "title": "Passing Server Components as Children to Client Wrappers",
+    "category": "Server & Client Composition",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "The Slots / Children pattern: wrapping an async Server Component inside an interactive Client Component without converting the Server Component into client JavaScript.",
+    "conceptsCovered": [
+      "Composition",
+      "Children Prop",
+      "Server-Client Boundary",
+      "Bundle Optimization",
+      "RSC"
+    ],
+    "code": "// 1. Interactive Client Wrapper: components/CollapsibleCard.tsx\n\"use client\";\n\nimport { useState } from \"react\";\n\nexport function CollapsibleCard({\n  title,\n  children // Server Component rendered output passes as children!\n}: {\n  title: string;\n  children: React.ReactNode;\n}) {\n  const [isOpen, setIsOpen] = useState(true);\n\n  return (\n    <div className=\"border rounded-xl p-4 bg-white shadow-sm\">\n      <div className=\"flex justify-between items-center cursor-pointer\" onClick={() => setIsOpen(!isOpen)}>\n        <h3 className=\"font-bold text-lg\">{title}</h3>\n        <span>{isOpen ? \"▲\" : \"▼\"}</span>\n      </div>\n      {isOpen && <div className=\"mt-4 pt-4 border-t\">{children}</div>}\n    </div>\n  );\n}\n\n// 2. Server Component: app/page.tsx\nimport { CollapsibleCard } from \"@/components/CollapsibleCard\";\nimport { db } from \"@/lib/db\";\n\n// Direct async Server Component\nasync function HeavyServerMetrics() {\n  const stats = await db.metric.findMany(); // Direct DB query!\n  return <ul>{stats.map(s => <li key={s.id}>{s.name}: {s.value}</li>)}</ul>;\n}\n\nexport default function Page() {\n  return (\n    <CollapsibleCard title=\"Real-Time Server Statistics\">\n      {/* HeavyServerMetrics runs on server; only rendered HTML/Flight element passes to client! */}\n      <HeavyServerMetrics />\n    </CollapsibleCard>\n  );\n}",
+    "breakdown": [
+      "Interactive button and state toggle live entirely in the Client Component.",
+      "HeavyServerMetrics executes on the server and never downloads database libraries to the browser.",
+      "Shows how to embed server data inside interactive drawers, carousels, and accordions.",
+      "Maintains zero client bundle size for the database fetching logic."
+    ],
+    "expectedOutput": "Collapsible accordion toggles visibility of server-fetched database records."
+  },
+  {
+    "id": "next-ex-16",
+    "title": "The Server-to-Client React Context Bridge Pattern",
+    "category": "Server & Client Composition",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Bridging server-rendered authentication session data into client-side React Context without causing hydration mismatch errors.",
+    "conceptsCovered": [
+      "Context Bridge",
+      "createContext",
+      "Hydration",
+      "Session Context",
+      "Client Providers"
+    ],
+    "code": "// 1. Client Context Definition: components/SessionContext.tsx\n\"use client\";\n\nimport { createContext, useContext } from \"react\";\n\ninterface UserSession {\n  id: string;\n  name: string;\n  role: string;\n}\n\nconst SessionContext = createContext<UserSession | null>(null);\n\nexport function SessionProvider({\n  session,\n  children\n}: {\n  session: UserSession | null;\n  children: React.ReactNode;\n}) {\n  return (\n    <SessionContext.Provider value={session}>\n      {children}\n    </SessionContext.Provider>\n  );\n}\n\nexport function useSession() {\n  return useContext(SessionContext);\n}\n\n// 2. Root Layout (Server Component): app/layout.tsx\nimport { SessionProvider } from \"@/components/SessionContext\";\nimport { auth } from \"@/lib/auth\";\n\nexport default async function RootLayout({ children }: { children: React.ReactNode }) {\n  // Fetch session once on server!\n  const session = await auth();\n\n  return (\n    <html>\n      <body>\n        {/* Pass server session into Client Provider */}\n        <SessionProvider session={session}>\n          {children}\n        </SessionProvider>\n      </body>\n    </html>\n  );\n}",
+    "breakdown": [
+      "Fetches session data on the server during the initial render.",
+      "Passes the session down as a serializable prop into SessionProvider.",
+      "Allows deeply nested client components to access user session via useSession() hook.",
+      "Eliminates client-side loading spinners during authentication check."
+    ],
+    "expectedOutput": "Client components consume useSession() immediately on mount with zero network delay."
+  },
+  {
+    "id": "next-ex-17",
+    "title": "Tainting Sensitive User Records with `experimental_taintObjectReference`",
+    "category": "Security & Identity",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Using React's experimental Taint API to flag raw database objects containing secrets, throwing an immediate error if passed to a Client Component.",
+    "conceptsCovered": [
+      "Taint API",
+      "Security Defense",
+      "Data Leak Prevention",
+      "experimental_taintObjectReference",
+      "Protection"
+    ],
+    "code": "// lib/user.ts\nimport { experimental_taintObjectReference, experimental_taintUniqueValue } from \"react\";\nimport { db } from \"@/lib/db\";\n\nexport async function getUserAccountSecure(userId: string) {\n  const user = await db.user.findUnique({ where: { id: userId } });\n  if (!user) return null;\n\n  // 1. Taint the object reference:\n  // Throws an error if the entire 'user' object is passed to a Client Component!\n  experimental_taintObjectReference(\n    \"Security Violation: Do not pass raw user entity to Client Components. Project public fields.\",\n    user\n  );\n\n  // 2. Taint sensitive primitive strings:\n  experimental_taintUniqueValue(\n    \"Security Violation: Password hash must never leave the server.\",\n    user,\n    user.passwordHash\n  );\n\n  return user;\n}\n\n// Safe Public DTO Projector:\nexport function toPublicUser(user: any) {\n  return {\n    id: user.id,\n    name: user.name,\n    avatarUrl: user.avatarUrl\n  };\n}",
+    "breakdown": [
+      "Protects against accidental PII and secret leaks across the server-client boundary.",
+      "Throws build/runtime error if tainted object crosses into Client Component props.",
+      "Forces developers to map raw database rows to safe, minimal public DTOs.",
+      "Enforces defense-in-depth across enterprise development teams."
+    ],
+    "expectedOutput": "Passing raw user object to Client Component triggers immediate Taint violation error."
+  },
+  {
+    "id": "next-ex-18",
+    "title": "Wrapping Un-SSR-able Libraries with `next/dynamic` (`ssr: false`)",
+    "category": "Server & Client Composition",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Dynamically importing a client-only library (Rich Text Editor / Canvas / Window API) with ssr: false to prevent 'window is not defined' errors during server rendering.",
+    "conceptsCovered": [
+      "next/dynamic",
+      "ssr: false",
+      "window is not defined",
+      "Client-Only Wrappers",
+      "Lazy Loading"
+    ],
+    "code": "// components/RichTextEditorWrapper.tsx\n\"use client\";\n\nimport dynamic from \"next/dynamic\";\n\n// Dynamically import Quill / Monaco editor with SSR disabled!\nconst QuillEditor = dynamic(() => import(\"@/components/QuillEditorInternal\"), {\n  ssr: false, // Bypasses server-side prerendering completely!\n  loading: () => (\n    <div className=\"h-64 border rounded bg-slate-50 flex items-center justify-center text-slate-400\">\n      Loading Rich Text Editor...\n    </div>\n  )\n});\n\nexport function RichTextEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {\n  return (\n    <div className=\"my-4\">\n      <QuillEditor initialValue={value} onUpdate={onChange} />\n    </div>\n  );\n}",
+    "breakdown": [
+      "Uses next/dynamic with ssr: false to isolate code that accesses window or document.",
+      "Prevents server crash with 'window is not defined'.",
+      "Renders clean placeholder skeleton in server HTML.",
+      "Downloads and mounts the heavy editor JavaScript exclusively in the client browser."
+    ],
+    "expectedOutput": "Renders placeholder during server render; hydrates real editor on the client."
+  },
+  {
+    "id": "next-ex-19",
+    "title": "Eliminating Request Waterfalls with `Promise.all` & Suspense",
+    "category": "Performance & Rendering",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Refactoring a sequential blocking waterfall in a Server Component into parallel fetching with Promise.all and concurrent Suspense streams.",
+    "conceptsCovered": [
+      "Waterfalls",
+      "Promise.all",
+      "Suspense",
+      "Parallel Fetching",
+      "TTFB"
+    ],
+    "code": "// BEFORE (WATERFALL ANTI-PATTERN: 150ms + 200ms = 350ms TTFB):\n// const user = await fetchUser();   // blocks 150ms\n// const orders = await fetchOrders(); // blocks 200ms\n\n// AFTER: Parallel Execution with Independent Suspense Streaming (Instant Initial Shell!)\nimport { Suspense } from \"react\";\n\nexport default function DashboardPage() {\n  return (\n    <div className=\"p-8 space-y-6\">\n      <h1 className=\"text-2xl font-bold\">Store Performance</h1>\n\n      {/* Profile and Orders stream in parallel without blocking each other! */}\n      <Suspense fallback={<div className=\"h-20 bg-slate-200 animate-pulse rounded\" />}>\n        <UserAsyncSection />\n      </Suspense>\n\n      <Suspense fallback={<div className=\"h-64 bg-slate-200 animate-pulse rounded\" />}>\n        <OrdersAsyncSection />\n      </Suspense>\n    </div>\n  );\n}\n\nasync function UserAsyncSection() {\n  const user = await fetchUser(); // 150ms\n  return <div>Welcome, {user.name}</div>;\n}\n\nasync function OrdersAsyncSection() {\n  const orders = await fetchOrders(); // 200ms\n  return <div>Orders: {orders.length}</div>;\n}",
+    "breakdown": [
+      "Eliminates sequential request blocking on the server.",
+      "Initial page layout and header flush to the client in < 20ms.",
+      "UserAsyncSection and OrdersAsyncSection execute concurrently on the backend.",
+      "Each section streams into its Suspense placeholder the moment its query completes."
+    ],
+    "expectedOutput": "Page shell renders immediately; user section appears at 150ms, orders at 200ms."
+  },
+  {
+    "id": "next-ex-20",
+    "title": "Colocated Data Fetching with Automatic Request Deduplication",
+    "category": "Server & Client Composition",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Colocating data fetching inside independent Server Components while utilizing React.cache() to deduplicate database queries automatically across the tree.",
+    "conceptsCovered": [
+      "Colocation",
+      "React.cache",
+      "Request Memoization",
+      "Database Deduplication",
+      "Clean Code"
+    ],
+    "code": "// lib/queries.ts\nimport { cache } from \"react\";\nimport { db } from \"@/lib/db\";\n\n// Wrap database query in React.cache() for per-request memoization!\nexport const getActiveOrganization = cache(async (orgId: string) => {\n  console.log(`[SQL] Querying DB for Org: ${orgId}`);\n  return db.org.findUnique({ where: { id: orgId } });\n});\n\n// components/OrgBadge.tsx (Colocated fetch)\nexport async function OrgBadge({ orgId }: { orgId: string }) {\n  const org = await getActiveOrganization(orgId); // First call: Executes SQL!\n  return <span className=\"badge\">{org?.name}</span>;\n}\n\n// components/OrgBillingStatus.tsx (Colocated fetch in another component)\nexport async function OrgBillingStatus({ orgId }: { orgId: string }) {\n  const org = await getActiveOrganization(orgId); // Second call: Returns MEMOIZED result (Zero SQL)!\n  return <span>Plan: {org?.plan}</span>;\n}\n\n// app/dashboard/page.tsx:\n// Both components execute within the same page render pass:\nexport default function Page() {\n  return (\n    <div>\n      <OrgBadge orgId=\"org-1\" />\n      <OrgBillingStatus orgId=\"org-1\" />\n    </div>\n  );\n}",
+    "breakdown": [
+      "Colocates data fetching directly where needed, eliminating prop drilling.",
+      "React.cache() intercepts repeated calls with identical arguments in the same render pass.",
+      "Executes the underlying SQL query only once.",
+      "Maintains clean component independence and encapsulation."
+    ],
+    "expectedOutput": "Both components render org details; console confirms SQL query executed only once."
+  },
+  {
+    "id": "next-ex-21",
+    "title": "Server Action with Zod Validation & Typed Form State",
+    "category": "Server Actions & Mutations",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A production Server Action parsing incoming FormData with Zod safeParse, enforcing constraints, and returning typed validation errors to client forms.",
+    "conceptsCovered": [
+      "Server Actions",
+      "Zod",
+      "safeParse",
+      "FormData",
+      "Typed State"
+    ],
+    "code": "// app/actions/signup.ts\n\"use server\";\n\nimport { z } from \"zod\";\nimport { db } from \"@/lib/db\";\n\nconst SignupSchema = z.object({\n  email: z.string().email(\"Please provide a valid email address\"),\n  password: z.string().min(8, \"Password must be at least 8 characters\"),\n  confirmPassword: z.string()\n}).refine(data => data.password === data.confirmPassword, {\n  message: \"Passwords do not match\",\n  path: [\"confirmPassword\"]\n});\n\nexport type SignupResult = {\n  success: boolean;\n  message?: string;\n  fieldErrors?: Record<string, string[]>;\n};\n\nexport async function signupAction(prevState: SignupResult, formData: FormData): Promise<SignupResult> {\n  const rawData = Object.fromEntries(formData.entries());\n\n  // 1. Validate with Zod\n  const validation = SignupSchema.safeParse(rawData);\n  if (!validation.success) {\n    return {\n      success: false,\n      fieldErrors: validation.error.flatten().fieldErrors\n    };\n  }\n\n  // 2. Business Logic\n  const { email, password } = validation.data;\n  const existing = await db.user.findUnique({ where: { email } });\n  if (existing) {\n    return { success: false, fieldErrors: { email: [\"Email already in use\"] } };\n  }\n\n  await db.user.create({ data: { email, passwordHash: await hashPassword(password) } });\n  return { success: true, message: \"Account created successfully!\" };\n}",
+    "breakdown": [
+      "Validates all inputs with Zod safeParse before executing mutations.",
+      "Handles custom cross-field refinements (password matching).",
+      "Returns structured fieldErrors without throwing unhandled exceptions.",
+      "Compatible with React 19's useActionState hook."
+    ],
+    "expectedOutput": "Returns typed validation errors on bad input; creates user on valid input."
+  },
+  {
+    "id": "next-ex-22",
+    "title": "Form State Management using `useActionState` (React 19)",
+    "category": "Server Actions & Mutations",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Consuming a Server Action with useActionState in Next.js 15, handling form submission, pending states, and displaying inline validation errors.",
+    "conceptsCovered": [
+      "useActionState",
+      "React 19",
+      "Form State",
+      "Inline Errors",
+      "Next.js 15"
+    ],
+    "code": "// components/SignupForm.tsx\n\"use client\";\n\nimport { useActionState } from \"react\";\nimport { signupAction, SignupResult } from \"@/app/actions/signup\";\n\nconst initialState: SignupResult = { success: false };\n\nexport function SignupForm() {\n  const [state, formAction, isPending] = useActionState(signupAction, initialState);\n\n  return (\n    <form action={formAction} className=\"max-w-md mx-auto space-y-4 p-6 border rounded-xl bg-white shadow\">\n      <h2 className=\"text-xl font-bold\">Create Account</h2>\n\n      <div>\n        <label className=\"block text-sm font-medium\">Email Address</label>\n        <input name=\"email\" type=\"email\" required className=\"w-full border p-2 rounded mt-1\" />\n        {state.fieldErrors?.email && (\n          <p className=\"text-red-500 text-xs mt-1\">{state.fieldErrors.email[0]}</p>\n        )}\n      </div>\n\n      <div>\n        <label className=\"block text-sm font-medium\">Password</label>\n        <input name=\"password\" type=\"password\" required className=\"w-full border p-2 rounded mt-1\" />\n        {state.fieldErrors?.password && (\n          <p className=\"text-red-500 text-xs mt-1\">{state.fieldErrors.password[0]}</p>\n        )}\n      </div>\n\n      <div>\n        <label className=\"block text-sm font-medium\">Confirm Password</label>\n        <input name=\"confirmPassword\" type=\"password\" required className=\"w-full border p-2 rounded mt-1\" />\n        {state.fieldErrors?.confirmPassword && (\n          <p className=\"text-red-500 text-xs mt-1\">{state.fieldErrors.confirmPassword[0]}</p>\n        )}\n      </div>\n\n      <button\n        type=\"submit\"\n        disabled={isPending}\n        className=\"w-full bg-black text-white p-2 rounded font-medium disabled:opacity-50\"\n      >\n        {isPending ? \"Creating Account...\" : \"Sign Up\"}\n      </button>\n\n      {state.success && (\n        <p className=\"text-green-600 text-sm font-semibold text-center\">{state.message}</p>\n      )}\n    </form>\n  );\n}",
+    "breakdown": [
+      "Binds Server Action to form state using React 19's useActionState.",
+      "Automatically receives isPending boolean for loading spinner state.",
+      "Renders server-side validation error messages beside the relevant inputs.",
+      "Provides clean declarative state management without useEffect."
+    ],
+    "expectedOutput": "Renders form, disables button on submission, and shows inline error messages."
+  },
+  {
+    "id": "next-ex-23",
+    "title": "Instant Feedback Button with `useFormStatus`",
+    "category": "Server Actions & Mutations",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "A standalone SubmitButton component using useFormStatus from react-dom to automatically disable inputs and display a spinner while parent form action executes.",
+    "conceptsCovered": [
+      "useFormStatus",
+      "react-dom",
+      "SubmitButton",
+      "Pending Indicator",
+      "Decoupling"
+    ],
+    "code": "// components/SubmitButton.tsx\n\"use client\";\n\nimport { useFormStatus } from \"react-dom\";\n\nexport function SubmitButton({\n  children = \"Submit\",\n  loadingText = \"Saving...\"\n}: {\n  children?: React.ReactNode;\n  loadingText?: string;\n}) {\n  // Reads pending state from parent <form> context automatically!\n  const { pending } = useFormStatus();\n\n  return (\n    <button\n      type=\"submit\"\n      disabled={pending}\n      className=\"px-4 py-2 bg-slate-900 text-white rounded font-medium disabled:opacity-50 flex items-center justify-center gap-2\"\n    >\n      {pending ? (\n        <>\n          <svg className=\"animate-spin h-4 w-4 text-white\" viewBox=\"0 0 24 24\" fill=\"none\">\n            <circle className=\"opacity-25\" cx=\"12\" cy=\"12\" r=\"10\" stroke=\"currentColor\" strokeWidth=\"4\" />\n            <path className=\"opacity-75\" fill=\"currentColor\" d=\"M4 12a8 8 0 018-8v8H4z\" />\n          </svg>\n          <span>{loadingText}</span>\n        </>\n      ) : (\n        children\n      )}\n    </button>\n  );\n}",
+    "breakdown": [
+      "Uses useFormStatus from react-dom to eliminate manual pending prop drilling.",
+      "Must be nested inside a parent <form action={...}> component.",
+      "Disables the button automatically to prevent accidental double-submits.",
+      "Renders accessible spinning SVG loader during active server requests."
+    ],
+    "expectedOutput": "Button disables and displays spinner during server action processing."
+  },
+  {
+    "id": "next-ex-24",
+    "title": "Real-Time Optimistic Likes Counter with `useOptimistic`",
+    "category": "Server Actions & Mutations",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implementing an instant-response like button with useOptimistic, updating the count in 0ms while the Server Action persists to PostgreSQL in the background.",
+    "conceptsCovered": [
+      "useOptimistic",
+      "Optimistic UI",
+      "Instant Response",
+      "Automated Rollback",
+      "Server Actions"
+    ],
+    "code": "// components/OptimisticLikeButton.tsx\n\"use client\";\n\nimport { useOptimistic, startTransition } from \"react\";\nimport { toggleLikeAction } from \"@/app/actions/likes\";\n\nexport function OptimisticLikeButton({\n  postId,\n  initialLikes,\n  initialHasLiked\n}: {\n  postId: string;\n  initialLikes: number;\n  initialHasLiked: boolean;\n}) {\n  // useOptimistic manages current confirmed state and optimistic overrides\n  const [state, setOptimisticState] = useOptimistic(\n    { likes: initialLikes, hasLiked: initialHasLiked },\n    (current, update: \"toggle\") => ({\n      likes: current.hasLiked ? current.likes - 1 : current.likes + 1,\n      hasLiked: !current.hasLiked\n    })\n  );\n\n  const handleLike = () => {\n    // 1. Immediately flip UI state in browser!\n    startTransition(async () => {\n      setOptimisticState(\"toggle\");\n      try {\n        // 2. Execute background server action\n        await toggleLikeAction(postId);\n      } catch (err) {\n        console.error(\"Like failed on server! React rolls back optimistic state automatically.\", err);\n      }\n    });\n  };\n\n  return (\n    <button\n      onClick={handleLike}\n      className={`px-4 py-2 rounded-full border flex items-center gap-2 font-bold ${\n        state.hasLiked ? \"bg-red-50 border-red-200 text-red-600\" : \"bg-white text-slate-700\"\n      }`}\n    >\n      <span>{state.hasLiked ? \"❤️\" : \"🤍\"}</span>\n      <span>{state.likes}</span>\n    </button>\n  );\n}",
+    "breakdown": [
+      "Updates likes counter and heart icon in 0 milliseconds.",
+      "Executes server mutation asynchronously in the background.",
+      "Automatically rolls back optimistic state if the server action throws an error.",
+      "Eliminates latency for real-time engagement buttons."
+    ],
+    "expectedOutput": "Clicking heart updates count instantaneously without waiting for network response."
+  },
+  {
+    "id": "next-ex-25",
+    "title": "Server Action Progressive Enhancement Fallback",
+    "category": "Server Actions & Mutations",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "A form with Server Action that works 100% with JavaScript disabled using standard HTML POST, upgrading to smooth async fetch when JavaScript hydrates.",
+    "conceptsCovered": [
+      "Progressive Enhancement",
+      "HTML Forms",
+      "No-JS Fallback",
+      "Native POST",
+      "Next.js Actions"
+    ],
+    "code": "// app/feedback/page.tsx (Server Component)\nimport { db } from \"@/lib/db\";\nimport { revalidatePath } from \"next/cache\";\n\nasync function submitFeedback(formData: FormData) {\n  \"use server\";\n  const comment = formData.get(\"comment\") as string;\n  if (!comment) return;\n\n  await db.feedback.create({ data: { comment } });\n  revalidatePath(\"/feedback\");\n}\n\nexport default function FeedbackPage() {\n  return (\n    <div className=\"p-8 max-w-lg mx-auto\">\n      <h1 className=\"text-2xl font-bold mb-4\">Customer Feedback</h1>\n      \n      {/* Works without JavaScript: Browser submits native HTTP POST!\n          Works with JavaScript: Next.js intercepts and handles as async fetch! */}\n      <form action={submitFeedback} className=\"space-y-4\">\n        <textarea\n          name=\"comment\"\n          required\n          placeholder=\"Share your thoughts...\"\n          className=\"w-full border p-3 rounded\"\n          rows={4}\n        />\n        <button type=\"submit\" className=\"px-6 py-2 bg-blue-600 text-white rounded font-bold\">\n          Send Feedback\n        </button>\n      </form>\n    </div>\n  );\n}",
+    "breakdown": [
+      "Demonstrates progressive enhancement: works seamlessly with JavaScript disabled.",
+      "Native HTML form attributes (required, rows) provide baseline validation.",
+      "Automatically transitions to single-page client fetch once JavaScript loads.",
+      "Guarantees form submissions succeed even on flaky connections."
+    ],
+    "expectedOutput": "Form submits successfully whether client-side JavaScript is active or disabled."
+  },
+  {
+    "id": "next-ex-26",
+    "title": "Server Action Row-Level Authorization & IDOR Defense",
+    "category": "Security & Data Mutations",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Securing a Server Action against Insecure Direct Object References (IDOR) by validating session credentials and asserting row-level tenant ownership in PostgreSQL.",
+    "conceptsCovered": [
+      "IDOR Defense",
+      "Row-Level Security",
+      "Authentication Guard",
+      "Authorization",
+      "Session Verification"
+    ],
+    "code": "// app/actions/invoices.ts\n\"use server\";\n\nimport { auth } from \"@/lib/auth\";\nimport { db } from \"@/lib/db\";\n\nexport async function voidInvoiceAction(invoiceId: string) {\n  // 1. Authentication Check: Ensure user is logged in\n  const session = await auth();\n  if (!session?.user?.id) {\n    throw new Error(\"HTTP 401: Unauthorized\");\n  }\n\n  // 2. Fetch invoice and verify organization ownership (IDOR Defense)\n  const invoice = await db.invoice.findUnique({\n    where: { id: invoiceId },\n    select: { id: true, orgId: true, status: true }\n  });\n\n  if (!invoice) {\n    throw new Error(\"HTTP 404: Invoice not found\");\n  }\n\n  // Check if active user belongs to the invoice's organization\n  if (invoice.orgId !== session.user.orgId && session.user.role !== \"SUPER_ADMIN\") {\n    // Attack detected: user is attempting to void another company's invoice!\n    throw new Error(\"HTTP 403: Forbidden: You do not own this invoice resource\");\n  }\n\n  // 3. Safe to mutate\n  await db.invoice.update({\n    where: { id: invoiceId },\n    data: { status: \"VOIDED\", voidedAt: new Date() }\n  });\n\n  return { success: true };\n}",
+    "breakdown": [
+      "Never trusts parameters passed from the client directly.",
+      "Verifies active user session from cryptographic cookies on the server.",
+      "Queries database to verify that the entity's orgId matches the session orgId.",
+      "Blocks malicious users from forging IDs to alter competitors' data."
+    ],
+    "expectedOutput": "Voids invoice if authorized; throws 403 Forbidden on IDOR tampering attempts."
+  },
+  {
+    "id": "next-ex-27",
+    "title": "Handling File Uploads in Server Actions with FormData",
+    "category": "Server Actions & Mutations",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Handling file uploads (PDF/Images) directly inside a Server Action, validating file size and MIME types, and streaming to AWS S3 / Cloudflare R2.",
+    "conceptsCovered": [
+      "File Upload",
+      "FormData",
+      "Buffer",
+      "MIME Validation",
+      "AWS S3 Streaming"
+    ],
+    "code": "// app/actions/upload.ts\n\"use server\";\n\nimport { S3Client, PutObjectCommand } from \"@aws-sdk/client-s3\";\nimport crypto from \"node:crypto\";\n\nconst s3 = new S3Client({ region: \"us-east-1\" });\n\nexport async function uploadAvatarAction(formData: FormData) {\n  const file = formData.get(\"avatar\") as File | null;\n\n  if (!file || file.size === 0) {\n    return { success: false, error: \"No file provided\" };\n  }\n\n  // 1. File Size Guard (Max 4MB)\n  if (file.size > 4 * 1024 * 1024) {\n    return { success: false, error: \"File exceeds 4MB limit\" };\n  }\n\n  // 2. MIME Type Whitelist Guard\n  const allowedMimeTypes = [\"image/jpeg\", \"image/png\", \"image/webp\"];\n  if (!allowedMimeTypes.includes(file.type)) {\n    return { success: false, error: \"Only JPEG, PNG, and WebP images are allowed\" };\n  }\n\n  // 3. Convert File to Buffer and upload to S3\n  const bytes = await file.arrayBuffer();\n  const buffer = Buffer.from(bytes);\n  const fileKey = `avatars/${crypto.randomUUID()}-${file.name}`;\n\n  await s3.send(new PutObjectCommand({\n    Bucket: process.env.S3_BUCKET_NAME!,\n    Key: fileKey,\n    Body: buffer,\n    ContentType: file.type\n  }));\n\n  const publicUrl = `https://cdn.mycompany.com/${fileKey}`;\n  return { success: true, url: publicUrl };\n}",
+    "breakdown": [
+      "Extracts native File object from submitted FormData.",
+      "Validates file byte size against 4MB ceiling before reading into memory.",
+      "Restricts MIME types to safe image formats.",
+      "Uploads buffer directly to AWS S3 with clean randomized file key."
+    ],
+    "expectedOutput": "Validates and uploads file to S3; returns public CDN image URL."
+  },
+  {
+    "id": "next-ex-28",
+    "title": "Dynamic Revalidation after Mutation via `revalidatePath`",
+    "category": "Server Actions & Mutations",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Using revalidatePath inside a Server Action to clear the Full Route Cache for a modified route, prompting the client to update instantly.",
+    "conceptsCovered": [
+      "revalidatePath",
+      "Cache Purge",
+      "Client Reconciliation",
+      "Server Actions",
+      "Full Route Cache"
+    ],
+    "code": "// app/actions/posts.ts\n\"use server\";\n\nimport { db } from \"@/lib/db\";\nimport { revalidatePath } from \"next/cache\";\n\nexport async function publishPost(postId: string) {\n  await db.post.update({\n    where: { id: postId },\n    data: { published: true }\n  });\n\n  // Revalidate specific post page:\n  revalidatePath(`/posts/${postId}`);\n\n  // Revalidate posts index list:\n  revalidatePath(\"/posts\");\n\n  // Revalidate entire dashboard layout:\n  revalidatePath(\"/dashboard\", \"layout\");\n}",
+    "breakdown": [
+      "Invalidates the server-side Full Route Cache for multiple paths simultaneously.",
+      "Sends fresh Flight stream payload back to the client in the Server Action response.",
+      "The client UI updates in the same roundtrip without a page reload.",
+      "Supports specific leaf pages or entire layout trees."
+    ],
+    "expectedOutput": "Publishes post and purges route caches; fresh post displays immediately."
+  },
+  {
+    "id": "next-ex-29",
+    "title": "Targeted Semantic Invalidation via `revalidateTag`",
+    "category": "Server Actions & Mutations",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Using revalidateTag to selectively purge cached fetch data across all pages that consume a specific semantic tag without wiping unrelated routes.",
+    "conceptsCovered": [
+      "revalidateTag",
+      "Cache Tags",
+      "Surgical Invalidation",
+      "Data Cache",
+      "Granular Invalidation"
+    ],
+    "code": "// 1. Fetching with semantic cache tags: app/catalog/page.tsx\nexport default async function CatalogPage() {\n  const res = await fetch(\"https://api.store.com/inventory\", {\n    next: { tags: [\"catalog-items\"] } // Tagged fetch call!\n  });\n  const items = await res.json();\n  return <ItemGrid items={items} />;\n}\n\n// 2. Server Action updating stock: app/actions/inventory.ts\n\"use server\";\n\nimport { revalidateTag } from \"next/cache\";\n\nexport async function restockItemAction(sku: string, addedQty: number) {\n  await callBackendInventoryApi(sku, addedQty);\n\n  // Surgically purge ONLY the data cache entries tagged with 'catalog-items'!\n  // Any page on the site displaying catalog items will fetch fresh data on next request.\n  revalidateTag(\"catalog-items\");\n}",
+    "breakdown": [
+      "Tags data fetch calls with domain identifiers ('catalog-items').",
+      "Server Action purges all cached fetch responses sharing that tag.",
+      "Unrelated cached pages and APIs remain warm and unaffected.",
+      "Ideal for e-commerce catalog updates and CMS content publishing."
+    ],
+    "expectedOutput": "Calling restockItemAction purges Data Cache for 'catalog-items' globally."
+  },
+  {
+    "id": "next-ex-30",
+    "title": "Post-Mutation Redirection with `redirect()` Handling",
+    "category": "Server Actions & Mutations",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Redirecting a user after successful Server Action completion while handling the internal NEXT_REDIRECT exception safely inside try/catch blocks.",
+    "conceptsCovered": [
+      "redirect()",
+      "NEXT_REDIRECT",
+      "try/catch",
+      "HTTP 303",
+      "Navigation Flow"
+    ],
+    "code": "// app/actions/createProject.ts\n\"use server\";\n\nimport { redirect } from \"next/navigation\";\nimport { db } from \"@/lib/db\";\n\nexport async function createProjectAction(prevState: any, formData: FormData) {\n  let newProjectId: string | null = null;\n\n  try {\n    const name = formData.get(\"name\") as string;\n    if (!name) return { error: \"Name is required\" };\n\n    const project = await db.project.create({ data: { name } });\n    newProjectId = project.id;\n  } catch (err: any) {\n    console.error(\"Database write failed:\", err);\n    return { error: \"Failed to create project\" };\n  }\n\n  // CRITICAL: Call redirect() OUTSIDE the try/catch block!\n  // redirect() throws an internal NEXT_REDIRECT error. Calling it inside try/catch\n  // causes the catch block to intercept the redirect and swallow it!\n  if (newProjectId) {\n    redirect(`/projects/${newProjectId}`);\n  }\n}",
+    "breakdown": [
+      "Demonstrates proper redirect() placement outside try/catch blocks.",
+      "Prevents catching the internal NEXT_REDIRECT exception as an error.",
+      "Returns HTTP 303 See Other, instructing the browser to execute client navigation.",
+      "Safely navigates the user to the newly created project dashboard."
+    ],
+    "expectedOutput": "Creates project in DB and smoothly redirects browser to /projects/new-id."
+  },
+  {
+    "id": "next-ex-31",
+    "title": "Cache Invalidation with revalidatePath and revalidateTag in Server Actions",
+    "category": "Caching & Revalidation",
+    "difficulty": "Advanced",
+    "whatThisCodeCovers": "Using revalidatePath for route segment purging and revalidateTag for surgical collection cache invalidation in Next.js 15 Server Actions.",
+    "conceptsCovered": [
+      "revalidatePath",
+      "revalidateTag",
+      "Data Cache Invalidation",
+      "Server Actions",
+      "Fine-Grained Purging"
+    ],
+    "code": "// app/actions/products.ts\n'use server';\n\nimport { revalidatePath, revalidateTag } from 'next/cache';\nimport { db } from '@/lib/db';\n\nexport async function updateProductPrice(productId: string, newPrice: number) {\n  // 1. Perform database mutation\n  await db.product.update({\n    where: { id: productId },\n    data: { price: newPrice, updatedAt: new Date() },\n  });\n\n  // 2. Surgical Invalidation: Invalidate all fetch requests tagged with this product ID\n  // Any fetch('...', { next: { tags: [`product-${productId}`] } }) is purged immediately\n  revalidateTag(`product-${productId}`);\n\n  // 3. Collection Invalidation: Purge product listing catalogs across all paginated pages\n  revalidateTag('products-list');\n\n  // 4. Path Invalidation: Purge client router cache and full route cache for product detail\n  // Optional second param: 'page' (default) or 'layout' (purges all nested sub-routes)\n  revalidatePath(`/products/${productId}`, 'page');\n\n  return { success: true };\n}\n\n// app/products/[id]/page.tsx (Consumer Component)\nexport default async function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {\n  const { id } = await params;\n  \n  // Tagged fetch: Cached permanently in Next.js Data Cache until revalidateTag(`product-${id}`) fires\n  const res = await fetch(`https://api.store.internal/products/${id}`, {\n    next: { tags: [`product-${id}`] },\n  });\n  const product = await res.json();\n\n  return (\n    <div className=\"p-6\">\n      <h1 className=\"text-2xl font-bold\">{product.name}</h1>\n      <p className=\"text-xl\">${product.price.toFixed(2)}</p>\n    </div>\n  );\n}",
+    "breakdown": [
+      "revalidateTag('tag'): Surgical invalidation that purges Data Cache entries globally across all Edge/Node server instances using that tag.",
+      "revalidatePath('/path', 'page' | 'layout'): Purges the Full Route Cache on the server and expires the client-side router cache for that segment.",
+      "Combining both guarantees that cached database payloads (via tags) and prerendered HTML tree segments (via path) update synchronously on mutation."
+    ],
+    "expectedOutput": "Updates database, invalidates all tagged cache entries in the Data Cache, and tells the client router to refetch the fresh HTML tree."
+  },
+  {
+    "id": "next-ex-32",
+    "title": "On-Demand ISR Revalidation Webhook Endpoint with Cryptographic Secret Guard",
+    "category": "Caching & Revalidation",
+    "difficulty": "Advanced",
+    "whatThisCodeCovers": "Secure on-demand Incremental Static Regeneration (ISR) route handler receiving webhooks from headless CMS or inventory systems.",
+    "conceptsCovered": [
+      "Route Handlers",
+      "revalidateTag",
+      "Webhook Security",
+      "Timing Attack Safe Equal",
+      "ISR"
+    ],
+    "code": "// app/api/revalidate/route.ts\nimport { NextRequest, NextResponse } from 'next/server';\nimport { revalidateTag, revalidatePath } from 'next/cache';\nimport crypto from 'crypto';\n\nexport async function POST(request: NextRequest) {\n  try {\n    const authHeader = request.headers.get('x-revalidation-secret') || '';\n    const expectedSecret = process.env.REVALIDATION_SECRET || '';\n\n    // Constant-time string comparison to prevent timing attacks\n    const isSecretValid =\n      authHeader.length === expectedSecret.length &&\n      crypto.timingSafeEqual(Buffer.from(authHeader), Buffer.from(expectedSecret));\n\n    if (!isSecretValid) {\n      return NextResponse.json(\n        { error: 'Unauthorized: Invalid revalidation token' },\n        { status: 401 }\n      );\n    }\n\n    const payload = await request.json();\n    const { tag, path, type = 'page' } = payload;\n\n    if (!tag && !path) {\n      return NextResponse.json(\n        { error: 'Bad Request: Must provide either \"tag\" or \"path\"' },\n        { status: 400 }\n      );\n    }\n\n    const revalidated: Record<string, any> = {};\n\n    if (tag) {\n      revalidateTag(tag);\n      revalidated.tag = tag;\n    }\n\n    if (path) {\n      revalidatePath(path, type as 'page' | 'layout');\n      revalidated.path = path;\n    }\n\n    return NextResponse.json({\n      revalidated: true,\n      timestamp: new Date().toISOString(),\n      details: revalidated,\n    });\n  } catch (err: any) {\n    return NextResponse.json(\n      { error: 'Internal Server Error', message: err.message },\n      { status: 500 }\n    );\n  }\n}",
+    "breakdown": [
+      "crypto.timingSafeEqual: Prevents timing attacks on the shared secret header, stopping attackers from brute-forcing webhook tokens.",
+      "Supports either tag-based (surgical) or path-based (page/layout) on-demand cache eviction from external CMS/ERP webhooks.",
+      "Returns structured JSON confirmation with timestamp for webhook audit logging and tracing."
+    ],
+    "expectedOutput": "POST 200 OK: { revalidated: true, timestamp: '...', details: { tag: 'blog-posts' } }"
+  },
+  {
+    "id": "next-ex-33",
+    "title": "Edge Middleware Authentication Guard & Protected Route Redirection",
+    "category": "Middleware & Edge",
+    "difficulty": "Advanced",
+    "whatThisCodeCovers": "Zero-latency Edge Middleware validating JWT session tokens, stripping auth headers, and redirecting unauthenticated users.",
+    "conceptsCovered": [
+      "NextResponse.redirect",
+      "Edge Runtime",
+      "Session Validation",
+      "jose",
+      "Path Matchers"
+    ],
+    "code": "// middleware.ts\nimport { NextResponse, type NextRequest } from 'next/server';\nimport { jwtVerify } from 'jose';\n\nconst JWT_SECRET = new TextEncoder().encode(process.env.AUTH_SECRET || 'super-secret-key-32-bytes-long');\n\nconst PUBLIC_PATHS = new Set(['/login', '/register', '/forgot-password', '/api/public']);\n\nexport async function middleware(request: NextRequest) {\n  const { pathname } = request.nextUrl;\n\n  // Allow static assets, images, favicon and public paths\n  if (PUBLIC_PATHS.has(pathname)) {\n    return NextResponse.next();\n  }\n\n  const sessionToken = request.cookies.get('session_token')?.value;\n\n  if (!sessionToken) {\n    const loginUrl = new URL('/login', request.url);\n    loginUrl.searchParams.set('callbackUrl', encodeURI(request.nextUrl.pathname + request.nextUrl.search));\n    return NextResponse.redirect(loginUrl);\n  }\n\n  try {\n    // Verify JWT using lightweight jose library compatible with Edge runtime (no Node crypto)\n    const { payload } = await jwtVerify(sessionToken, JWT_SECRET, {\n      algorithms: ['HS256'],\n    });\n\n    // Mutate request headers to forward user context to downstream Server Components\n    const requestHeaders = new Headers(request.headers);\n    requestHeaders.set('x-user-id', String(payload.sub));\n    requestHeaders.set('x-user-role', String(payload.role || 'user'));\n\n    return NextResponse.next({\n      request: {\n        headers: requestHeaders,\n      },\n    });\n  } catch (err) {\n    // Expired or forged token: clear cookie and redirect to login\n    const loginUrl = new URL('/login', request.url);\n    const response = NextResponse.redirect(loginUrl);\n    response.cookies.delete('session_token');\n    return response;\n  }\n}\n\nexport const config = {\n  matcher: [\n    /*\n     * Match all request paths except:\n     * - _next/static (static files)\n     * - _next/image (image optimization files)\n     * - favicon.ico (favicon file)\n     * - public assets\n     */\n    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',\n  ],\n};",
+    "breakdown": [
+      "Edge-compatible jwtVerify from 'jose' parses JWTs without requiring Node.js runtime bindings.",
+      "NextResponse.redirect automatically preserves original request callbackUrl for smooth post-login return.",
+      "requestHeaders.set: Securely propagates x-user-id and role down to Server Components via internal request headers without re-parsing JWT."
+    ],
+    "expectedOutput": "Redirects non-authenticated users to /login?callbackUrl=... and injects verified user identity headers for downstream RSCs."
+  },
+  {
+    "id": "next-ex-34",
+    "title": "Content Security Policy (CSP) & Cryptographic Nonce Injector in Middleware",
+    "category": "Middleware & Edge",
+    "difficulty": "Advanced",
+    "whatThisCodeCovers": "Generating a cryptographically secure random nonce per request in middleware, injecting it into CSP headers and Server Components.",
+    "conceptsCovered": [
+      "Content Security Policy",
+      "Cryptographic Nonce",
+      "XSS Prevention",
+      "NextResponse Headers"
+    ],
+    "code": "// middleware.ts\nimport { NextResponse, type NextRequest } from 'next/server';\n\nexport function middleware(request: NextRequest) {\n  // 1. Generate base64 16-byte cryptographically secure random nonce\n  const nonce = Buffer.from(crypto.randomUUID()).toString('base64');\n\n  // 2. Build strict Content Security Policy\n  const cspHeader = `\n    default-src 'self';\n    script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https: 'unsafe-inline';\n    style-src 'self' 'nonce-${nonce}';\n    img-src 'self' blob: data: https:;\n    font-src 'self';\n    object-src 'none';\n    base-uri 'self';\n    form-action 'self';\n    frame-ancestors 'none';\n    upgrade-insecure-requests;\n  `.replace(/\\s{2,}/g, ' ').trim();\n\n  // 3. Clone request headers and inject nonce for Server Components to read\n  const requestHeaders = new Headers(request.headers);\n  requestHeaders.set('x-nonce', nonce);\n  requestHeaders.set('Content-Security-Policy', cspHeader);\n\n  // 4. Return response forwarding new request headers and setting CSP response header\n  const response = NextResponse.next({\n    request: {\n      headers: requestHeaders,\n    },\n  });\n\n  response.headers.set('Content-Security-Policy', cspHeader);\n  return response;\n}\n\n// app/layout.tsx (Server Component consuming the nonce)\nimport { headers } from 'next/headers';\n\nexport default async function RootLayout({ children }: { children: React.ReactNode }) {\n  const headersList = await headers();\n  const nonce = headersList.get('x-nonce') || '';\n\n  return (\n    <html lang=\"en\">\n      <head>\n        {/* Inline script authorized strictly via unique per-request cryptographic nonce */}\n        <script\n          nonce={nonce}\n          dangerouslySetInnerHTML={{\n            __html: `window.__APP_ENV__ = { region: 'iad1' };`,\n          }}\n        />\n      </head>\n      <body>{children}</body>\n    </html>\n  );\n}",
+    "breakdown": [
+      "Generates an unpredictable 16-byte base64 nonce on every individual HTTP request inside Edge middleware.",
+      "Sets Content-Security-Policy with 'nonce-{nonce}' to completely neutralize XSS script injection attacks.",
+      "Reads x-nonce in app/layout.tsx via await headers() and binds it to inline script tags."
+    ],
+    "expectedOutput": "Secure CSP header with strict-dynamic and unique nonce applied to every page render and inline script."
+  },
+  {
+    "id": "next-ex-35",
+    "title": "Multi-Tenant Subdomain Router & Dynamic Path Rewriting in Middleware",
+    "category": "Middleware & Edge",
+    "difficulty": "Advanced",
+    "whatThisCodeCovers": "Extracting tenant slug from hostname subdomain and transparently rewriting requests to tenant route folders without URL changes.",
+    "conceptsCovered": [
+      "NextResponse.rewrite",
+      "Multi-Tenancy",
+      "Subdomain Routing",
+      "Edge Middleware"
+    ],
+    "code": "// middleware.ts\nimport { NextResponse, type NextRequest } from 'next/server';\n\nexport function middleware(request: NextRequest) {\n  const url = request.nextUrl;\n  const hostname = request.headers.get('host') || '';\n\n  // Define apex domain (e.g. platform.com or localhost:3000)\n  const appRootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'localhost:3000';\n\n  // Check if current hostname is a tenant subdomain (e.g., acme.platform.com)\n  const isSubdomain = hostname.includes('.') && !hostname.startsWith('www.') && hostname !== appRootDomain;\n\n  if (isSubdomain) {\n    // Extract subdomain: 'acme.platform.com' -> 'acme'\n    const tenantSlug = hostname.replace(`.${appRootDomain}`, '');\n\n    // Prevent direct browser navigation to /_tenants/*\n    if (url.pathname.startsWith('/_tenants')) {\n      return NextResponse.redirect(new URL('/', request.url));\n    }\n\n    // Transparently rewrite internal route to /_tenants/[tenantSlug]/...\n    // The browser URL remains 'https://acme.platform.com/dashboard'\n    const rewriteUrl = new URL(`/_tenants/${tenantSlug}${url.pathname}`, request.url);\n    rewriteUrl.search = url.search;\n\n    const response = NextResponse.rewrite(rewriteUrl);\n    response.headers.set('x-tenant-slug', tenantSlug);\n    return response;\n  }\n\n  // Apex domain requests continue normally to root app/\n  return NextResponse.next();\n}\n\n// app/_tenants/[tenant]/dashboard/page.tsx\nexport default async function TenantDashboard({\n  params,\n}: {\n  params: Promise<{ tenant: string }>;\n}) {\n  const { tenant } = await params;\n  return (\n    <div className=\"p-8\">\n      <h1 className=\"text-3xl font-bold\">Welcome to {tenant} Portal</h1>\n    </div>\n  );\n}",
+    "breakdown": [
+      "Extracts subdomain from request.headers.get('host') and verifies it against the primary apex domain.",
+      "NextResponse.rewrite: Rewrites incoming paths to internal hidden folders (/_tenants/[tenant]/) while keeping browser URL bar intact.",
+      "Prevents direct navigation exploits to /_tenants to enforce strict tenant boundary separation."
+    ],
+    "expectedOutput": "acme.platform.com/dashboard seamlessly renders app/_tenants/acme/dashboard/page.tsx without 301/302 redirects."
+  },
+  {
+    "id": "next-ex-36",
+    "title": "Edge Rate Limiting with Upstash Redis & Sliding Window Algorithm",
+    "category": "Middleware & Edge",
+    "difficulty": "Advanced",
+    "whatThisCodeCovers": "Protecting public Next.js API endpoints and mutations from brute force and DDoS using Upstash Ratelimit in Edge Middleware.",
+    "conceptsCovered": [
+      "Rate Limiting",
+      "Upstash Redis",
+      "Sliding Window",
+      "HTTP 429",
+      "Edge Middleware"
+    ],
+    "code": "// middleware.ts\nimport { NextResponse, type NextRequest } from 'next/server';\nimport { Ratelimit } from '@upstash/ratelimit';\nimport { Redis } from '@upstash/redis';\n\n// Initialize Redis HTTP client (compatible with Edge runtime)\nconst redis = new Redis({\n  url: process.env.UPSTASH_REDIS_REST_URL!,\n  token: process.env.UPSTASH_REDIS_REST_TOKEN!,\n});\n\n// Configure sliding window rate limiter: 10 requests per 10 seconds per IP\nconst ratelimit = new Ratelimit({\n  redis,\n  limiter: Ratelimit.slidingWindow(10, '10 s'),\n  analytics: true,\n  prefix: '@ratelimit/edge',\n});\n\nexport async function middleware(request: NextRequest) {\n  // Only enforce rate limiting on API routes and mutation actions\n  if (request.nextUrl.pathname.startsWith('/api/') || request.method === 'POST') {\n    const ip = request.ip || request.headers.get('x-forwarded-for')?.split(',')[0] || '127.0.0.1';\n\n    const { success, limit, remaining, reset } = await ratelimit.limit(ip);\n\n    if (!success) {\n      return new NextResponse(\n        JSON.stringify({\n          error: 'Too Many Requests',\n          message: 'Rate limit exceeded. Please try again shortly.',\n        }),\n        {\n          status: 429,\n          headers: {\n            'Content-Type': 'application/json',\n            'X-RateLimit-Limit': limit.toString(),\n            'X-RateLimit-Remaining': remaining.toString(),\n            'X-RateLimit-Reset': reset.toString(),\n            'Retry-After': Math.ceil((reset - Date.now()) / 1000).toString(),\n          },\n        }\n      );\n    }\n  }\n\n  return NextResponse.next();\n}",
+    "breakdown": [
+      "Uses Upstash Redis REST API to avoid TCP socket overhead in Edge functions.",
+      "Sliding window algorithm prevents burst traffic exploits at the boundary of fixed-window intervals.",
+      "Injects standard HTTP 429 status code and X-RateLimit-* telemetry headers with accurate Retry-After countdowns."
+    ],
+    "expectedOutput": "Returns HTTP 429 with Retry-After header when an IP exceeds 10 requests per 10s window."
+  },
+  {
+    "id": "next-ex-37",
+    "title": "Route Handler with WebStreams & Server-Sent Events (SSE) Streaming",
+    "category": "Route Handlers & Streaming",
+    "difficulty": "Advanced",
+    "whatThisCodeCovers": "Streaming real-time text and AI token generation via Server-Sent Events (SSE) with readable Web Streams in Next.js 15.",
+    "conceptsCovered": [
+      "ReadableStream",
+      "TextEncoder",
+      "Server-Sent Events",
+      "AI Streaming",
+      "Route Handlers"
+    ],
+    "code": "// app/api/stream/route.ts\nimport { NextRequest } from 'next/server';\n\nexport const dynamic = 'force-dynamic'; // Prevent static optimization\n\nexport async function GET(request: NextRequest) {\n  const encoder = new TextEncoder();\n\n  // Create a Web Streams ReadableStream\n  const stream = new ReadableStream({\n    async start(controller) {\n      const messages = [\n        'Connecting to AI model...',\n        'Analyzing context documents...',\n        'Synthesizing response...',\n        'Next.js 15 App Router supports full Web Streams natively.',\n        'Stream complete.',\n      ];\n\n      for (let i = 0; i < messages.length; i++) {\n        // Format as standard SSE data packet\n        const payload = `data: ${JSON.stringify({ id: i + 1, text: messages[i] })}\\n\\n`;\n        controller.enqueue(encoder.encode(payload));\n\n        // Simulate token generation latency\n        await new Promise((resolve) => setTimeout(resolve, 600));\n      }\n\n      // Close the stream cleanly\n      controller.close();\n    },\n    cancel(reason) {\n      console.log('Client disconnected from SSE stream:', reason);\n    },\n  });\n\n  return new Response(stream, {\n    headers: {\n      'Content-Type': 'text/event-stream',\n      'Cache-Control': 'no-cache, no-transform',\n      Connection: 'keep-alive',\n    },\n  });\n}",
+    "breakdown": [
+      "ReadableStream: Standard Web Streams API controller pushes binary chunks without buffering entire response in memory.",
+      "text/event-stream Content-Type ensures browser EventSource or fetch reader interprets chunks as incoming event streams.",
+      "cancel() hook immediately detects client aborts and terminates upstream processing to conserve CPU and bandwidth."
+    ],
+    "expectedOutput": "Streams data: {\"id\":1,\"text\":\"...\"} chunks sequentially over a single open HTTP connection."
+  },
+  {
+    "id": "next-ex-38",
+    "title": "Custom Request & Response Header Propagation via NextResponse.next()",
+    "category": "Middleware & Edge",
+    "difficulty": "Intermediate",
+    "whatThisCodeCovers": "Injecting correlation IDs and custom security headers across request and response lifecycles in Next.js Middleware.",
+    "conceptsCovered": [
+      "NextResponse.next",
+      "Correlation ID",
+      "Header Mutation",
+      "Security Headers"
+    ],
+    "code": "// middleware.ts\nimport { NextResponse, type NextRequest } from 'next/server';\n\nexport function middleware(request: NextRequest) {\n  // 1. Resolve or generate distributed correlation trace ID\n  const correlationId = request.headers.get('x-correlation-id') || crypto.randomUUID();\n\n  // 2. Clone and enrich incoming request headers for Server Components & Route Handlers\n  const requestHeaders = new Headers(request.headers);\n  requestHeaders.set('x-correlation-id', correlationId);\n  requestHeaders.set('x-processed-by', 'edge-middleware-iad');\n\n  // 3. Forward modified headers to downstream server handlers\n  const response = NextResponse.next({\n    request: {\n      headers: requestHeaders,\n    },\n  });\n\n  // 4. Inject enterprise security headers onto outgoing HTTP response back to client\n  response.headers.set('x-correlation-id', correlationId);\n  response.headers.set('X-Frame-Options', 'DENY');\n  response.headers.set('X-Content-Type-Options', 'nosniff');\n  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');\n  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');\n\n  return response;\n}",
+    "breakdown": [
+      "NextResponse.next({ request: { headers } }): Injects headers directly into the internal request context read by headers() in RSCs.",
+      "response.headers.set(): Sets headers on the client-facing HTTP response headers.",
+      "Guarantees unified correlation tracing across Edge Middleware, Server Components, and client browser telemetry."
+    ],
+    "expectedOutput": "Downstream RSCs receive x-correlation-id, and client browser receives hardened HTTP security headers."
+  },
+  {
+    "id": "next-ex-39",
+    "title": "A/B Testing & Zero-Flicker Edge Variant Rewriting",
+    "category": "Middleware & Edge",
+    "difficulty": "Advanced",
+    "whatThisCodeCovers": "Zero-flicker split testing at the CDN edge by bucketing users into variants and rewriting page paths without layout shift.",
+    "conceptsCovered": [
+      "A/B Testing",
+      "Zero-Flicker",
+      "NextResponse.rewrite",
+      "Cookie Bucketing"
+    ],
+    "code": "// middleware.ts\nimport { NextResponse, type NextRequest } from 'next/server';\n\nconst EXPERIMENT_COOKIE = 'ab_experiment_hero_v1';\nconst VARIANTS = ['control', 'variant_b'] as const;\n\nexport function middleware(request: NextRequest) {\n  const { pathname } = request.nextUrl;\n\n  // Only run experiment on landing page\n  if (pathname !== '/') {\n    return NextResponse.next();\n  }\n\n  // 1. Check existing cookie or randomly assign 50/50 bucket\n  let variant = request.cookies.get(EXPERIMENT_COOKIE)?.value;\n\n  if (!variant || !VARIANTS.includes(variant as any)) {\n    variant = Math.random() < 0.5 ? 'control' : 'variant_b';\n  }\n\n  // 2. Rewrite internal route to variant folder if not control\n  // Variant B is transparently served from /variants/variant_b without changing browser URL\n  const destination = variant === 'variant_b' ? '/variants/variant_b' : '/';\n  const url = request.nextUrl.clone();\n  url.pathname = destination;\n\n  const response = NextResponse.rewrite(url);\n\n  // 3. Persist variant in cookie for 30 days\n  response.cookies.set(EXPERIMENT_COOKIE, variant, {\n    maxAge: 60 * 60 * 24 * 30,\n    path: '/',\n    sameSite: 'lax',\n  });\n\n  return response;\n}\n\n// app/variants/variant_b/page.tsx (Variant B Implementation)\nexport default function VariantBPage() {\n  return (\n    <main className=\"p-12 bg-indigo-900 text-white min-h-screen\">\n      <h1 className=\"text-4xl font-extrabold\">Next-Gen Cloud Storage (Variant B)</h1>\n      <p className=\"mt-4 text-lg\">Save 50% with our high-throughput tier.</p>\n    </main>\n  );\n}",
+    "breakdown": [
+      "Zero-flicker: Edge rewrite happens before any HTML is generated, eliminating client-side hydration layout shifts.",
+      "Cookie assignment: Ensures returning visitors consistently see the identical variant across sessions.",
+      "Transparent rewrite keeps URL as '/' while rendering /variants/variant_b under the hood."
+    ],
+    "expectedOutput": "50% of users see control landing page, 50% see Variant B with no URL redirect flash."
+  },
+  {
+    "id": "next-ex-40",
+    "title": "CORS Headers Configuration in Next.js Middleware & Route Handlers",
+    "category": "Middleware & Edge",
+    "difficulty": "Intermediate",
+    "whatThisCodeCovers": "Configuring robust Cross-Origin Resource Sharing (CORS) with preflight OPTIONS handling in Next.js 15.",
+    "conceptsCovered": [
+      "CORS",
+      "Preflight OPTIONS",
+      "Route Handlers",
+      "Middleware",
+      "Origin Whitelist"
+    ],
+    "code": "// middleware.ts\nimport { NextResponse, type NextRequest } from 'next/server';\n\nconst ALLOWED_ORIGINS = new Set([\n  'https://admin.acme.com',\n  'https://checkout.acme.com',\n  'http://localhost:3000',\n]);\n\nexport function middleware(request: NextRequest) {\n  const origin = request.headers.get('origin') || '';\n  const isAllowedOrigin = ALLOWED_ORIGINS.has(origin);\n\n  // 1. Handle Preflight HTTP OPTIONS request\n  if (request.method === 'OPTIONS') {\n    const preflightHeaders = {\n      'Access-Control-Allow-Origin': isAllowedOrigin ? origin : 'null',\n      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',\n      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',\n      'Access-Control-Allow-Credentials': 'true',\n      'Access-Control-Max-Age': '86400', // 24 hour cache\n    };\n    return new NextResponse(null, { status: 204, headers: preflightHeaders });\n  }\n\n  // 2. Normal request: Proceed and attach CORS headers to response\n  const response = NextResponse.next();\n\n  if (isAllowedOrigin) {\n    response.headers.set('Access-Control-Allow-Origin', origin);\n    response.headers.set('Access-Control-Allow-Credentials', 'true');\n    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');\n    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');\n  }\n\n  return response;\n}\n\nexport const config = {\n  matcher: '/api/:path*',\n};",
+    "breakdown": [
+      "Intercepts HTTP OPTIONS preflight calls at the Edge before reaching compute handlers.",
+      "Validates incoming origin against a strict whitelist to prevent wildcard '*' security vulnerabilities with credentials.",
+      "Access-Control-Max-Age of 86400 reduces browser preflight roundtrips for 24 hours."
+    ],
+    "expectedOutput": "Handles preflight OPTIONS with 204 No Content and adds CORS headers to all /api/* responses."
+  },
+  {
+    "id": "next-ex-41",
+    "title": "Partial Prerendering (PPR) Product Page with Dynamic Stock Hole",
+    "category": "Rendering & PPR",
+    "difficulty": "Advanced",
+    "whatThisCodeCovers": "Enabling Next.js 15 experimental PPR to combine instant static shell caching with streaming dynamic server components.",
+    "conceptsCovered": [
+      "Partial Prerendering",
+      "PPR",
+      "Suspense Boundary",
+      "Static Shell",
+      "Dynamic Hole"
+    ],
+    "code": "// next.config.ts\nimport type { NextConfig } from 'next';\n\nconst nextConfig: NextConfig = {\n  experimental: {\n    ppr: 'incremental', // Enable incremental PPR opt-in\n  },\n};\n\nexport default nextConfig;\n\n// app/products/[slug]/page.tsx\nimport { Suspense } from 'react';\nimport { db } from '@/lib/db';\n\nexport const experimental_ppr = true; // Opt this specific route into PPR\n\n// 1. Static Component: Inlined directly into the static shell at build time\nasync function ProductShell({ slug }: { slug: string }) {\n  const product = await db.product.findUnique({\n    where: { slug },\n    select: { name: true, description: true, image: true },\n  });\n\n  if (!product) return <div>Product Not Found</div>;\n\n  return (\n    <div>\n      <h1 className=\"text-3xl font-bold\">{product.name}</h1>\n      <p className=\"text-gray-600 mt-2\">{product.description}</p>\n    </div>\n  );\n}\n\n// 2. Dynamic Component: Uncached realtime inventory check streamed inside dynamic hole\nasync function RealtimeInventory({ slug }: { slug: string }) {\n  // Reading cookies or uncached DB creates a dynamic hole\n  const stock = await db.inventory.getLiveStock(slug);\n\n  return (\n    <div className=\"mt-4 p-4 border rounded bg-neutral-50\">\n      <span className={stock > 0 ? 'text-green-600 font-semibold' : 'text-red-600'}>\n        {stock > 0 ? `In Stock (${stock} units left)` : 'Out of Stock'}\n      </span>\n    </div>\n  );\n}\n\nexport default async function Page({ params }: { params: Promise<{ slug: string }> }) {\n  const { slug } = await params;\n\n  return (\n    <div className=\"p-8 max-w-4xl mx-auto\">\n      {/* Instant Static Shell */}\n      <ProductShell slug={slug} />\n\n      {/* Dynamic Hole streamed over same HTTP connection */}\n      <Suspense fallback={<div className=\"h-12 bg-neutral-200 animate-pulse rounded mt-4\" />}>\n        <RealtimeInventory slug={slug} />\n      </Suspense>\n    </div>\n  );\n}",
+    "breakdown": [
+      "experimental_ppr = true: Opts route into Partial Prerendering, generating a static HTML shell at build time.",
+      "The static shell is delivered from CDN edge with zero TTFB delay.",
+      "Suspense boundary marks the 'dynamic hole' where RealtimeInventory streams in parallel over the single HTTP response."
+    ],
+    "expectedOutput": "CDN serves the static product shell in 15ms while dynamic stock status streams in without page reload."
+  },
+  {
+    "id": "next-ex-42",
+    "title": "Next.js 15 Async Request Context Wrapper with connection() API",
+    "category": "Rendering & PPR",
+    "difficulty": "Advanced",
+    "whatThisCodeCovers": "Using Next.js 15 connection() API to explicitly opt into dynamic rendering and prevent build-time prerender poisoning.",
+    "conceptsCovered": [
+      "connection() API",
+      "Next.js 15",
+      "Dynamic Rendering",
+      "Async Request Context",
+      "Build Guard"
+    ],
+    "code": "// app/telemetry/live-traffic/page.tsx\nimport { connection } from 'next/server';\nimport { db } from '@/lib/db';\n\nasync function LiveTrafficFeed() {\n  // 1. Explicitly wait for an incoming user connection\n  // Halts build-time prerendering and guarantees this runs dynamically per-request\n  await connection();\n\n  // 2. Fetch live realtime server metrics\n  const liveUsers = await db.metrics.getActiveConnections();\n  const memoryUsage = process.memoryUsage().heapUsed / 1024 / 1024;\n\n  return (\n    <div className=\"p-6 bg-slate-900 text-white rounded-lg\">\n      <h2 className=\"text-xl font-bold\">Live Traffic Telemetry</h2>\n      <p className=\"mt-2 text-emerald-400\">Active Connections: {liveUsers}</p>\n      <p className=\"text-slate-400\">Server Heap: {memoryUsage.toFixed(2)} MB</p>\n      <p className=\"text-xs text-slate-500 mt-4\">Sampled at: {new Date().toISOString()}</p>\n    </div>\n  );\n}\n\nexport default function Page() {\n  return (\n    <main className=\"container mx-auto p-8\">\n      <h1 className=\"text-2xl font-bold mb-4\">Operations Console</h1>\n      <LiveTrafficFeed />\n    </main>\n  );\n}",
+    "breakdown": [
+      "await connection(): New Next.js 15 API that signals a component requires a real client connection to execute.",
+      "Prevents Next.js from throwing prerender errors during 'next build' when dynamic non-cached data is accessed.",
+      "Acts as a clean, declarative alternative to 'export const dynamic = force-dynamic' at the component level."
+    ],
+    "expectedOutput": "Safely skips build-time prerendering and executes strictly at request time on server."
+  },
+  {
+    "id": "next-ex-43",
+    "title": "Dynamic OpenGraph Image Generation using ImageResponse (@vercel/og)",
+    "category": "Assets & SEO",
+    "difficulty": "Advanced",
+    "whatThisCodeCovers": "Creating dynamic, branded social preview cards (og:image) at the edge using JSX, Tailwind CSS, and @vercel/og ImageResponse.",
+    "conceptsCovered": [
+      "ImageResponse",
+      "OpenGraph",
+      "Edge Runtime",
+      "Dynamic Social Cards",
+      "satori"
+    ],
+    "code": "// app/api/og/route.tsx\nimport { ImageResponse } from 'next/og';\nimport { NextRequest } from 'next/server';\n\nexport const runtime = 'edge';\n\nexport async function GET(request: NextRequest) {\n  try {\n    const { searchParams } = new URL(request.url);\n\n    // Parse dynamic parameters with safe fallbacks\n    const title = searchParams.get('title')?.slice(0, 100) || 'Next.js 15 Mastery Guide';\n    const author = searchParams.get('author') || 'Architect Team';\n    const tag = searchParams.get('tag') || 'Architecture';\n\n    return new ImageResponse(\n      (\n        <div\n          style={{\n            height: '100%',\n            width: '100%',\n            display: 'flex',\n            flexDirection: 'column',\n            alignItems: 'flex-start',\n            justifyContent: 'space-between',\n            backgroundColor: '#0f172a',\n            padding: '60px 80px',\n            fontFamily: 'sans-serif',\n          }}\n        >\n          {/* Top Tag & Brand */}\n          <div style={{ display: 'flex', alignItems: 'center' }}>\n            <span\n              style={{\n                backgroundColor: '#3b82f6',\n                color: '#ffffff',\n                padding: '8px 20px',\n                borderRadius: '9999px',\n                fontSize: 22,\n                fontWeight: 700,\n                textTransform: 'uppercase',\n              }}\n            >\n              {tag}\n            </span>\n          </div>\n\n          {/* Center Main Title */}\n          <div\n            style={{\n              fontSize: 56,\n              fontWeight: 800,\n              color: '#ffffff',\n              lineHeight: 1.2,\n              letterSpacing: '-0.02em',\n            }}\n          >\n            {title}\n          </div>\n\n          {/* Bottom Footer Info */}\n          <div\n            style={{\n              display: 'flex',\n              justifyContent: 'space-between',\n              width: '100%',\n              borderTop: '2px solid #334155',\n              paddingTop: '24px',\n              fontSize: 24,\n              color: '#94a3b8',\n            }}\n          >\n            <span>By {author}</span>\n            <span>nextjs.enterprise.org</span>\n          </div>\n        </div>\n      ),\n      {\n        width: 1200,\n        height: 630,\n      }\n    );\n  } catch (e: any) {\n    return new Response('Failed to generate OG image', { status: 500 });\n  }\n}",
+    "breakdown": [
+      "ImageResponse: Leverages Satori to transform React JSX into SVG and Resvg to convert SVG to high-performance PNG at the edge.",
+      "runtime = 'edge': Executes within V8 isolates with instant sub-millisecond cold start times.",
+      "Automatically integrated into app/blog/[slug]/layout.tsx via metadata.openGraph.images array."
+    ],
+    "expectedOutput": "Generates a crisp 1200x630 PNG social preview image on the fly with custom title and author."
+  },
+  {
+    "id": "next-ex-44",
+    "title": "Zero-Layout-Shift Self-Hosted Font Architecture with next/font",
+    "category": "Assets & SEO",
+    "difficulty": "Intermediate",
+    "whatThisCodeCovers": "Using next/font/google and next/font/local to download fonts at build time, self-host them, and eliminate Cumulative Layout Shift (CLS).",
+    "conceptsCovered": [
+      "next/font",
+      "CLS Prevention",
+      "CSS Variables",
+      "Font Subsetting",
+      "next/font/local"
+    ],
+    "code": "// app/fonts.ts\nimport { Inter, JetBrains_Mono } from 'next/font/google';\nimport localFont from 'next/font/local';\n\n// Google font: Downloaded at build time and hosted locally from same origin\nexport const inter = Inter({\n  subsets: ['latin'],\n  display: 'swap',\n  variable: '--font-inter',\n  weight: ['400', '500', '600', '700'],\n});\n\nexport const jetbrainsMono = JetBrains_Mono({\n  subsets: ['latin'],\n  display: 'swap',\n  variable: '--font-mono',\n});\n\n// Custom enterprise corporate font from local WOFF2 files\nexport const customBrandFont = localFont({\n  src: [\n    {\n      path: '../public/fonts/BrandFont-Regular.woff2',\n      weight: '400',\n      style: 'normal',\n    },\n    {\n      path: '../public/fonts/BrandFont-Bold.woff2',\n      weight: '700',\n      style: 'normal',\n    },\n  ],\n  variable: '--font-brand',\n  display: 'swap',\n});\n\n// app/layout.tsx\nimport { inter, jetbrainsMono, customBrandFont } from './fonts';\nimport './globals.css';\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html\n      lang=\"en\"\n      className={`${inter.variable} ${jetbrainsMono.variable} ${customBrandFont.variable}`}\n    >\n      <body className=\"font-sans antialiased text-neutral-900 bg-white\">\n        {children}\n      </body>\n    </html>\n  );\n}",
+    "breakdown": [
+      "Zero external network requests: Google fonts are bundled at build time; zero requests are sent to Google servers by end users.",
+      "Font Subsetting: subsets: ['latin'] automatically trims unused character glyphs, drastically reducing font file size.",
+      "Automatic Size-Adjust Fallbacks: Next.js calculates fallback metrics and injects @font-face adjustments to prevent CLS layout shifts."
+    ],
+    "expectedOutput": "Fastest possible font loading with zero external DNS lookups and zero Cumulative Layout Shift."
+  },
+  {
+    "id": "next-ex-45",
+    "title": "Responsive Art-Directed Image Grid with next/image & sizes Attribute",
+    "category": "Assets & SEO",
+    "difficulty": "Intermediate",
+    "whatThisCodeCovers": "Optimizing responsive images using next/image with strict sizes hints, AVIF/WebP conversion, and blur placeholders.",
+    "conceptsCovered": [
+      "next/image",
+      "sizes attribute",
+      "AVIF/WebP",
+      "Blur Placeholders",
+      "Responsive Images"
+    ],
+    "code": "// components/ProductGrid.tsx\nimport Image from 'next/image';\n\ninterface Product {\n  id: string;\n  name: string;\n  imageUrl: string;\n  blurDataUrl: string;\n}\n\nexport function ProductGrid({ products }: { products: Product[] }) {\n  return (\n    <div className=\"grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 p-6\">\n      {products.map((product, idx) => (\n        <div key={product.id} className=\"group flex flex-col border rounded-lg overflow-hidden\">\n          {/* Responsive Image Container with fixed Aspect Ratio */}\n          <div className=\"relative aspect-square w-full bg-neutral-100\">\n            <Image\n              src={product.imageUrl}\n              alt={product.name}\n              fill\n              // sizes hint: Informs browser which srcset image width to fetch based on viewport\n              sizes=\"(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw\"\n              className=\"object-cover transition-transform duration-300 group-hover:scale-105\"\n              priority={idx < 4} // Preload above-the-fold images to optimize LCP\n              placeholder=\"blur\"\n              blurDataURL={product.blurDataUrl}\n            />\n          </div>\n          <div className=\"p-4\">\n            <h3 className=\"font-semibold text-lg\">{product.name}</h3>\n          </div>\n        </div>\n      ))}\n    </div>\n  );\n}",
+    "breakdown": [
+      "sizes: Critical attribute that tells the browser exact render width before CSS is downloaded, stopping 4K images loading on mobile.",
+      "priority={idx < 4}: LCP optimization that marks above-the-fold images with fetchpriority='high' and preloads them.",
+      "placeholder='blur': Eliminates empty white flashes while high-resolution image downloads over slow networks."
+    ],
+    "expectedOutput": "Near-instant Largest Contentful Paint (LCP) with perfect responsive image width selection."
+  },
+  {
+    "id": "next-ex-46",
+    "title": "Third-Party Script Optimization with next/script Strategies",
+    "category": "Assets & SEO",
+    "difficulty": "Intermediate",
+    "whatThisCodeCovers": "Loading analytics and tag managers using next/script strategies (beforeInteractive, afterInteractive, lazyOnload, worker).",
+    "conceptsCovered": [
+      "next/script",
+      "beforeInteractive",
+      "lazyOnload",
+      "Web Workers",
+      "Partytown"
+    ],
+    "code": "// app/layout.tsx\nimport Script from 'next/script';\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang=\"en\">\n      <head>\n        {/* 1. Critical Polyfill / Bot Defense: Must execute BEFORE page becomes interactive */}\n        <Script\n          src=\"https://challenges.cloudflare.com/turnstile/v0/api.js\"\n          strategy=\"beforeInteractive\"\n        />\n      </head>\n      <body>\n        {children}\n\n        {/* 2. Core Analytics: Loads immediately after the page hydrates (default strategy) */}\n        <Script\n          id=\"google-tag-manager\"\n          strategy=\"afterInteractive\"\n          dangerouslySetInnerHTML={{\n            __html: `\n              (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':\n              new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],\n              j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=\n              'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);\n              })(window,document,'script','dataLayer','GTM-XXXXXXX');\n            `,\n          }}\n        />\n\n        {/* 3. Non-critical Chat Widget: Defers execution until browser idle time */}\n        <Script\n          src=\"https://static.chatwidget.io/bundle.js\"\n          strategy=\"lazyOnload\"\n          onLoad={() => {\n            console.log('Customer support chat widget loaded in idle time.');\n          }}\n        />\n      </body>\n    </html>\n  );\n}",
+    "breakdown": [
+      "beforeInteractive: Injected into initial HTML and executed prior to hydration (for bot protection, security guards).",
+      "afterInteractive (default): Loaded immediately after React hydrates the client DOM, preventing main-thread blocking during initial paint.",
+      "lazyOnload: Uses requestIdleCallback to execute during browser idle periods, preserving 100/100 Lighthouse performance scores."
+    ],
+    "expectedOutput": "Prioritizes critical app bundles while running heavyweight third-party scripts without blocking main thread."
+  },
+  {
+    "id": "next-ex-47",
+    "title": "Dynamic Programmatic Sitemap (sitemap.ts) & Robots (robots.ts)",
+    "category": "Assets & SEO",
+    "difficulty": "Intermediate",
+    "whatThisCodeCovers": "Generating dynamic XML sitemaps and robots.txt files programmatically in Next.js 15 App Router.",
+    "conceptsCovered": [
+      "sitemap.ts",
+      "robots.ts",
+      "MetadataRoute",
+      "Dynamic SEO",
+      "Search Engine Indexing"
+    ],
+    "code": "// app/robots.ts\nimport { MetadataRoute } from 'next';\n\nexport default function robots(): MetadataRoute.Robots {\n  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://enterprise.acme.com';\n\n  return {\n    rules: [\n      {\n        userAgent: '*',\n        allow: '/',\n        disallow: ['/api/', '/admin/', '/checkout/', '/_tenants/'],\n      },\n      {\n        userAgent: 'GPTBot',\n        disallow: ['/'], // Disallow AI crawlers if proprietary data\n      },\n    ],\n    sitemap: `${baseUrl}/sitemap.xml`,\n  };\n}\n\n// app/sitemap.ts\nimport { MetadataRoute } from 'next';\nimport { db } from '@/lib/db';\n\nexport default async function sitemap(): Promise<MetadataRoute.Sitemap> {\n  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://enterprise.acme.com';\n\n  // 1. Fetch all published dynamic articles from database\n  const articles = await db.article.findMany({\n    where: { published: true },\n    select: { slug: true, updatedAt: true },\n  });\n\n  const articleEntries: MetadataRoute.Sitemap = articles.map((article) => ({\n    url: `${baseUrl}/articles/${article.slug}`,\n    lastModified: article.updatedAt,\n    changeFrequency: 'weekly',\n    priority: 0.8,\n  }));\n\n  // 2. Static primary marketing pages\n  const staticEntries: MetadataRoute.Sitemap = [\n    {\n      url: baseUrl,\n      lastModified: new Date(),\n      changeFrequency: 'daily',\n      priority: 1.0,\n    },\n    {\n      url: `${baseUrl}/pricing`,\n      lastModified: new Date(),\n      changeFrequency: 'monthly',\n      priority: 0.9,\n    },\n  ];\n\n  return [...staticEntries, ...articleEntries];\n}",
+    "breakdown": [
+      "MetadataRoute.Robots and MetadataRoute.Sitemap are typed native Next.js file conventions.",
+      "Next.js automatically compiles app/sitemap.ts into /sitemap.xml and app/robots.ts into /robots.txt.",
+      "Asynchronous database fetching ensures sitemaps always reflect real-time published database records."
+    ],
+    "expectedOutput": "Serves valid /robots.txt and /sitemap.xml with dynamic database-driven product URLs."
+  },
+  {
+    "id": "next-ex-48",
+    "title": "Application Telemetry Initialization via instrumentation.ts & OpenTelemetry",
+    "category": "Deployment & Production",
+    "difficulty": "Advanced",
+    "whatThisCodeCovers": "Configuring instrumentation.ts hook to initialize distributed tracing, Prometheus metrics, and OpenTelemetry in Next.js 15.",
+    "conceptsCovered": [
+      "instrumentation.ts",
+      "register() hook",
+      "OpenTelemetry",
+      "Distributed Tracing",
+      "Node Runtime"
+    ],
+    "code": "// next.config.ts\nimport type { NextConfig } from 'next';\n\nconst nextConfig: NextConfig = {\n  experimental: {\n    instrumentationHook: true, // Enable instrumentation hook\n  },\n};\n\nexport default nextConfig;\n\n// instrumentation.ts\nexport async function register() {\n  // Only execute within Node.js runtime (skipping Edge/browser)\n  if (process.env.NEXT_RUNTIME === 'nodejs') {\n    const { NodeSDK } = await import('@opentelemetry/sdk-node');\n    const { OTLPTraceExporter } = await import('@opentelemetry/exporter-trace-otlp-http');\n    const { Resource } = await import('@opentelemetry/resources');\n    const { SemanticResourceAttributes } = await import('@opentelemetry/semantic-conventions');\n\n    const sdk = new NodeSDK({\n      resource: new Resource({\n        [SemanticResourceAttributes.SERVICE_NAME]: 'nextjs-enterprise-frontend',\n        [SemanticResourceAttributes.SERVICE_VERSION]: '15.0.0',\n        environment: process.env.NODE_ENV,\n      }),\n      traceExporter: new OTLPTraceExporter({\n        url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://collector:4318/v1/traces',\n      }),\n    });\n\n    sdk.start();\n    console.log('[Telemetry] OpenTelemetry SDK initialized successfully in Node runtime.');\n  }\n}",
+    "breakdown": [
+      "instrumentation.ts is invoked once when the Next.js server instance starts, before handling any HTTP traffic.",
+      "process.env.NEXT_RUNTIME === 'nodejs' ensures heavy telemetry libraries are only loaded in Node.js server environments.",
+      "Seamlessly connects Next.js server actions, route handlers, and rendering spans to Jaeger, Datadog, or Grafana Tempo."
+    ],
+    "expectedOutput": "Starts OpenTelemetry tracing on server boot without impacting client bundle or edge latency."
+  },
+  {
+    "id": "next-ex-49",
+    "title": "Multi-Stage Hardened Production Dockerfile with output: 'standalone'",
+    "category": "Deployment & Production",
+    "difficulty": "Advanced",
+    "whatThisCodeCovers": "Creating a production Docker container using Next.js standalone mode to reduce image size from 1.5GB to under 120MB.",
+    "conceptsCovered": [
+      "Dockerfile",
+      "output: 'standalone'",
+      "Multi-Stage Build",
+      "Non-root User",
+      "Container Security"
+    ],
+    "code": "// next.config.ts\nimport type { NextConfig } from 'next';\n\nconst nextConfig: NextConfig = {\n  output: 'standalone', // Traces all dependencies and outputs minimal server.js\n};\n\nexport default nextConfig;\n\n# Dockerfile\nFROM node:20-alpine AS base\n\n# Stage 1: Install dependencies\nFROM base AS deps\nRUN apk add --no-cache libc6-compat\nWORKDIR /app\nCOPY package.json package-lock.json ./\nRUN npm ci\n\n# Stage 2: Build the source code\nFROM base AS builder\nWORKDIR /app\nCOPY --from=deps /app/node_modules ./node_modules\nCOPY . .\nENV NEXT_TELEMETRY_DISABLED=1\nENV NODE_ENV=production\nRUN npm run build\n\n# Stage 3: Minimal Production Runner (<120MB)\nFROM base AS runner\nWORKDIR /app\n\nENV NODE_ENV=production\nENV NEXT_TELEMETRY_DISABLED=1\nENV PORT=3000\nENV HOSTNAME=\"0.0.0.0\"\n\n# Security: Run as unprivileged non-root user\nRUN addgroup --system --gid 1001 nodejs\nRUN adduser --system --uid 1001 nextjs\n\n# Copy static assets and traced standalone server\nCOPY --from=builder /app/public ./public\nCOPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./\nCOPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static\n\nUSER nextjs\nEXPOSE 3000\n\nCMD [\"node\", \"server.js\"]",
+    "breakdown": [
+      "output: 'standalone': Analyzes AST imports and bundles ONLY required node_modules into .next/standalone.",
+      "Multi-stage Docker build avoids shipping devDependencies or build tooling into the final production image.",
+      "Runs under unprivileged 'nextjs' UID 1001 with read-only root permissions for SOC2 / PCI-DSS compliance."
+    ],
+    "expectedOutput": "Creates a hardened, lightweight Docker container (~115MB) running via 'node server.js'."
+  },
+  {
+    "id": "next-ex-50",
+    "title": "Shared Redis CacheHandler for Multi-Container Kubernetes Deployments",
+    "category": "Deployment & Production",
+    "difficulty": "Advanced",
+    "whatThisCodeCovers": "Configuring a custom cacheHandler in next.config.ts with Redis to synchronize ISR and Data Cache across horizontally scaled pods.",
+    "conceptsCovered": [
+      "cacheHandler",
+      "Redis",
+      "Distributed Caching",
+      "Kubernetes",
+      "Data Cache Sync"
+    ],
+    "code": "// cache-handler.mjs\nimport { createClient } from 'redis';\n\nconst client = createClient({\n  url: process.env.REDIS_CACHE_URL || 'redis://redis-cluster:6379',\n});\n\nclient.on('error', (err) => console.error('[CacheHandler] Redis Error:', err));\nawait client.connect();\n\nexport default class RedisCacheHandler {\n  constructor(options) {\n    this.options = options;\n  }\n\n  async get(key) {\n    const data = await client.get(`next:cache:${key}`);\n    if (!data) return null;\n    return JSON.parse(data);\n  }\n\n  async set(key, data, ctx) {\n    // ctx.revalidate defines TTL in seconds\n    const ttl = typeof ctx?.revalidate === 'number' ? ctx.revalidate : 86400;\n    await client.setEx(`next:cache:${key}`, ttl, JSON.stringify(data));\n  }\n\n  async revalidateTag(tag) {\n    // Scan and invalidate all keys associated with this tag in Redis\n    const keys = await client.sMembers(`next:tags:${tag}`);\n    if (keys.length > 0) {\n      await client.del(keys.map((k) => `next:cache:${k}`));\n      await client.del(`next:tags:${tag}`);\n    }\n  }\n}\n\n// next.config.mjs\n/** @type {import('next').NextConfig} */\nconst nextConfig = {\n  cacheHandler: process.env.NODE_ENV === 'production' \n    ? require.resolve('./cache-handler.mjs') \n    : undefined,\n};\n\nexport default nextConfig;",
+    "breakdown": [
+      "Eliminates pod-local cache divergence where pod A serves fresh data while pod B serves stale data.",
+      "cacheHandler overrides the default in-memory / local filesystem Data Cache with centralized Redis cluster.",
+      "revalidateTag instantly propagates across hundreds of Kubernetes Next.js pods in real time."
+    ],
+    "expectedOutput": "Instant cluster-wide cache invalidation across all Kubernetes replicas when revalidateTag is called."
+  },
+  {
+    "id": "next-ex-51",
+    "title": "Nginx Reverse Proxy Configuration for Static _next/static Caching",
+    "category": "Deployment & Production",
+    "difficulty": "Advanced",
+    "whatThisCodeCovers": "Hardening Nginx reverse proxy to cache immutable Next.js static assets with 1-year max-age while bypassing SSR HTML.",
+    "conceptsCovered": [
+      "Nginx",
+      "Reverse Proxy",
+      "Cache-Control: immutable",
+      "Static Asset Caching",
+      "Micro-Caching"
+    ],
+    "code": "# /etc/nginx/conf.d/nextjs.conf\n\nupstream nextjs_upstream {\n    server 127.0.0.1:3000 max_fails=3 fail_timeout=10s;\n    keepalive 64;\n}\n\nserver {\n    listen 80;\n    server_name store.enterprise.com;\n    return 301 https://$server_name$request_uri;\n}\n\nserver {\n    listen 443 ssl http2;\n    server_name store.enterprise.com;\n\n    ssl_certificate /etc/ssl/certs/store.crt;\n    ssl_certificate_key /etc/ssl/private/store.key;\n\n    # 1. Next.js Immutable Static Chunks: Cache forever (1 year)\n    location /_next/static/ {\n        proxy_pass http://nextjs_upstream;\n        proxy_http_version 1.1;\n        proxy_set_header Connection \"\";\n        \n        # Next.js hashes these files uniquely per build\n        expires 365d;\n        add_header Cache-Control \"public, max-age=31536000, immutable\";\n        access_log off;\n    }\n\n    # 2. Public Static Assets (favicons, robots, fonts)\n    location ~* \\.(ico|png|jpg|jpeg|svg|webp|woff2)$ {\n        proxy_pass http://nextjs_upstream;\n        proxy_http_version 1.1;\n        proxy_set_header Connection \"\";\n        expires 7d;\n        add_header Cache-Control \"public, max-age=604800\";\n    }\n\n    # 3. Dynamic SSR, Route Handlers, and Server Actions: Never cache HTML at proxy\n    location / {\n        proxy_pass http://nextjs_upstream;\n        proxy_http_version 1.1;\n\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n\n        # WebSockets and SSE streaming support\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection \"upgrade\";\n\n        proxy_buffering off; # Required for RSC streaming chunks\n        proxy_read_timeout 60s;\n    }\n}",
+    "breakdown": [
+      "/_next/static/ with immutable max-age=31536000 prevents re-requesting hashed JavaScript/CSS chunks.",
+      "proxy_buffering off: Essential for Next.js App Router streaming (React Suspense chunks won't stall in Nginx buffer).",
+      "proxy_set_header Connection 'upgrade' enables real-time WebSockets and SSE streaming route handlers."
+    ],
+    "expectedOutput": "Nginx offloads 90% of traffic by serving static assets from memory while streaming SSR HTML without lag."
+  },
+  {
+    "id": "next-ex-52",
+    "title": "Graceful Shutdown & In-Flight Request Draining Script for Kubernetes",
+    "category": "Deployment & Production",
+    "difficulty": "Advanced",
+    "whatThisCodeCovers": "Implementing graceful SIGTERM and SIGINT handling in custom server or standalone Next.js container to prevent dropped user requests.",
+    "conceptsCovered": [
+      "SIGTERM",
+      "Graceful Shutdown",
+      "Kubernetes PreStop",
+      "Connection Draining",
+      "Zero-Downtime Deployments"
+    ],
+    "code": "// server.mjs (Custom Standalone Next.js Runner with Connection Draining)\nimport http from 'http';\nimport next from 'next';\n\nconst dev = process.env.NODE_ENV !== 'production';\nconst app = next({ dev });\nconst handle = app.getRequestHandler();\n\nconst port = parseInt(process.env.PORT || '3000', 10);\n\napp.prepare().then(() => {\n  const server = http.createServer((req, res) => {\n    handle(req, res);\n  });\n\n  server.listen(port, () => {\n    console.log(`[Server] Next.js ready on http://localhost:${port}`);\n  });\n\n  // Track active keep-alive sockets\n  const sockets = new Set();\n  server.on('connection', (socket) => {\n    sockets.add(socket);\n    socket.on('close', () => sockets.delete(socket));\n  });\n\n  // Graceful shutdown handler\n  async function shutdown(signal) {\n    console.log(`[Shutdown] Received ${signal}. Starting graceful drain...`);\n\n    // 1. Stop accepting new connections\n    server.close((err) => {\n      if (err) {\n        console.error('[Shutdown] Error closing server:', err);\n        process.exit(1);\n      }\n      console.log('[Shutdown] All in-flight requests drained cleanly. Exiting.');\n      process.exit(0);\n    });\n\n    // 2. Give in-flight long-running requests (e.g. streaming, DB transactions) 15 seconds to finish\n    const shutdownTimeout = setTimeout(() => {\n      console.warn('[Shutdown] Forcing termination: In-flight requests timed out.');\n      for (const socket of sockets) {\n        socket.destroy();\n      }\n      process.exit(1);\n    }, 15000);\n\n    shutdownTimeout.unref();\n  }\n\n  process.on('SIGTERM', () => shutdown('SIGTERM'));\n  process.on('SIGINT', () => shutdown('SIGINT'));\n});",
+    "breakdown": [
+      "Traps SIGTERM sent by Kubernetes pod eviction or autoscaler downscaling.",
+      "server.close() halts new incoming connections while allowing active in-flight requests to complete without 502 Bad Gateway errors.",
+      "15-second safety timeout guarantees hung database queries or deadlocked sockets won't block deployment rollout indefinitely."
+    ],
+    "expectedOutput": "Zero dropped connections and zero 502/504 errors during Kubernetes rolling upgrades and autoscaling."
+  }
+]

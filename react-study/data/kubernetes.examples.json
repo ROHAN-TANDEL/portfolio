@@ -1,0 +1,879 @@
+[
+  {
+    "id": "k8s-ex-01",
+    "title": "Zero-Downtime RollingUpdate Deployment with Graceful Shutdown & Probes",
+    "category": "Workloads & Pod Lifecycle",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A production-grade Deployment manifest featuring 25% rolling update limits, startup/readiness/liveness probes, and preStop sleep hooks to prevent dropped in-flight HTTP connections during pod termination.",
+    "conceptsCovered": [
+      "RollingUpdate",
+      "maxSurge",
+      "maxUnavailable",
+      "preStop Hook",
+      "readinessProbe",
+      "livenessProbe",
+      "startupProbe"
+    ],
+    "code": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payment-api\n  namespace: production\n  labels:\n    app.kubernetes.io/name: payment-api\nspec:\n  replicas: 4\n  revisionHistoryLimit: 10\n  strategy:\n    type: RollingUpdate\n    rollingUpdate:\n      maxSurge: 25%        # Spin up 1 extra pod before killing old ones\n      maxUnavailable: 0     # Ensure 100% target capacity during rollout\n  selector:\n    matchLabels:\n      app: payment-api\n  template:\n    metadata:\n      labels:\n        app: payment-api\n    spec:\n      terminationGracePeriodSeconds: 60\n      containers:\n      - name: payment-api\n        image: registry.example.com/finance/payment-api:v2.4.0\n        lifecycle:\n          preStop:\n            exec:\n              # Give kube-proxy / ingress controllers 15s to remove pod from endpoints\n              command: [\"/bin/sh\", \"-c\", \"sleep 15\"]\n        ports:\n        - containerPort: 8080\n          name: http\n        startupProbe:\n          httpGet:\n            path: /healthz/startup\n            port: http\n          failureThreshold: 30\n          periodSeconds: 2 # Up to 60s warm up\n        readinessProbe:\n          httpGet:\n            path: /healthz/ready\n            port: http\n          initialDelaySeconds: 5\n          periodSeconds: 5\n          timeoutSeconds: 2\n        livenessProbe:\n          httpGet:\n            path: /healthz/live\n            port: http\n          periodSeconds: 10\n          failureThreshold: 3\n        resources:\n          requests:\n            cpu: 250m\n            memory: 512Mi\n          limits:\n            cpu: 1000m\n            memory: 1024Mi",
+    "breakdown": "Sets maxUnavailable to 0 ensuring full throughput throughout updates. PreStop hook executes a 15-second sleep, providing ample propagation time for endpoints controllers to sever inbound traffic before the application process receives SIGTERM.",
+    "expectedOutput": "Zero dropped HTTP requests during rolling updates, with graceful TCP connection drainage and automatic rollback on probe failures."
+  },
+  {
+    "id": "k8s-ex-02",
+    "title": "Production StatefulSet with Headless Service & VolumeClaimTemplates",
+    "category": "Workloads & Pod Lifecycle",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A clustered stateful deployment (PostgreSQL/Kafka style) using StatefulSets, dedicated Headless Service DNS routing, and per-pod dynamic PersistentVolumeClaim storage templates.",
+    "conceptsCovered": [
+      "StatefulSet",
+      "Headless Service",
+      "volumeClaimTemplates",
+      "podAntiAffinity",
+      "orderedReady"
+    ],
+    "code": "apiVersion: v1\nkind: Service\nmetadata:\n  name: postgres-cluster-headless\n  namespace: databases\n  labels:\n    app: postgres-cluster\nspec:\n  clusterIP: None # Headless service for direct DNS routing\n  ports:\n  - port: 5432\n    name: postgresql\n  selector:\n    app: postgres-cluster\n---\napiVersion: apps/v1\nkind: StatefulSet\nmetadata:\n  name: postgres-node\n  namespace: databases\nspec:\n  serviceName: \"postgres-cluster-headless\"\n  replicas: 3\n  podManagementPolicy: OrderedReady\n  updateStrategy:\n    type: RollingUpdate\n  selector:\n    matchLabels:\n      app: postgres-cluster\n  template:\n    metadata:\n      labels:\n        app: postgres-cluster\n    spec:\n      affinity:\n        podAntiAffinity:\n          requiredDuringSchedulingIgnoredDuringExecution:\n          - labelSelector:\n              matchExpressions:\n              - key: app\n                operator: In\n                values: [\"postgres-cluster\"]\n            topologyKey: \"kubernetes.io/hostname\" # Strict one pod per node\n      containers:\n      - name: postgres\n        image: postgres:15.4-alpine\n        ports:\n        - containerPort: 5432\n          name: postgresql\n        volumeMounts:\n        - name: pgdata\n          mountPath: /var/lib/postgresql/data\n  volumeClaimTemplates:\n  - metadata:\n      name: pgdata\n    spec:\n      accessModes: [ \"ReadWriteOnce\" ]\n      storageClassName: \"gp3-ebs\"\n      resources:\n        requests:\n          storage: 100Gi",
+    "breakdown": "Combines a headless service with volumeClaimTemplates so each replica gets a dedicated, isolated cloud block volume (pgdata-postgres-node-0, 1, 2) and deterministic DNS hostname.",
+    "expectedOutput": "Stable ordinal pods postgres-node-0, postgres-node-1, postgres-node-2 each retaining their attached 100Gi EBS volumes across pod restarts."
+  },
+  {
+    "id": "k8s-ex-03",
+    "title": "High-Throughput Ingress with TLS Termination, Path Routing & Rate Limiting",
+    "category": "Networking & Services",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "An enterprise NGINX Ingress manifest routing traffic across microservices, terminating TLS using Cert-Manager certificates, and enforcing rate limiting.",
+    "conceptsCovered": [
+      "Ingress",
+      "TLS Termination",
+      "Cert-Manager",
+      "Rate Limiting",
+      "Path Prefix Routing"
+    ],
+    "code": "apiVersion: networking.k8s.io/v1\nkind: Ingress\nmetadata:\n  name: enterprise-api-gateway\n  namespace: production\n  annotations:\n    kubernetes.io/ingress.class: \"nginx\"\n    cert-manager.io/cluster-issuer: \"letsencrypt-prod\"\n    nginx.ingress.kubernetes.io/ssl-redirect: \"true\"\n    nginx.ingress.kubernetes.io/backend-protocol: \"HTTP\"\n    nginx.ingress.kubernetes.io/limit-rps: \"100\"           # 100 req/sec rate limit per client IP\n    nginx.ingress.kubernetes.io/limit-burst-multiplier: \"3\" # Burst factor\n    nginx.ingress.kubernetes.io/proxy-read-timeout: \"60\"\nspec:\n  tls:\n  - hosts:\n    - api.company.com\n    secretName: api-company-tls-cert\n  rules:\n  - host: api.company.com\n    http:\n      paths:\n      - path: /v1/orders\n        pathType: Prefix\n        backend:\n          service:\n            name: order-service\n            port:\n              number: 8080\n      - path: /v1/payments\n        pathType: Prefix\n        backend:\n          service:\n            name: payment-service\n            port:\n              number: 8080",
+    "breakdown": "Defines path-based layer 7 routing under a single TLS-secured domain, enforcing strict TLS redirection and automated SSL certificate management with NGINX rate-limiting.",
+    "expectedOutput": "Secure HTTPS endpoints on api.company.com routing /v1/orders and /v1/payments with automatic HTTP-to-HTTPS redirect and 100 req/s rate limits."
+  },
+  {
+    "id": "k8s-ex-04",
+    "title": "Dynamic Persistent Volume Provisioning with WaitForFirstConsumer",
+    "category": "Storage & Persistence",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A cloud-agnostic StorageClass and PersistentVolumeClaim configuration enforcing delayed volume binding until pod scheduling, preventing Availability Zone mismatches.",
+    "conceptsCovered": [
+      "StorageClass",
+      "volumeBindingMode",
+      "WaitForFirstConsumer",
+      "allowVolumeExpansion",
+      "PVC"
+    ],
+    "code": "apiVersion: storage.k8s.io/v1\nkind: StorageClass\nmetadata:\n  name: high-performance-ssd\nprovisioner: ebs.csi.aws.com\nvolumeBindingMode: WaitForFirstConsumer # Delay creation until Pod is placed on a node!\nallowVolumeExpansion: true              # Permit dynamic disk size increase\nreclaimPolicy: Delete\nparameters:\n  type: gp3\n  iops: \"3000\"\n  throughput: \"125\"\n---\napiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n  name: elasticsearch-data-pvc\n  namespace: logging\nspec:\n  accessModes:\n    - ReadWriteOnce\n  storageClassName: high-performance-ssd\n  resources:\n    requests:\n      storage: 250Gi",
+    "breakdown": "WaitForFirstConsumer halts dynamic volume creation until the scheduler assigns the consumer pod to a specific node, ensuring the cloud block volume is provisioned in the exact same Availability Zone.",
+    "expectedOutput": "PVC status remains 'Pending' until a consuming pod is scheduled, at which point the 250Gi gp3 volume is provisioned in the correct zone and transitions to 'Bound'."
+  },
+  {
+    "id": "k8s-ex-05",
+    "title": "Horizontal Pod Autoscaler (HPA v2) with Multi-Metric Scaling",
+    "category": "Autoscaling & Capacity Planning",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "An HPA v2 manifest scaling a deployment based on both average CPU utilization (70%) and a custom Prometheus business metric (HTTP request rate of 1500 req/sec).",
+    "conceptsCovered": [
+      "HPA v2",
+      "Custom Metrics",
+      "Resource Metrics",
+      "scaleDown StabilizationWindow",
+      "autoscaling/v2"
+    ],
+    "code": "apiVersion: autoscaling/v2\nkind: HorizontalPodAutoscaler\nmetadata:\n  name: checkout-scaler\n  namespace: production\nspec:\n  scaleTargetRef:\n    apiVersion: apps/v1\n    kind: Deployment\n    name: checkout-service\n  minReplicas: 3\n  maxReplicas: 30\n  metrics:\n  # Metric 1: System Resource (CPU)\n  - type: Resource\n    resource:\n      name: cpu\n      target:\n        type: Utilization\n        averageUtilization: 70\n  # Metric 2: Application Throughput (Prometheus Custom Metric)\n  - type: Pods\n    pods:\n      metric:\n        name: http_requests_per_second\n      target:\n        type: AverageValue\n        averageValue: 1500m # 1.5 requests/sec per pod\n  behavior:\n    scaleDown:\n      stabilizationWindowSeconds: 300 # Prevent premature flapping\n      policies:\n      - type: Percent\n        value: 10\n        periodSeconds: 60",
+    "breakdown": "HPA calculates target replicas across both metrics and selects the maximum replica count, ensuring capacity spikes during CPU-intensive tasks or high-throughput request floods.",
+    "expectedOutput": "Automated scaling between 3 and 30 replicas with a 5-minute cooldown stabilization window dampening downscaling spikes."
+  },
+  {
+    "id": "k8s-ex-06",
+    "title": "Pod Topology Spread Constraints across Multi-Zone Availability Domains",
+    "category": "Scheduling & Resource Allocation",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Production topology spread configuration ensuring application pods are evenly distributed across cloud Availability Zones with maxSkew=1.",
+    "conceptsCovered": [
+      "topologySpreadConstraints",
+      "maxSkew",
+      "topologyKey",
+      "whenUnsatisfiable",
+      "DoNotSchedule"
+    ],
+    "code": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: auth-service\n  namespace: production\nspec:\n  replicas: 6\n  selector:\n    matchLabels:\n      app: auth-service\n  template:\n    metadata:\n      labels:\n        app: auth-service\n    spec:\n      topologySpreadConstraints:\n      # 1. Distribute across Availability Zones\n      - maxSkew: 1\n        topologyKey: topology.kubernetes.io/zone\n        whenUnsatisfiable: DoNotSchedule # Hard enforcement\n        labelSelector:\n          matchLabels:\n            app: auth-service\n      # 2. Distribute across physical Nodes within zones\n      - maxSkew: 1\n        topologyKey: kubernetes.io/hostname\n        whenUnsatisfiable: ScheduleAnyway # Soft preference\n        labelSelector:\n          matchLabels:\n            app: auth-service\n      containers:\n      - name: auth-service\n        image: auth-service:v1.0.0\n        ports:\n        - containerPort: 8080",
+    "breakdown": "Restricts difference between any two zones to at most 1 replica. If an entire cloud zone experiences an outage, surviving zones maintain equal, redundant load distribution.",
+    "expectedOutput": "6 replicas scheduled as exactly 2 in us-east-1a, 2 in us-east-1b, and 2 in us-east-1c."
+  },
+  {
+    "id": "k8s-ex-07",
+    "title": "PodDisruptionBudget (PDB) Enforcing Minimum High-Availability",
+    "category": "Scheduling & Resource Allocation",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A PodDisruptionBudget guaranteeing that automated node drains, cluster upgrades, and autoscaler consolidations cannot drop available replicas below safe thresholds.",
+    "conceptsCovered": [
+      "PodDisruptionBudget",
+      "minAvailable",
+      "maxUnavailable",
+      "kubectl drain",
+      "cluster upgrades"
+    ],
+    "code": "apiVersion: policy/v1\nkind: PodDisruptionBudget\nmetadata:\n  name: order-service-pdb\n  namespace: production\nspec:\n  minAvailable: 80% # Guarantee at least 80% of desired pods remain ready\n  selector:\n    matchLabels:\n      app: order-service\n---\n# Alternative PDB using absolute integer count\napiVersion: policy/v1\nkind: PodDisruptionBudget\nmetadata:\n  name: critical-redis-pdb\n  namespace: caching\nspec:\n  maxUnavailable: 1 # At most 1 pod may be down during maintenance\n  selector:\n    matchLabels:\n      app: redis-sentinel",
+    "breakdown": "When an engineer or automated agent issues 'kubectl drain', the Eviction API rejects eviction requests if the eviction would violate the PDB's minAvailable threshold.",
+    "expectedOutput": "Cluster maintenance operations drain nodes one by one without breaching the 80% service availability guarantee."
+  },
+  {
+    "id": "k8s-ex-08",
+    "title": "Resilient CronJob with Forbid Concurrency & ActiveDeadlineSeconds",
+    "category": "Workloads & Pod Lifecycle",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A production batch CronJob configured to prevent overlapping job executions, enforce hard runtime timeouts, and limit history retention.",
+    "conceptsCovered": [
+      "CronJob",
+      "concurrencyPolicy",
+      "Forbid",
+      "activeDeadlineSeconds",
+      "successfulJobsHistoryLimit"
+    ],
+    "code": "apiVersion: batch/v1\nkind: CronJob\nmetadata:\n  name: nightly-financial-ledger-sync\n  namespace: finance\nspec:\n  schedule: \"0 2 * * *\" # Every morning at 2:00 AM UTC\n  concurrencyPolicy: Forbid # Never start a new job if previous run is still active!\n  startingDeadlineSeconds: 300\n  successfulJobsHistoryLimit: 3\n  failedJobsHistoryLimit: 5\n  jobTemplate:\n    spec:\n      activeDeadlineSeconds: 3600 # Hard kill if job runs > 1 hour\n      backoffLimit: 3             # Retry failed pods at most 3 times\n      template:\n        spec:\n          restartPolicy: OnFailure\n          containers:\n          - name: ledger-sync\n            image: registry.example.com/finance/ledger-worker:latest\n            command: [\"npm\", \"run\", \"sync:ledger\"]\n            resources:\n              requests:\n                cpu: 500m\n                memory: 1Gi",
+    "breakdown": "concurrencyPolicy: Forbid prevents double-processing financial transactions if a job hangs. activeDeadlineSeconds terminates stalled batch runs after 1 hour.",
+    "expectedOutput": "Reliable nightly execution with execution overlap prevention and automated pruning of old completed job pods."
+  },
+  {
+    "id": "k8s-ex-09",
+    "title": "InitContainers for Database Schema Migration & Service Wait Gates",
+    "category": "Workloads & Pod Lifecycle",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A Pod specification utilizing chained initContainers to wait for backend PostgreSQL connectivity and apply Liquibase/Flyway migrations before launching application containers.",
+    "conceptsCovered": [
+      "initContainers",
+      "nc connectivity check",
+      "Database Migration",
+      "Chained Init Steps"
+    ],
+    "code": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: user-management-service\n  namespace: production\nspec:\n  replicas: 3\n  selector:\n    matchLabels:\n      app: user-management\n  template:\n    metadata:\n      labels:\n        app: user-management\n    spec:\n      initContainers:\n      # Init 1: Wait until PostgreSQL TCP port 5432 is responding\n      - name: wait-for-postgres\n        image: busybox:1.36\n        command: ['sh', '-c',\n          'until nc -z -w 2 postgres-cluster.databases.svc.cluster.local 5432; do\n             echo \"Waiting for postgresql cluster...\";\n             sleep 2;\n           done']\n      # Init 2: Execute Liquibase / Prisma / TypeORM schema migration\n      - name: db-migrate\n        image: registry.example.com/apps/user-migration:v1.4.0\n        command: [\"npm\", \"run\", \"prisma:migrate:deploy\"]\n        env:\n        - name: DATABASE_URL\n          valueFrom:\n            secretKeyRef:\n              name: db-credentials\n              key: connection_string\n      containers:\n      - name: user-app\n        image: registry.example.com/apps/user-api:v1.4.0\n        ports:\n        - containerPort: 3000",
+    "breakdown": "Init containers execute sequentially to completion before main containers start. If migrations fail, the pod restarts the init container with backoff, preventing application crashes against unmigrated tables.",
+    "expectedOutput": "Guaranteed sequential startup: connectivity check succeeds -> migration runs -> application server launches."
+  },
+  {
+    "id": "k8s-ex-10",
+    "title": "DaemonSet with HostPort & Tolerations for Cluster-Wide Telemetry",
+    "category": "Workloads & Pod Lifecycle",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A DaemonSet manifest deploying a node-level telemetry and security agent across every worker and master node using tolerations and host PID access.",
+    "conceptsCovered": [
+      "DaemonSet",
+      "tolerations",
+      "NoSchedule",
+      "hostPID",
+      "hostPath"
+    ],
+    "code": "apiVersion: apps/v1\nkind: DaemonSet\nmetadata:\n  name: node-telemetry-agent\n  namespace: monitoring\nspec:\n  selector:\n    matchLabels:\n      app: node-telemetry\n  template:\n    metadata:\n      labels:\n        app: node-telemetry\n    spec:\n      hostPID: true\n      hostNetwork: true\n      dnsPolicy: ClusterFirstWithHostNet\n      tolerations:\n      # Tolerate master / control-plane taints to monitor all nodes\n      - key: node-role.kubernetes.io/control-plane\n        operator: Exists\n        effect: NoSchedule\n      - key: node-role.kubernetes.io/master\n        operator: Exists\n        effect: NoSchedule\n      containers:\n      - name: agent\n        image: agent/telemetry:v3.2.0\n        securityContext:\n          privileged: true\n        volumeMounts:\n        - name: proc\n          mountPath: /host/proc\n          readOnly: true\n        - name: sys\n          mountPath: /host/sys\n          readOnly: true\n      volumes:\n      - name: proc\n        hostPath:\n          path: /proc\n      - name: sys\n        hostPath:\n          path: /sys",
+    "breakdown": "Deploys exactly 1 replica per node throughout the cluster. Tolerations allow scheduling onto tainted control-plane nodes, providing 100% cluster-wide telemetry coverage.",
+    "expectedOutput": "Telemetry agents launched on every node in the cluster, including master nodes, continuously monitoring host /proc and /sys."
+  },
+  {
+    "id": "k8s-ex-11",
+    "title": "Granular Zero-Trust NetworkPolicy for Multi-Tier Microservice Isolation",
+    "category": "Security, RBAC & Policy Governance",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A multi-tier NetworkPolicy enforcing default-deny, allowing frontend-to-backend communication on port 8080, and strictly isolating database egress to port 5432 and CoreDNS on port 53.",
+    "conceptsCovered": [
+      "NetworkPolicy",
+      "default-deny",
+      "Ingress Whitelist",
+      "Egress Whitelist",
+      "CoreDNS Egress"
+    ],
+    "code": "apiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: backend-api-network-policy\n  namespace: production\nspec:\n  podSelector:\n    matchLabels:\n      app: backend-api\n  policyTypes:\n  - Ingress\n  - Egress\n  ingress:\n  # Allow Ingress ONLY from frontend pods on port 8080\n  - from:\n    - podSelector:\n        matchLabels:\n          app: frontend-ui\n    ports:\n    - protocol: TCP\n      port: 8080\n  egress:\n  # 1. Allow Egress to Postgres database pods on port 5432\n  - to:\n    - podSelector:\n        matchLabels:\n          app: postgres-db\n    ports:\n    - protocol: TCP\n      port: 5432\n  # 2. Allow Egress to CoreDNS pods in kube-system on port 53 (UDP & TCP)\n  - to:\n    - namespaceSelector:\n        matchLabels:\n          kubernetes.io/metadata.name: kube-system\n      podSelector:\n        matchLabels:\n          k8s-app: kube-dns\n    ports:\n    - protocol: UDP\n      port: 53\n    - protocol: TCP\n      port: 53",
+    "breakdown": "Enforces strict microservice segmentation. Lateral movement is completely blocked: even if backend-api is compromised, it cannot reach other namespaces or the public Internet.",
+    "expectedOutput": "Backend API receives traffic strictly from Frontend UI, can only talk to PostgreSQL and CoreDNS, and rejects all other network communication."
+  },
+  {
+    "id": "k8s-ex-12",
+    "title": "Least-Privilege RBAC: ServiceAccount, Role & RoleBinding for CI/CD",
+    "category": "Security, RBAC & Policy Governance",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A scoped RBAC definition granting a CI/CD automation ServiceAccount permission to deploy and roll out updates within a single namespace without cluster admin rights.",
+    "conceptsCovered": [
+      "ServiceAccount",
+      "Role",
+      "RoleBinding",
+      "RBAC Verbs",
+      "Least-Privilege"
+    ],
+    "code": "apiVersion: v1\nkind: ServiceAccount\nmetadata:\n  name: github-actions-deployer\n  namespace: staging\n---\napiVersion: rbac.authorization.k8s.io/v1\nkind: Role\nmetadata:\n  name: deployment-manager\n  namespace: staging\nrules:\n# 1. Manage Deployments and Rollouts\n- apiGroups: [\"apps\"]\n  resources: [\"deployments\", \"replicasets\"]\n  verbs: [\"get\", \"list\", \"watch\", \"create\", \"update\", \"patch\"]\n# 2. View Pods and Stream Logs\n- apiGroups: [\"\"]\n  resources: [\"pods\", \"pods/log\"]\n  verbs: [\"get\", \"list\", \"watch\"]\n# 3. Manage ConfigMaps for releases\n- apiGroups: [\"\"]\n  resources: [\"configmaps\"]\n  verbs: [\"get\", \"list\", \"watch\", \"create\", \"update\", \"patch\"]\n---\napiVersion: rbac.authorization.k8s.io/v1\nkind: RoleBinding\nmetadata:\n  name: bind-deployer-role\n  namespace: staging\nsubjects:\n- kind: ServiceAccount\n  name: github-actions-deployer\n  namespace: staging\nroleRef:\n  kind: Role\n  name: deployment-manager\n  apiGroup: rbac.authorization.k8s.io",
+    "breakdown": "Confines the deployment pipeline strictly to the 'staging' namespace. Prevents destructive permissions like deleting namespaces or accessing secrets outside the project.",
+    "expectedOutput": "The github-actions-deployer ServiceAccount can execute rolling updates and tail logs in 'staging' while being denied access to secrets and other namespaces."
+  },
+  {
+    "id": "k8s-ex-13",
+    "title": "ClusterRole & ClusterRoleBinding for Global Monitoring & Telemetry",
+    "category": "Security, RBAC & Policy Governance",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A cluster-wide ClusterRole granting Prometheus or Datadog collectors read-only visibility into Nodes, Services, Pods, and Endpoints across all namespaces.",
+    "conceptsCovered": [
+      "ClusterRole",
+      "ClusterRoleBinding",
+      "Non-Resource URLs",
+      "metrics scraping"
+    ],
+    "code": "apiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRole\nmetadata:\n  name: prometheus-cluster-reader\nrules:\n# 1. Core cluster resources\n- apiGroups: [\"\"]\n  resources:\n  - nodes\n  - nodes/metrics\n  - services\n  - endpoints\n  - pods\n  verbs: [\"get\", \"list\", \"watch\"]\n# 2. Non-resource metrics endpoints\n- nonResourceURLs: [\"/metrics\", \"/metrics/cadvisor\"]\n  verbs: [\"get\"]\n---\napiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRoleBinding\nmetadata:\n  name: prometheus-cluster-binding\nsubjects:\n- kind: ServiceAccount\n  name: prometheus-k8s\n  namespace: monitoring\nroleRef:\n  kind: ClusterRole\n  name: prometheus-cluster-reader\n  apiGroup: rbac.authorization.k8s.io",
+    "breakdown": "Binds cluster-scoped read permissions without granting write/delete powers, allowing the monitoring stack to discover all pod endpoints globally.",
+    "expectedOutput": "Prometheus ServiceAccount reads node metrics and watches pods globally without having privileges to alter or delete any cluster objects."
+  },
+  {
+    "id": "k8s-ex-14",
+    "title": "Enforcing Pod Security Standards 'Restricted' Profile",
+    "category": "Security, RBAC & Policy Governance",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A namespace labeled with PSA 'restricted' policy and a matching Pod SecurityContext that drops all Linux capabilities, runs as non-root, and mounts a read-only rootfs.",
+    "conceptsCovered": [
+      "Pod Security Admission",
+      "pod-security.kubernetes.io/enforce",
+      "readOnlyRootFilesystem",
+      "drop ALL capabilities",
+      "runAsNonRoot"
+    ],
+    "code": "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: secure-apps\n  labels:\n    pod-security.kubernetes.io/enforce: restricted\n    pod-security.kubernetes.io/enforce-version: latest\n    pod-security.kubernetes.io/warn: restricted\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: hardened-microservice\n  namespace: secure-apps\nspec:\n  replicas: 2\n  selector:\n    matchLabels:\n      app: secure-app\n  template:\n    metadata:\n      labels:\n        app: secure-app\n    spec:\n      securityContext:\n        runAsNonRoot: true\n        runAsUser: 10001\n        runAsGroup: 10001\n        fsGroup: 10001\n        seccompProfile:\n          type: RuntimeDefault\n      containers:\n      - name: app\n        image: registry.example.com/app:v1.0\n        securityContext:\n          allowPrivilegeEscalation: false\n          readOnlyRootFilesystem: true\n          capabilities:\n            drop: [\"ALL\"]\n        volumeMounts:\n        - name: tmp-dir\n          mountPath: /tmp\n      volumes:\n      - name: tmp-dir\n        emptyDir: {}",
+    "breakdown": "Enforces zero-trust container sandboxing. If any container attempts privilege escalation or root execution, kube-apiserver rejects admission immediately.",
+    "expectedOutput": "Deployment passes admission under strict 'restricted' PSA policy with read-only rootfs and no host capabilities."
+  },
+  {
+    "id": "k8s-ex-15",
+    "title": "External Secrets Operator (ESO) Syncing from AWS Secrets Manager",
+    "category": "Configuration & Secrets",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Enterprise secrets management using External Secrets Operator to automatically synchronize sensitive API keys and database credentials from AWS Secrets Manager.",
+    "conceptsCovered": [
+      "External Secrets Operator",
+      "ClusterSecretStore",
+      "ExternalSecret",
+      "IRSA",
+      "Automated Rotation"
+    ],
+    "code": "apiVersion: external-secrets.io/v1beta1\nkind: ClusterSecretStore\nmetadata:\n  name: aws-secrets-manager\nspec:\n  provider:\n    aws:\n      service: SecretsManager\n      region: us-east-1\n      auth:\n        jwt:\n          serviceAccountRef:\n            name: eso-irsa-sa\n            namespace: external-secrets\n---\napiVersion: external-secrets.io/v1beta1\nkind: ExternalSecret\nmetadata:\n  name: payment-gateway-secret\n  namespace: production\nspec:\n  refreshInterval: \"1h\" # Poll AWS Secrets Manager hourly for rotations\n  secretStoreRef:\n    name: aws-secrets-manager\n    kind: ClusterSecretStore\n  target:\n    name: payment-creds # Native K8s Secret generated automatically\n    creationPolicy: Owner\n  data:\n  - secretKey: STRIPE_API_KEY\n    remoteRef:\n      key: production/finance/payment-api\n      property: stripe_secret_key\n  - secretKey: DB_PASSWORD\n    remoteRef:\n      key: production/finance/payment-api\n      property: db_password",
+    "breakdown": "ESO synchronizes external enterprise KMS/Vault secrets into native Kubernetes Secrets automatically every hour, eliminating raw secrets from Git commits.",
+    "expectedOutput": "A native Kubernetes Secret named 'payment-creds' is generated and continuously updated with live credentials fetched from AWS Secrets Manager."
+  },
+  {
+    "id": "k8s-ex-16",
+    "title": "Live ConfigMap Mounting with Symlinks vs SubPath Invalidation",
+    "category": "Configuration & Secrets",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A ConfigMap volume mount pattern demonstrating directory mounting for live in-memory configuration updates without container restarts.",
+    "conceptsCovered": [
+      "ConfigMap",
+      "atomic-symlinks",
+      "live-update",
+      "subPath caveats",
+      "volumeMounts"
+    ],
+    "code": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app-dynamic-config\n  namespace: production\ndata:\n  appsettings.json: |\n    {\n      \"LogLevel\": \"Information\",\n      \"FeatureFlag_NewCheckout\": true,\n      \"TimeoutSeconds\": 15\n    }\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: config-consumer\n  namespace: production\nspec:\n  replicas: 2\n  selector:\n    matchLabels:\n      app: consumer\n  template:\n    metadata:\n      labels:\n        app: consumer\n    spec:\n      containers:\n      - name: consumer\n        image: app/consumer:v1\n        volumeMounts:\n        # NOTE: Mounting full directory uses Kubelet atomic symlinks for live updates!\n        # Do NOT use subPath if you want live file updates without restarting pods.\n        - name: config-volume\n          mountPath: /etc/app-config\n          readOnly: true\n      volumes:\n      - name: config-volume\n        configMap:\n          name: app-dynamic-config",
+    "breakdown": "Mounting the ConfigMap as a directory allows Kubelet to update the underlying ..data symlink atomically within ~60 seconds of ConfigMap edits, enabling zero-restart hot-reloads.",
+    "expectedOutput": "Modifying app-dynamic-config updates /etc/app-config/appsettings.json inside the running container in real time without pod restarts."
+  },
+  {
+    "id": "k8s-ex-17",
+    "title": "Preserving Client Source IP with ExternalTrafficPolicy Local",
+    "category": "Networking & Services",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A LoadBalancer Service configured with externalTrafficPolicy: Local to prevent SNAT rewriting and preserve true client IP addresses for auditing and geofencing.",
+    "conceptsCovered": [
+      "LoadBalancer",
+      "externalTrafficPolicy: Local",
+      "SNAT",
+      "Client Source IP",
+      "HealthCheckNodePort"
+    ],
+    "code": "apiVersion: v1\nkind: Service\nmetadata:\n  name: public-web-ingress\n  namespace: production\n  annotations:\n    service.beta.kubernetes.io/aws-load-balancer-type: \"nlb\"\n    service.beta.kubernetes.io/aws-load-balancer-scheme: \"internet-facing\"\nspec:\n  type: LoadBalancer\n  # CRITICAL: Local preserves original client IP and avoids extra inter-node hops\n  externalTrafficPolicy: Local\n  selector:\n    app: public-nginx\n  ports:\n  - port: 80\n    targetPort: 8080\n    protocol: TCP\n    name: http\n  - port: 443\n    targetPort: 8443\n    protocol: TCP\n    name: https",
+    "breakdown": "Setting externalTrafficPolicy to Local instructs kube-proxy to bypass SNAT. Only nodes hosting healthy pods receive external traffic, exposing the client's actual IP to X-Forwarded-For.",
+    "expectedOutput": "Application container logs display genuine client public IP addresses instead of cluster node private IP addresses."
+  },
+  {
+    "id": "k8s-ex-18",
+    "title": "Dual-Stack IPv4/IPv6 Service & Pod Networking Configuration",
+    "category": "Networking & Services",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A Service manifest enabling dual-stack networking to seamlessly accept both IPv4 and IPv6 incoming connections across multi-cloud infrastructure.",
+    "conceptsCovered": [
+      "DualStack",
+      "ipFamilies",
+      "ipFamilyPolicy",
+      "IPv4/IPv6",
+      "PreferDualStack"
+    ],
+    "code": "apiVersion: v1\nkind: Service\nmetadata:\n  name: dual-stack-gateway\n  namespace: production\nspec:\n  type: ClusterIP\n  # Specify IPv4 first, IPv6 second\n  ipFamilies:\n  - IPv4\n  - IPv6\n  # PreferDualStack allocates both IPv4 and IPv6 ClusterIPs\n  ipFamilyPolicy: PreferDualStack\n  selector:\n    app: web-server\n  ports:\n  - port: 80\n    targetPort: 8080\n    name: http",
+    "breakdown": "Enables Kubernetes dual-stack networking, allocating two distinct Virtual IPs from cluster subnets so workloads communicate over both protocols simultaneously.",
+    "expectedOutput": "The service is assigned both an IPv4 (e.g. 10.96.12.4) and IPv6 (e.g. fd00:10:96::a1) ClusterIP address."
+  },
+  {
+    "id": "k8s-ex-19",
+    "title": "Optimized NodeLocal DNSCache DaemonSet with CoreDNS Rewrites",
+    "category": "Networking & Services",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A NodeLocal DNSCache DaemonSet setup running a local caching agent on 169.254.20.10 to eliminate 5-second DNS timeouts and conntrack table saturation.",
+    "conceptsCovered": [
+      "NodeLocal DNSCache",
+      "CoreDNS",
+      "conntrack bypass",
+      "169.254.20.10",
+      "DNS Caching"
+    ],
+    "code": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: node-local-dns\n  namespace: kube-system\ndata:\n  Corefile: |\n    cluster.local:53 {\n        errors\n        cache {\n            success 9984 30\n            denial 9984 5\n        }\n        reload\n        loop\n        bind 169.254.20.10\n        forward . __PILLAR__CLUSTER__DNS__ {\n            force_tcp\n        }\n        prometheus :9253\n        health 169.254.20.10:8080\n    }\n    .:53 {\n        errors\n        cache 30\n        reload\n        loop\n        bind 169.254.20.10\n        forward . __PILLAR__UPSTREAM__SERVERS__\n        prometheus :9253\n    }",
+    "breakdown": "Intercepts DNS requests locally on the host node loopback IP (169.254.20.10), serving cached records over TCP and eliminating UDP race conditions in iptables conntrack.",
+    "expectedOutput": "DNS query latency drops below 1ms with zero 5-second UDP conntrack packet drops."
+  },
+  {
+    "id": "k8s-ex-20",
+    "title": "Node Affinity & Taints with NoExecute Eviction Tolerations",
+    "category": "Scheduling & Resource Allocation",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A specialized workload manifest pinning GPU pods to dedicated hardware nodes using required node affinity and enduring maintenance taints with tolerationSeconds.",
+    "conceptsCovered": [
+      "nodeAffinity",
+      "tolerations",
+      "NoExecute",
+      "tolerationSeconds",
+      "Dedicated GPU Nodes"
+    ],
+    "code": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: ml-inference-engine\n  namespace: mlops\nspec:\n  replicas: 2\n  selector:\n    matchLabels:\n      app: ml-inference\n  template:\n    metadata:\n      labels:\n        app: ml-inference\n    spec:\n      affinity:\n        nodeAffinity:\n          requiredDuringSchedulingIgnoredDuringExecution:\n            nodeSelectorTerms:\n            - matchExpressions:\n              - key: accelerator\n                operator: In\n                values: [\"nvidia-a100\", \"nvidia-h100\"]\n      tolerations:\n      # Tolerate dedicated GPU taint\n      - key: \"hardware/gpu\"\n        operator: \"Equal\"\n        value: \"true\"\n        effect: \"NoSchedule\"\n      # Tolerate node draining maintenance for 5 minutes before eviction\n      - key: \"node.kubernetes.io/unreachable\"\n        operator: \"Exists\"\n        effect: \"NoExecute\"\n        tolerationSeconds: 300\n      containers:\n      - name: inference\n        image: ml/model:v2.0\n        resources:\n          limits:\n            nvidia.com/gpu: 1",
+    "breakdown": "Restricts scheduling to nodes with NVIDIA A100/H100 hardware, tolerates dedicated GPU taints, and survives transient node network unreachable events for up to 300 seconds before being evicted.",
+    "expectedOutput": "Pods successfully schedule exclusively onto dedicated GPU nodes while ignoring general application worker pools."
+  },
+  {
+    "id": "k8s-ex-21",
+    "title": "Karpenter NodePool & EC2NodeClass for Automated Spot Provisioning",
+    "category": "Autoscaling & Capacity Planning",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A modern Karpenter v1 (karpenter.sh/v1) NodePool and EC2NodeClass definition automating fast, group-less node provisioning with Spot-to-OnDemand fallback.",
+    "conceptsCovered": [
+      "Karpenter",
+      "NodePool",
+      "EC2NodeClass",
+      "Spot Instances",
+      "ConsolidationPolicy"
+    ],
+    "code": "apiVersion: karpenter.sh/v1\nkind: NodePool\nmetadata:\n  name: general-compute-pool\nspec:\n  template:\n    spec:\n      requirements:\n      - key: kubernetes.io/arch\n        operator: In\n        values: [\"amd64\", \"arm64\"]\n      - key: karpenter.sh/capacity-type\n        operator: In\n        values: [\"spot\", \"on-demand\"] # Prefer spot, fallback to on-demand\n      - key: node.kubernetes.io/instance-type\n        operator: In\n        values: [\"m6i.large\", \"m6i.xlarge\", \"m6g.large\", \"c6i.xlarge\"]\n      nodeClassRef:\n        group: karpenter.k8s.aws\n        kind: EC2NodeClass\n        name: default-ec2-class\n  disruption:\n    consolidationPolicy: WhenUnderutilized # Automatically bin-pack and consolidate nodes\n    consolidateAfter: 30s\n---\napiVersion: karpenter.k8s.aws/v1\nkind: EC2NodeClass\nmetadata:\n  name: default-ec2-class\nspec:\n  amiFamily: AL2023\n  role: \"KarpenterNodeRole-Cluster\"\n  subnetSelectorTerms:\n  - tags:\n      karpenter.sh/discovery: \"production-cluster\"\n  securityGroupSelectorTerms:\n  - tags:\n      karpenter.sh/discovery: \"production-cluster\"",
+    "breakdown": "Replaces traditional slow Auto-Scaling Groups. Karpenter provisions optimal ARM/x86 spot instances in under 45 seconds when unschedulable pods appear, and packs workloads to consolidate underutilized nodes.",
+    "expectedOutput": "Rapid compute elasticity with automated cost optimization, launching instances dynamically in response to pending pods."
+  },
+  {
+    "id": "k8s-ex-22",
+    "title": "Vertical Pod Autoscaler (VPA) with Recommendation & Auto Modes",
+    "category": "Autoscaling & Capacity Planning",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A Vertical Pod Autoscaler manifest configured to observe historical memory/CPU usage and dynamically right-size container requests without exceeding limits.",
+    "conceptsCovered": [
+      "VerticalPodAutoscaler",
+      "updateMode: Auto",
+      "targetRef",
+      "minAllowed",
+      "maxAllowed"
+    ],
+    "code": "apiVersion: autoscaling.k8s.io/v1\nkind: VerticalPodAutoscaler\nmetadata:\n  name: worker-vpa-autoscaler\n  namespace: batch\nspec:\n  targetRef:\n    apiVersion: \"apps/v1\"\n    kind:       Deployment\n    name:       batch-processor\n  updatePolicy:\n    updateMode: \"Auto\" # Dynamically mutates container CPU & RAM requests\n  resourcePolicy:\n    containerPolicies:\n    - containerName: \"processor\"\n      minAllowed:\n        cpu: \"100m\"\n        memory: \"256Mi\"\n      maxAllowed:\n        cpu: \"4000m\"\n        memory: \"8Gi\"\n      controlledResources: [\"cpu\", \"memory\"]",
+    "breakdown": "The VPA recommender computes 95th-percentile utilization profiles. Under 'Auto' mode, it evicts or resizes the pod in-place with optimal request boundaries bounded by minAllowed and maxAllowed.",
+    "expectedOutput": "Batch processor containers right-sized automatically to actual production memory and CPU profiles."
+  },
+  {
+    "id": "k8s-ex-23",
+    "title": "Kustomize Base & Production Overlay with Strategic Merge Patches",
+    "category": "Packaging, GitOps & Progressive Delivery",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A clean Kustomize configuration structure showing an environment-agnostic base overlaid by a production customization with replica scaling and image tag pins.",
+    "conceptsCovered": [
+      "Kustomize",
+      "bases and overlays",
+      "kustomization.yaml",
+      "strategic merge patch",
+      "images override"
+    ],
+    "code": "# base/kustomization.yaml\napiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources:\n- deployment.yaml\n- service.yaml\n\n---\n# overlays/production/kustomization.yaml\napiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources:\n- ../../base\nnamespace: production\nnamePrefix: prod-\ncommonLabels:\n  environment: production\nimages:\n- name: payment-api\n  newName: registry.example.com/payment-api\n  newTag: v3.1.2\npatches:\n- patch: |-\n    apiVersion: apps/v1\n    kind: Deployment\n    metadata:\n      name: payment-api\n    spec:\n      replicas: 10\n      template:\n        spec:\n          containers:\n          - name: payment-api\n            resources:\n              requests:\n                cpu: 1000m\n                memory: 2Gi",
+    "breakdown": "Avoids template engines by composing pure Kubernetes YAML. Overlays inherit base definitions while applying atomic overrides for production replica counts, image tags, and namespace prefixes.",
+    "expectedOutput": "Generated production deployment renamed to 'prod-payment-api' with 10 replicas and v3.1.2 image tag."
+  },
+  {
+    "id": "k8s-ex-24",
+    "title": "Production Helm 3 Chart with _helpers.tpl & ServiceMonitor",
+    "category": "Packaging, GitOps & Progressive Delivery",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A production Helm 3 chart template integrating _helpers.tpl naming partials, Sprig template helpers, values defaults, and a Prometheus ServiceMonitor.",
+    "conceptsCovered": [
+      "Helm 3",
+      "_helpers.tpl",
+      "include",
+      "nindent",
+      "ServiceMonitor template"
+    ],
+    "code": "{{/* templates/_helpers.tpl */}}\n{{- define \"webapp.fullname\" -}}\n{{- printf \"%s-%s\" .Release.Name .Chart.Name | trunc 63 | trimSuffix \"-\" -}}\n{{- end }}\n\n---\n{{/* templates/servicemonitor.yaml */}}\n{{- if .Values.metrics.enabled }}\napiVersion: monitoring.coreos.com/v1\nkind: ServiceMonitor\nmetadata:\n  name: {{ include \"webapp.fullname\" . }}\n  namespace: {{ .Release.Namespace }}\n  labels:\n    app.kubernetes.io/name: {{ .Chart.Name }}\n    release: {{ .Values.metrics.prometheusRelease }}\nspec:\n  selector:\n    matchLabels:\n      app.kubernetes.io/name: {{ .Chart.Name }}\n      app.kubernetes.io/instance: {{ .Release.Name }}\n  endpoints:\n  - port: metrics\n    path: /metrics\n    interval: {{ .Values.metrics.interval | default \"15s\" }}\n{{- end }}",
+    "breakdown": "Generates standard Kubernetes labels and resource names respecting 63-character RFC 1123 limits, optionally creating Prometheus scrape targets based on .Values.metrics.enabled.",
+    "expectedOutput": "Deployable Helm chart that safely conforms to enterprise labeling and observability standards."
+  },
+  {
+    "id": "k8s-ex-25",
+    "title": "Custom Resource Definition (CRD) with OpenAPI v3 Validation & Status",
+    "category": "Custom Resources & The Operator Pattern",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A declarative CustomResourceDefinition (CRD) registering a custom DatabaseCluster resource with strict OpenAPI v3 JSONSchema validation and status subresource.",
+    "conceptsCovered": [
+      "CRD",
+      "OpenAPI v3 Validation",
+      "subresources: status",
+      "additionalPrinterColumns",
+      "apiextensions/v1"
+    ],
+    "code": "apiVersion: apiextensions.k8s.io/v1\nkind: CustomResourceDefinition\nmetadata:\n  name: databaseclusters.storage.company.com\nspec:\n  group: storage.company.com\n  names:\n    plural: databaseclusters\n    singular: databasecluster\n    kind: DatabaseCluster\n    shortNames: [\"dbc\"]\n  scope: Namespaced\n  versions:\n  - name: v1alpha1\n    served: true\n    storage: true\n    subresources:\n      status: {} # Decouples /status updates from spec\n    additionalPrinterColumns:\n    - name: Engine\n      type: string\n      jsonPath: .spec.engine\n    - name: Replicas\n      type: integer\n      jsonPath: .spec.replicas\n    - name: Phase\n      type: string\n      jsonPath: .status.phase\n    schema:\n      openAPIV3Schema:\n        type: object\n        properties:\n          spec:\n            type: object\n            required: [\"engine\", \"replicas\", \"storageSize\"]\n            properties:\n              engine:\n                type: string\n                enum: [\"postgres\", \"mysql\", \"redis\"]\n              replicas:\n                type: integer\n                minimum: 1\n                maximum: 7\n              storageSize:\n                type: string\n                pattern: '^[0-9]+(Gi|Ti)$'\n          status:\n            type: object\n            properties:\n              phase:\n                type: string\n              readyReplicas:\n                type: integer",
+    "breakdown": "Registers a new REST endpoint on kube-apiserver with native validation, ensuring invalid configurations (like replicas: 12 or invalid storage strings) are rejected before saving to etcd.",
+    "expectedOutput": "'kubectl get dbc' displays custom columns (Engine, Replicas, Phase) and enforces type validation."
+  },
+  {
+    "id": "k8s-ex-26",
+    "title": "Go Kubernetes Controller Reconciliation Loop (Kubebuilder)",
+    "category": "Custom Resources & The Operator Pattern",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A production Go reconciler function using controller-runtime to manage child StatefulSets and update status subresources idempotently.",
+    "conceptsCovered": [
+      "controller-runtime",
+      "Reconcile()",
+      "ctrl.Request",
+      "client.IgnoreNotFound",
+      "Status().Update()"
+    ],
+    "code": "// controllers/databasecluster_controller.go\npackage controllers\n\nimport (\n    \"context\"\n    \"time\"\n    appsv1 \"k8s.io/api/apps/v1\"\n    \"k8s.io/apimachinery/pkg/api/errors\"\n    \"k8s.io/apimachinery/pkg/runtime\"\n    ctrl \"sigs.k8s.io/controller-runtime\"\n    \"sigs.k8s.io/controller-runtime/pkg/client\"\n    storagev1 \"company.com/api/v1alpha1\"\n)\n\ntype DatabaseClusterReconciler struct {\n    client.Client\n    Scheme *runtime.Scheme\n}\n\nfunc (r *DatabaseClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {\n    // 1. Fetch CR from in-memory cache\n    var cluster storagev1.DatabaseCluster\n    if err := r.Get(ctx, req.NamespacedName, &cluster); err != nil {\n        return ctrl.Result{}, client.IgnoreNotFound(err)\n    }\n\n    // 2. Query child StatefulSet\n    var sts appsv1.StatefulSet\n    err := r.Get(ctx, req.NamespacedName, &sts)\n    if errors.IsNotFound(err) {\n        // Child missing -> Create child StatefulSet\n        newSts := r.buildDesiredStatefulSet(&cluster)\n        if err := r.Create(ctx, newSts); err != nil {\n            return ctrl.Result{}, err\n        }\n        return ctrl.Result{RequeueAfter: 5 * time.Second}, nil\n    }\n\n    // 3. Update Status Subresource\n    cluster.Status.ReadyReplicas = sts.Status.ReadyReplicas\n    cluster.Status.Phase = \"Running\"\n    if err := r.Status().Update(ctx, &cluster); err != nil {\n        return ctrl.Result{}, err\n    }\n\n    return ctrl.Result{RequeueAfter: 10 * time.Minute}, nil\n}",
+    "breakdown": "Implements idempotent level-triggered reconciliation: fetches from local memory cache, asserts child resource existence, provisions missing dependencies, and updates the status subresource.",
+    "expectedOutput": "A high-performance Go operator reconciling desired state with live Kubernetes resources without polling etcd."
+  },
+  {
+    "id": "k8s-ex-27",
+    "title": "Mutating Admission Webhook with Dynamic Sidecar Injection",
+    "category": "Custom Resources & The Operator Pattern",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A Go Mutating Webhook handler intercepting pod admission requests to inject a logging sidecar container and shared emptyDir volume via RFC 6902 JSONPatch.",
+    "conceptsCovered": [
+      "Mutating Webhook",
+      "AdmissionReview",
+      "JSONPatch",
+      "admission/v1",
+      "Sidecar Injection"
+    ],
+    "code": "// webhook/mutate_pod.go\npackage webhook\n\nimport (\n    \"context\"\n    \"encoding/json\"\n    \"net/http\"\n    corev1 \"k8s.io/api/core/v1\"\n    \"sigs.k8s.io/controller-runtime/pkg/webhook/admission\"\n)\n\ntype PodSidecarInjector struct {\n    decoder *admission.Decoder\n}\n\nfunc (a *PodSidecarInjector) Handle(ctx context.Context, req admission.Request) admission.Response {\n    pod := &corev1.Pod{}\n    if err := a.decoder.Decode(req, pod); err != nil {\n        return admission.Errored(http.StatusBadRequest, err)\n    }\n\n    // Check if pod has opt-in annotation\n    if pod.Annotations[\"company.com/inject-sidecar\"] != \"true\" {\n        return admission.Allowed(\"Injection not requested\")\n    }\n\n    // Inject sidecar container into pod spec\n    sidecar := corev1.Container{\n        Name:  \"telemetry-agent\",\n        Image: \"registry.example.com/telemetry:v1.0\",\n        Resources: corev1.ResourceRequirements{/* ... */},\n    }\n    pod.Spec.Containers = append(pod.Spec.Containers, sidecar)\n\n    // Return JSONPatch modifying the pod spec before etcd persistence\n    marshaledPod, _ := json.Marshal(pod)\n    return admission.PatchResponseFromRaw(req.Object.Raw, marshaledPod)\n}",
+    "breakdown": "Intercepts CREATE Pod requests, checks annotations, and dynamically produces a JSONPatch adding containers before the pod object is committed to etcd.",
+    "expectedOutput": "Annotated pods automatically launch with the telemetry-agent sidecar injected into their container list."
+  },
+  {
+    "id": "k8s-ex-28",
+    "title": "Validating Admission Webhook Enforcing Image Registry Whitelist",
+    "category": "Custom Resources & The Operator Pattern",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A Validating Webhook handler that inspects container image URLs and rejects deployments using untrusted external public registries.",
+    "conceptsCovered": [
+      "Validating Webhook",
+      "AdmissionResponse",
+      "Security Guardrail",
+      "Registry Whitelist"
+    ],
+    "code": "// webhook/validate_registry.go\npackage webhook\n\nimport (\n    \"context\"\n    \"fmt\"\n    \"strings\"\n    corev1 \"k8s.io/api/core/v1\"\n    \"sigs.k8s.io/controller-runtime/pkg/webhook/admission\"\n)\n\nconst AllowedRegistry = \"registry.company.internal/\"\n\ntype RegistryValidator struct {\n    decoder *admission.Decoder\n}\n\nfunc (v *RegistryValidator) Handle(ctx context.Context, req admission.Request) admission.Response {\n    pod := &corev1.Pod{}\n    if err := v.decoder.Decode(req, pod); err != nil {\n        return admission.Errored(400, err)\n    }\n\n    // Assert all containers use the enterprise internal registry\n    for _, container := range pod.Spec.Containers {\n        if !strings.HasPrefix(container.Image, AllowedRegistry) {\n            return admission.Denied(fmt.Sprintf(\n                \"Image '%s' rejected. Only images from '%s' are permitted.\",\n                container.Image, AllowedRegistry,\n            ))\n        }\n    }\n\n    return admission.Allowed(\"All container images verified\")\n}",
+    "breakdown": "Enforces supply-chain security at admission. Any container referencing docker.io, quay.io, or untrusted external registries is immediately rejected with HTTP 403 Forbidden.",
+    "expectedOutput": "Deployments referencing public images are blocked with clear admission denial error messages."
+  },
+  {
+    "id": "k8s-ex-29",
+    "title": "Controller Finalizer Pattern: Pre-Delete Cloud Resource Cleanup",
+    "category": "Custom Resources & The Operator Pattern",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A Go controller implementation of Kubernetes Finalizers, ensuring external cloud S3 buckets and DNS records are purged before Custom Resources are deleted.",
+    "conceptsCovered": [
+      "Finalizers",
+      "controllerutil.AddFinalizer",
+      "controllerutil.RemoveFinalizer",
+      "deletionTimestamp"
+    ],
+    "code": "// controllers/s3bucket_controller.go\npackage controllers\n\nimport (\n    \"context\"\n    ctrl \"sigs.k8s.io/controller-runtime\"\n    \"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil\"\n    storagev1 \"company.com/api/v1alpha1\"\n)\n\nconst bucketFinalizer = \"storage.company.com/cleanup-aws-bucket\"\n\nfunc (r *S3BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {\n    var bucket storagev1.S3Bucket\n    if err := r.Get(ctx, req.NamespacedName, &bucket); err != nil {\n        return ctrl.Result{}, client.IgnoreNotFound(err)\n    }\n\n    // Scenario A: Object is being deleted\n    if !bucket.ObjectMeta.DeletionTimestamp.IsZero() {\n        if controllerutil.ContainsFinalizer(&bucket, bucketFinalizer) {\n            // Run asynchronous external teardown\n            if err := r.deleteAWSCloudBucket(bucket.Spec.BucketName); err != nil {\n                return ctrl.Result{}, err // Retry until external teardown succeeds\n            }\n            // Remove finalizer to allow etcd to purge the object\n            controllerutil.RemoveFinalizer(&bucket, bucketFinalizer)\n            return ctrl.Result{}, r.Update(ctx, &bucket)\n        }\n        return ctrl.Result{}, nil\n    }\n\n    // Scenario B: Object is active -> Ensure finalizer is registered\n    if !controllerutil.ContainsFinalizer(&bucket, bucketFinalizer) {\n        controllerutil.AddFinalizer(&bucket, bucketFinalizer)\n        return ctrl.Result{}, r.Update(ctx, &bucket)\n    }\n\n    return ctrl.Result{}, nil\n}",
+    "breakdown": "Adds a finalizer on creation. When deletion is requested, the controller blocks removal, executes cloud AWS teardown, and removes the finalizer only upon confirmed completion.",
+    "expectedOutput": "Zero orphaned cloud resources when Kubernetes custom resources are deleted."
+  },
+  {
+    "id": "k8s-ex-30",
+    "title": "HA Operator Leader Election using Coordination Leases",
+    "category": "Custom Resources & The Operator Pattern",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Leader election initialization in controller-runtime using coordination.k8s.io/v1 Leases to enable active-passive multi-replica operator deployment.",
+    "conceptsCovered": [
+      "Leader Election",
+      "coordination.k8s.io",
+      "Lease",
+      "LeaderElectionID",
+      "High Availability"
+    ],
+    "code": "// main.go\npackage main\n\nimport (\n    \"os\"\n    \"time\"\n    ctrl \"sigs.k8s.io/controller-runtime\"\n    \"sigs.k8s.io/controller-runtime/pkg/log/zap\"\n)\n\nfunc main() {\n    ctrl.SetLogger(zap.New(zap.UseDevMode(true)))\n\n    mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{\n        Scheme:                 scheme,\n        MetricsBindAddress:     \":8080\",\n        LeaderElection:         true, // Enable distributed HA leader lock\n        LeaderElectionID:       \"payment-operator-leader-lock\",\n        LeaderElectionNamespace: \"operators\",\n        LeaseDuration:          func() *time.Duration { d := 15 * time.Second; return &d }(),\n        RenewDeadline:          func() *time.Duration { d := 10 * time.Second; return &d }(),\n        RetryPeriod:            func() *time.Duration { d := 2 * time.Second; return &d }(),\n    })\n    if err != nil {\n        os.Exit(1)\n    }\n\n    if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {\n        os.Exit(1)\n    }\n}",
+    "breakdown": "Configures distributed coordination Leases. The replica acquiring the lock reconciles custom resources; standby replicas poll the Lease and take over instantly if the active leader crashes.",
+    "expectedOutput": "Multiple operator replicas run safely in parallel without split-brain reconciliation collisions."
+  },
+  {
+    "id": "k8s-ex-31",
+    "title": "ArgoCD Application with Automated Sync, Pruning & Drift Self-Healing",
+    "category": "Packaging, GitOps & Progressive Delivery",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A production ArgoCD Application definition synchronizing a microservice from a Git repository with automated self-healing and pruning.",
+    "conceptsCovered": [
+      "ArgoCD",
+      "Application CRD",
+      "selfHeal",
+      "prune",
+      "syncPolicy"
+    ],
+    "code": "apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: order-service-production\n  namespace: argocd\n  finalizers:\n  - resources-finalizer.argocd.argoproj.io\nspec:\n  project: default\n  source:\n    repoURL: 'https://github.com/company/microservices-fleet.git'\n    targetRevision: main\n    path: apps/order-service/overlays/production\n  destination:\n    server: 'https://kubernetes.default.svc'\n    namespace: orders\n  syncPolicy:\n    automated:\n      prune: true     # Remove cluster resources deleted in Git\n      selfHeal: true  # Revert manual kubectl edits back to Git state\n    syncOptions:\n    - CreateNamespace=true\n    - ApplyOutOfSyncOnly=true\n    retry:\n      limit: 5\n      backoff:\n        duration: 5s\n        factor: 2\n        maxDuration: 3m",
+    "breakdown": "Binds Git repo to Kubernetes namespace. Automatically syncs commits, prunes stale manifests, and reverts unauthorized manual kubectl changes within seconds.",
+    "expectedOutput": "The order service deploys automatically and self-heals cluster drift back to the Git source of truth."
+  },
+  {
+    "id": "k8s-ex-32",
+    "title": "ArgoCD ApplicationSet Matrix Generator for Fleet-Wide Deployment",
+    "category": "Packaging, GitOps & Progressive Delivery",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "An ApplicationSet combining a Git directory generator and cluster label generator to deploy 50 microservices across multiple regional clusters without duplicating YAML.",
+    "conceptsCovered": [
+      "ApplicationSet",
+      "Matrix Generator",
+      "Git Generator",
+      "Cluster Generator",
+      "Multi-Cluster"
+    ],
+    "code": "apiVersion: argoproj.io/v1alpha1\nkind: ApplicationSet\nmetadata:\n  name: fleet-matrix-deployer\n  namespace: argocd\nspec:\n  generators:\n  - matrix:\n      generators:\n      # Generator 1: All registered clusters matching production label\n      - clusters:\n          selector:\n            matchLabels:\n              type: production\n      # Generator 2: All microservices found in apps/ directory in Git\n      - git:\n          repoURL: https://github.com/company/monorepo.git\n          revision: main\n          directories:\n          - path: apps/*\n  template:\n    metadata:\n      name: '{{path.basename}}-{{name}}'\n    spec:\n      project: default\n      source:\n        repoURL: https://github.com/company/monorepo.git\n        targetRevision: main\n        path: '{{path}}/overlays/{{name}}'\n      destination:\n        server: '{{server}}'\n        namespace: '{{path.basename}}'\n      syncPolicy:\n        automated:\n          prune: true\n          selfHeal: true",
+    "breakdown": "Dynamically calculates the Cartesian product of Git apps and target clusters, automatically creating individual Application CRDs for each microservice on every regional cluster.",
+    "expectedOutput": "Dozens of ArgoCD Applications generated dynamically with zero manifest duplication."
+  },
+  {
+    "id": "k8s-ex-33",
+    "title": "Argo Rollouts Progressive Canary Deployment with Istio Traffic Steps",
+    "category": "Packaging, GitOps & Progressive Delivery",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A drop-in replacement for standard Deployments using Argo Rollouts to execute a progressive canary rollout with Istio traffic shifting (5% -> 20% -> 50% -> 100%).",
+    "conceptsCovered": [
+      "Argo Rollouts",
+      "Canary Strategy",
+      "Istio VirtualService",
+      "setWeight",
+      "Progressive Delivery"
+    ],
+    "code": "apiVersion: argoproj.io/v1alpha1\nkind: Rollout\nmetadata:\n  name: customer-portal\n  namespace: frontend\nspec:\n  replicas: 10\n  strategy:\n    canary:\n      canaryService: customer-portal-canary\n      stableService: customer-portal-stable\n      trafficRouting:\n        istio:\n          virtualService:\n            name: customer-portal-vsvc\n            routes: [\"primary\"]\n      steps:\n      - setWeight: 5\n      - pause: { duration: 10m } # Hold 5% canary for 10 minutes\n      - setWeight: 20\n      - pause: { duration: 30m } # Hold 20% canary for 30 minutes\n      - setWeight: 50\n      - pause: { duration: 15m }\n  selector:\n    matchLabels:\n      app: customer-portal\n  template:\n    metadata:\n      labels:\n        app: customer-portal\n    spec:\n      containers:\n      - name: web\n        image: registry.example.com/frontend/portal:v2.0.0\n        ports:\n        - containerPort: 3000",
+    "breakdown": "Replaces traditional coarse rolling updates with fine-grained fractional traffic shifting via Istio, ensuring new releases are validated on small subsets of production users before broad rollout.",
+    "expectedOutput": "Canary pods receive exactly 5%, then 20%, then 50% of real user traffic, advancing sequentially across pause windows."
+  },
+  {
+    "id": "k8s-ex-34",
+    "title": "Argo Rollouts Automated AnalysisTemplate with Prometheus PromQL",
+    "category": "Packaging, GitOps & Progressive Delivery",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "An AnalysisTemplate that continuously queries Prometheus during a canary deployment, aborting the rollout and rolling back if HTTP 5xx errors exceed 1%.",
+    "conceptsCovered": [
+      "AnalysisTemplate",
+      "PromQL Assertion",
+      "Automated Rollback",
+      "successCondition",
+      "failureLimit"
+    ],
+    "code": "apiVersion: argoproj.io/v1alpha1\nkind: AnalysisTemplate\nmetadata:\n  name: http-error-rate-guard\n  namespace: frontend\nspec:\n  metrics:\n  - name: success-rate\n    interval: 1m\n    successCondition: result[0] <= 0.01 # Error rate must not exceed 1.0%\n    failureLimit: 2 # Abort rollout after 2 consecutive failures\n    provider:\n      prometheus:\n        address: http://prometheus-k8s.monitoring:9090\n        query: |\n          sum(rate(http_requests_total{status=~\"5.*\",app=\"customer-portal\"}[1m]))\n          /\n          sum(rate(http_requests_total{app=\"customer-portal\"}[1m]))",
+    "breakdown": "Attaches to Rollout canary steps. Queries Prometheus every minute; if the PromQL query evaluates to >0.01 twice, the rollout aborts immediately and routes 100% of traffic back to stable pods.",
+    "expectedOutput": "Autonomous metric-driven deployment validation with instant rollback on error threshold breaches."
+  },
+  {
+    "id": "k8s-ex-35",
+    "title": "FluxCD GitRepository & Kustomization Toolkit Custom Resources",
+    "category": "Packaging, GitOps & Progressive Delivery",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Declarative GitOps configuration using the FluxCD GitOps Toolkit to continuously reconcile Kustomize overlays with automated health checking.",
+    "conceptsCovered": [
+      "FluxCD",
+      "GitRepository",
+      "Kustomization CRD",
+      "GitOps Toolkit",
+      "Health Checks"
+    ],
+    "code": "apiVersion: source.toolkit.fluxcd.io/v1\nkind: GitRepository\nmetadata:\n  name: fleet-manifests\n  namespace: flux-system\nspec:\n  interval: 1m\n  url: https://github.com/company/infrastructure-fleet\n  ref:\n    branch: main\n---\napiVersion: kustomize.toolkit.fluxcd.io/v1\nkind: Kustomization\nmetadata:\n  name: payment-apps\n  namespace: flux-system\nspec:\n  interval: 5m\n  targetNamespace: production\n  prune: true\n  sourceRef:\n    kind: GitRepository\n    name: fleet-manifests\n  path: \"./clusters/production/apps\"\n  timeout: 3m\n  wait: true # Block sync until all Deployment pods pass readiness checks\n  healthChecks:\n  - apiVersion: apps/v1\n    kind: Deployment\n    name: payment-api\n    namespace: production",
+    "breakdown": "FluxCD Source Controller pulls Git commits; Kustomize Controller validates and applies manifests, waiting for all pod healthchecks to pass before marking the release Ready.",
+    "expectedOutput": "Continuous, automated reconciliation of cluster state directly from Git with healthcheck validation."
+  },
+  {
+    "id": "k8s-ex-36",
+    "title": "Prometheus Operator ServiceMonitor Discovery Configuration",
+    "category": "Observability, Operations & Troubleshooting",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A declarative ServiceMonitor resource instructing Prometheus Operator to discover and scrape application metrics endpoints dynamically based on labels.",
+    "conceptsCovered": [
+      "ServiceMonitor",
+      "Prometheus Operator",
+      "matchLabels",
+      "scrape interval",
+      "telemetry discovery"
+    ],
+    "code": "apiVersion: monitoring.coreos.com/v1\nkind: ServiceMonitor\nmetadata:\n  name: checkout-api-monitor\n  namespace: production\n  labels:\n    release: prometheus-stack # Scraped by this Prometheus instance\nspec:\n  selector:\n    matchLabels:\n      app: checkout-api\n  endpoints:\n  - port: metrics # Must match port name on Kubernetes Service\n    path: /metrics\n    interval: 15s\n    scrapeTimeout: 10s\n    metricRelabelings:\n    # Drop noisy high-cardinality endpoint paths\n    - sourceLabels: [__name__]\n      regex: \"go_gc_.*\"\n      action: drop",
+    "breakdown": "Discovers target pods automatically through the Service's selector without modifying static prometheus.yml files, applying relabeling rules to drop noisy metrics at scrape time.",
+    "expectedOutput": "Prometheus scrapes all checkout-api pods every 15s without requiring manual configuration reloads."
+  },
+  {
+    "id": "k8s-ex-37",
+    "title": "PrometheusRule Alerting on Microservice HTTP 5xx Error Budgets",
+    "category": "Observability, Operations & Troubleshooting",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A production alerting rule defining multi-window burn rate alerts on HTTP 5xx errors and alerting on imminent memory exhaustion.",
+    "conceptsCovered": [
+      "PrometheusRule",
+      "Alertmanager",
+      "Burn Rate Alerting",
+      "PromQL",
+      "Error Budget"
+    ],
+    "code": "apiVersion: monitoring.coreos.com/v1\nkind: PrometheusRule\nmetadata:\n  name: microservice-burn-rate-alerts\n  namespace: monitoring\nspec:\n  groups:\n  - name: error-budget.rules\n    rules:\n    - alert: FastBurnRateCritical\n      expr: |\n        (\n          sum(rate(http_requests_total{status=~\"5.*\"}[5m]))\n          /\n          sum(rate(http_requests_total[5m]))\n        ) > (14.4 * 0.01) # Burning 14.4x of 1% error budget over 5m\n      for: 2m\n      labels:\n        severity: page\n      annotations:\n        summary: \"Critical Error Budget Burn Rate on {{ $labels.service }}\"\n        description: \"Service is burning 14.4% of its 30-day budget per hour.\"\n    - alert: PodMemorySaturation\n      expr: |\n        container_memory_working_set_bytes{container!=\"\"}\n        /\n        container_spec_memory_limit_bytes > 0.90\n      for: 5m\n      labels:\n        severity: warning\n      annotations:\n        summary: \"Pod {{ $labels.pod }} memory usage is above 90%\"",
+    "breakdown": "Implements Google SRE multi-window burn rate alerting. Pushes actionable alerts to Alertmanager before services completely exhaust their monthly availability budget.",
+    "expectedOutput": "Alerts trigger only on high-confidence SLO breaches, minimizing pager noise for on-call engineers."
+  },
+  {
+    "id": "k8s-ex-38",
+    "title": "OpenTelemetry Collector DaemonSet Pipeline (OTLP to Tempo/Jaeger)",
+    "category": "Observability, Operations & Troubleshooting",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A complete OpenTelemetry Collector configuration running as a node DaemonSet, enriching traces with Kubernetes metadata and exporting via gRPC.",
+    "conceptsCovered": [
+      "OpenTelemetry Collector",
+      "OTLP gRPC",
+      "k8sattributes processor",
+      "batch processor",
+      "Distributed Tracing"
+    ],
+    "code": "apiVersion: opentelemetry.io/v1alpha1\nkind: OpenTelemetryCollector\nmetadata:\n  name: otel-collector-agent\n  namespace: monitoring\nspec:\n  mode: daemonset\n  config: |\n    receivers:\n      otlp:\n        protocols:\n          grpc:\n            endpoint: 0.0.0.0:4317\n          http:\n            endpoint: 0.0.0.0:4318\n    processors:\n      batch:\n        send_batch_size: 1000\n        timeout: 1s\n      k8sattributes:\n        auth_type: \"serviceAccount\"\n        passthrough: false\n        extract:\n          metadata:\n            - k8s.pod.name\n            - k8s.namespace.name\n            - k8s.node.name\n    exporters:\n      otlp/tempo:\n        endpoint: tempo.monitoring:4317\n        tls:\n          insecure: true\n    service:\n      pipelines:\n        traces:\n          receivers: [otlp]\n          processors: [k8sattributes, batch]\n          exporters: [otlp/tempo]",
+    "breakdown": "Collects traces from pods on the same node via localhost/hostIP, attaches namespace and pod metadata in-memory, and exports batches to Tempo for visualization.",
+    "expectedOutput": "Distributed traces automatically tagged with Kubernetes pod and node metadata rendered in Grafana Tempo."
+  },
+  {
+    "id": "k8s-ex-39",
+    "title": "Vector DaemonSet Tailing Host Logs with Metadata Enrichment",
+    "category": "Observability, Operations & Troubleshooting",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A high-performance Vector DaemonSet pipeline parsing host container logs from /var/log/pods, stripping ANSI colors, and exporting JSON to Grafana Loki.",
+    "conceptsCovered": [
+      "Vector",
+      "DaemonSet",
+      "VRL (Vector Remap Language)",
+      "Loki Exporter",
+      "Log Shipping"
+    ],
+    "code": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: vector-config\n  namespace: logging\ndata:\n  vector.yaml: |\n    sources:\n      kubernetes_logs:\n        type: kubernetes_logs\n    transforms:\n      parse_logs:\n        type: remap\n        inputs: [\"kubernetes_logs\"]\n        source: |\n          # Parse inner JSON application logs if present\n          parsed, err = parse_json(.message)\n          if err == null {\n            . = merge(., parsed)\n          }\n          # Strip ANSI color codes\n          .message = strip_ansi_escape_codes(.message)\n    sinks:\n      loki:\n        type: loki\n        inputs: [\"parse_logs\"]\n        endpoint: http://loki.logging:3100\n        encoding:\n          codec: json\n        labels:\n          namespace: \"{{ kubernetes.pod_namespace }}\"\n          app: \"{{ kubernetes.pod_labels.app }}\"",
+    "breakdown": "Rust-based Vector agent consumes negligible CPU while parsing container JSON logs and shipping them into Loki tagged with pod namespace and application labels.",
+    "expectedOutput": "Zero-loss high-speed container log ingestion into Grafana Loki with structured field search."
+  },
+  {
+    "id": "k8s-ex-40",
+    "title": "Istio VirtualService & DestinationRule with Circuit Breaking",
+    "category": "Networking & Services",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "An Istio traffic policy establishing a 90/10 canary split and configuring outlier detection circuit breakers to eject failing pods.",
+    "conceptsCovered": [
+      "VirtualService",
+      "DestinationRule",
+      "Circuit Breaking",
+      "outlierDetection",
+      "Traffic Splitting"
+    ],
+    "code": "apiVersion: networking.istio.io/v1alpha3\nkind: VirtualService\nmetadata:\n  name: order-service-routing\n  namespace: production\nspec:\n  hosts:\n  - order-service\n  http:\n  - route:\n    - destination:\n        host: order-service\n        subset: v1\n      weight: 90\n    - destination:\n        host: order-service\n        subset: v2\n      weight: 10\n---\napiVersion: networking.istio.io/v1alpha3\nkind: DestinationRule\nmetadata:\n  name: order-service-destrules\n  namespace: production\nspec:\n  host: order-service\n  subsets:\n  - name: v1\n    labels:\n      version: v1\n  - name: v2\n    labels:\n      version: v2\n  trafficPolicy:\n    connectionPool:\n      tcp:\n        maxConnections: 100\n      http:\n        http1MaxPendingRequests: 50\n    outlierDetection:\n      consecutive5xxErrors: 3\n      interval: 10s\n      baseEjectionTime: 30s\n      maxEjectionPercent: 50",
+    "breakdown": "Splits 10% of traffic to v2 while protecting downstream systems: if an individual pod instance returns three consecutive 5xx errors, Envoy ejects it from the pool for 30 seconds.",
+    "expectedOutput": "Seamless traffic canary routing with automatic circuit breaking preventing cascading upstream microservice failures."
+  },
+  {
+    "id": "k8s-ex-41",
+    "title": "Istio PeerAuthentication & AuthorizationPolicy for STRICT Zero-Trust mTLS",
+    "category": "Security, RBAC & Policy Governance",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A pair of Istio security manifests enforcing STRICT mutual TLS wire encryption and verifying caller SPIFFE identities with fine-grained HTTP method permissions.",
+    "conceptsCovered": [
+      "PeerAuthentication",
+      "AuthorizationPolicy",
+      "STRICT mTLS",
+      "SPIFFE Identity",
+      "Service-to-Service AuthZ"
+    ],
+    "code": "apiVersion: security.istio.io/v1beta1\nkind: PeerAuthentication\nmetadata:\n  name: default-strict-mtls\n  namespace: finance\nspec:\n  mtls:\n    mode: STRICT # Reject all plaintext TCP connections\n---\napiVersion: security.istio.io/v1beta1\nkind: AuthorizationPolicy\nmetadata:\n  name: payment-access-control\n  namespace: finance\nspec:\n  selector:\n    matchLabels:\n      app: payment-vault\n  action: ALLOW\n  rules:\n  - from:\n    - source:\n        # Only allow requests from checkout-service ServiceAccount\n        principals: [\"cluster.local/ns/production/sa/checkout-service-sa\"]\n    to:\n    - operation:\n        methods: [\"POST\"]\n        paths: [\"/v1/charges\"]",
+    "breakdown": "Rejects unencrypted connections, requiring mutual TLS cryptographic handshake. The AuthorizationPolicy parses the client's SPIFFE certificate, permitting only POST requests to /v1/charges from the checkout-service identity.",
+    "expectedOutput": "Plaintext traffic is rejected immediately with connection reset; authorized callers communicate over encrypted mTLS."
+  },
+  {
+    "id": "k8s-ex-42",
+    "title": "Gateway API (gateway.networking.k8s.io) HTTPRoute with Header Splitting",
+    "category": "Networking & Services",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "The modern successor to Ingress: Gateway API Gateway and HTTPRoute manifests routing beta users to canary pods via custom HTTP headers.",
+    "conceptsCovered": [
+      "Gateway API",
+      "Gateway",
+      "HTTPRoute",
+      "gateway.networking.k8s.io",
+      "Header Matching"
+    ],
+    "code": "apiVersion: gateway.networking.k8s.io/v1\nkind: Gateway\nmetadata:\n  name: enterprise-gateway\n  namespace: default\nspec:\n  gatewayClassName: envoy-gateway\n  listeners:\n  - name: https\n    protocol: HTTPS\n    port: 443\n    tls:\n      mode: Terminate\n      certificateRefs:\n      - name: enterprise-tls-cert\n---\napiVersion: gateway.networking.k8s.io/v1\nkind: HTTPRoute\nmetadata:\n  name: payment-route\n  namespace: default\nspec:\n  parentRefs:\n  - name: enterprise-gateway\n  hostnames:\n  - \"pay.company.com\"\n  rules:\n  # Rule 1: Beta testers routed to canary backend\n  - matches:\n    - headers:\n      - name: X-Beta-Tester\n        value: \"true\"\n    backendRefs:\n    - name: payment-api-canary\n      port: 8080\n  # Rule 2: Default traffic to stable production backend\n  - backendRefs:\n    - name: payment-api-stable\n      port: 8080",
+    "breakdown": "Uses the standardized Gateway API specification. Expresses role-oriented routing decoupling infrastructure gateways from application routing rules, inspecting headers to route beta testers.",
+    "expectedOutput": "Requests with header 'X-Beta-Tester: true' route to canary; all other requests route to stable."
+  },
+  {
+    "id": "k8s-ex-43",
+    "title": "Node Maintenance Runbook: Safe Cordoning and Draining with PDB Verification",
+    "category": "Observability, Operations & Troubleshooting",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A production shell runbook safely cordoning and draining worker nodes for OS/kernel upgrades while honoring PodDisruptionBudgets and skipping DaemonSets.",
+    "conceptsCovered": [
+      "kubectl cordon",
+      "kubectl drain",
+      "--ignore-daemonsets",
+      "--delete-emptydir-data",
+      "Node Maintenance"
+    ],
+    "code": "#!/usr/bin/env bash\n# runbooks/drain_node.sh\nset -euo pipefail\n\nNODE_NAME=\"$1\"\n\necho \"=== Step 1: Cordoning node ${NODE_NAME} (Halting new scheduling) ===\"\nkubectl cordon \"${NODE_NAME}\"\n\necho \"=== Step 2: Checking PodDisruptionBudgets in cluster ===\"\nkubectl get pdb -A\n\necho \"=== Step 3: Evicting workloads with safety thresholds ===\"\nkubectl drain \"${NODE_NAME}\" \\\n  --ignore-daemonsets \\\n  --delete-emptydir-data \\\n  --grace-period=60 \\\n  --timeout=5m \\\n  --skip-wait-for-delete-timeout=30\n\necho \"=== Step 4: Maintenance ready. Node ${NODE_NAME} successfully drained. ===\"\n# Execute OS reboot / kernel patch here...\n\necho \"=== Step 5: Returning node to schedulable pool ===\"\nkubectl uncordon \"${NODE_NAME}\"",
+    "breakdown": "Prevents downtime during infrastructure maintenance: marks node unschedulable, invokes the eviction API honoring PDBs, ignores node-level DaemonSets, and uncordons once maintenance concludes.",
+    "expectedOutput": "Pods migrate smoothly to other nodes with zero application downtime before the host undergoes OS reboot."
+  },
+  {
+    "id": "k8s-ex-44",
+    "title": "Disaster Recovery Script: etcdctl TLS Snapshot Backup Automation",
+    "category": "Observability, Operations & Troubleshooting",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "An automated bash backup script that creates a consistent point-in-time snapshot of the etcd database using mTLS certificates and validates database integrity.",
+    "conceptsCovered": [
+      "etcdctl snapshot save",
+      "etcdctl snapshot status",
+      "mTLS Authentication",
+      "Disaster Recovery"
+    ],
+    "code": "#!/usr/bin/env bash\n# scripts/backup_etcd.sh\nset -euo pipefail\n\nTIMESTAMP=$(date +%Y%m%d_%H%M%S)\nBACKUP_DIR=\"/var/backups/etcd\"\nBACKUP_FILE=\"${BACKUP_DIR}/etcd_snapshot_${TIMESTAMP}.db\"\n\nmkdir -p \"${BACKUP_DIR}\"\n\necho \"=== Taking consistent point-in-time etcd snapshot ===\"\nETCDCTL_API=3 etcdctl snapshot save \"${BACKUP_FILE}\" \\\n  --endpoints=https://127.0.0.1:2379 \\\n  --cacert=/etc/kubernetes/pki/etcd/ca.crt \\\n  --cert=/etc/kubernetes/pki/etcd/server.crt \\\n  --key=/etc/kubernetes/pki/etcd/server.key\n\necho \"=== Verifying snapshot integrity ===\"\nETCDCTL_API=3 etcdctl --write-out=table snapshot status \"${BACKUP_FILE}\"\n\necho \"=== Compressing snapshot and syncing to encrypted S3 bucket ===\"\ngzip -c \"${BACKUP_FILE}\" > \"${BACKUP_FILE}.gz\"\naws s3 cp \"${BACKUP_FILE}.gz\" s3://company-k8s-disaster-recovery/cluster-prod/ --sse aws:kms\n\necho \"=== etcd backup successfully completed and verified. ===\"",
+    "breakdown": "Uses ETCDCTL_API=3 to take a consistent snapshot of the B+ tree database using master certificates, verifies the hash table integrity, and uploads the compressed snapshot to cloud cold storage.",
+    "expectedOutput": "A validated etcd snapshot saved and securely synced to S3 with a table displaying total keys and revision index."
+  },
+  {
+    "id": "k8s-ex-45",
+    "title": "Diagnostic Runbook: Remediating CrashLoopBackOff Exit Code 137 (OOMKilled)",
+    "category": "Observability, Operations & Troubleshooting",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "An SRE diagnostic workflow using kubectl, cAdvisor, and dmesg to diagnose and resolve Exit Code 137 Out-Of-Memory container termination.",
+    "conceptsCovered": [
+      "Exit Code 137",
+      "OOMKilled",
+      "kubectl logs --previous",
+      "cgroups memory.max",
+      "Memory Limits"
+    ],
+    "code": "#!/usr/bin/env bash\n# runbooks/diagnose_oom.sh\nPOD=\"$1\"\nNAMESPACE=\"$2\"\n\necho \"=== 1. Inspecting Termination Reason and Exit Code ===\"\nkubectl get pod \"${POD}\" -n \"${NAMESPACE}\" -o jsonpath='{range .status.containerStatuses[*]}{.name}{\": Reason=\"}{.lastState.terminated.reason}{\" ExitCode=\"}{.lastState.terminated.exitCode}{\"\\n\"}{end}'\n\necho \"=== 2. Tailing logs from crashed instance ===\"\nkubectl logs \"${POD}\" -n \"${NAMESPACE}\" --previous --tail=50\n\necho \"=== 3. Inspecting configured memory requests vs limits ===\"\nkubectl get pod \"${POD}\" -n \"${NAMESPACE}\" -o jsonpath='{range .spec.containers[*]}{.name}{\": requests.memory=\"}{.resources.requests.memory}{\" limits.memory=\"}{.resources.limits.memory}{\"\\n\"}{end}'\n\necho \"=== 4. Checking node kernel dmesg for OOM-killer invocations ===\"\nNODE=$(kubectl get pod \"${POD}\" -n \"${NAMESPACE}\" -o jsonpath='{.spec.nodeName}')\necho \"Pod was placed on node: ${NODE}\"\n# Inspect dmesg: dmesg -T | grep -i -E \"oom-killer|killed process\"",
+    "breakdown": "Detects OOMKilled exit code 137, inspects preceding application memory logs, and compares configured memory limits against container runtime needs to right-size specifications.",
+    "expectedOutput": "Pinpoints memory limit violations and outputs exact adjustments required for resources.limits.memory."
+  },
+  {
+    "id": "k8s-ex-46",
+    "title": "Diagnostic Runbook: Resolving ImagePullBackOff with Docker Registry Secrets",
+    "category": "Observability, Operations & Troubleshooting",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A diagnostic script to triage ImagePullBackOff errors and bind docker-registry credentials to ServiceAccounts for automated private image authentication.",
+    "conceptsCovered": [
+      "ImagePullBackOff",
+      "docker-registry secret",
+      "imagePullSecrets",
+      "ServiceAccount patch"
+    ],
+    "code": "#!/usr/bin/env bash\n# runbooks/fix_image_pull.sh\nset -euo pipefail\n\nNAMESPACE=\"$1\"\nSECRET_NAME=\"enterprise-registry-creds\"\n\necho \"=== Step 1: Creating docker-registry secret in namespace ${NAMESPACE} ===\"\nkubectl create secret docker-registry \"${SECRET_NAME}\" \\\n  --namespace=\"${NAMESPACE}\" \\\n  --docker-server=\"registry.company.internal\" \\\n  --docker-username=\"$REGISTRY_USER\" \\\n  --docker-password=\"$REGISTRY_TOKEN\" \\\n  --dry-run=client -o yaml | kubectl apply -f -\n\necho \"=== Step 2: Patching default ServiceAccount to automatically inject secret ===\"\nkubectl patch serviceaccount default \\\n  -n \"${NAMESPACE}\" \\\n  -p '{\"imagePullSecrets\": [{\"name\": \"'\"${SECRET_NAME}\"'\"}]}'\n\necho \"=== Step 3: Verified. All new pods in ${NAMESPACE} inherit credentials. ===\"",
+    "breakdown": "Creates a docker-registry secret and patches the namespace's default ServiceAccount, ensuring all workloads in the namespace automatically pull images from private registries without modifying individual Deployment specs.",
+    "expectedOutput": "Pods previously stuck in ErrImagePull / ImagePullBackOff successfully authenticate and launch."
+  },
+  {
+    "id": "k8s-ex-47",
+    "title": "Diagnostic Runbook: Unblocking Pending Pods Trapped in Predicate Failures",
+    "category": "Observability, Operations & Troubleshooting",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "An automated diagnostic script identifying why Pods remain in Pending state, extracting scheduler predicate errors and cluster node capacity deficits.",
+    "conceptsCovered": [
+      "Pending Pods",
+      "FailedScheduling",
+      "Predicate Failures",
+      "Resource Deficits",
+      "Scheduler Events"
+    ],
+    "code": "#!/usr/bin/env bash\n# runbooks/triage_pending_pods.sh\nset -euo pipefail\n\nNAMESPACE=\"${1:-default}\"\n\necho \"=== Listing all Pending Pods in namespace '${NAMESPACE}' ===\"\nPENDING_PODS=$(kubectl get pods -n \"${NAMESPACE}\" --field-selector=status.phase=Pending -o jsonpath='{.items[*].metadata.name}')\n\nif [ -z \"${PENDING_PODS}\" ]; then\n  echo \"No pending pods found.\"\n  exit 0\nfi\n\nfor POD in ${PENDING_PODS}; do\n  echo \"---------------------------------------------------------\"\n  echo \"POD: ${POD}\"\n  echo \"Scheduler Failure Reason:\"\n  kubectl get events -n \"${NAMESPACE}\" \\\n    --field-selector \"involvedObject.name=${POD},reason=FailedScheduling\" \\\n    --sort-by='.metadata.creationTimestamp' \\\n    -o custom-columns=TIME:.metadata.creationTimestamp,MESSAGE:.message | tail -n 2\ndone\n\necho \"---------------------------------------------------------\"\necho \"=== Cluster Allocatable vs Capacity Summary ===\"\nkubectl describe nodes | grep -A 8 \"Allocated resources:\"",
+    "breakdown": "Parses FailedScheduling events to instantly tell the engineer whether the issue is Insufficient CPU/Memory, untolerated taints, or unbound PersistentVolumeClaims.",
+    "expectedOutput": "Diagnostic summary pinpointing predicate failure causes (e.g. '0/12 nodes available: 12 Insufficient cpu')."
+  },
+  {
+    "id": "k8s-ex-48",
+    "title": "ResourceQuota & LimitRange Enforcing Fair Share Compute Across Namespaces",
+    "category": "Scheduling & Resource Allocation",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Enterprise multi-tenancy manifests setting hard namespace compute ceilings with ResourceQuota and mandating default CPU/RAM requests with LimitRange.",
+    "conceptsCovered": [
+      "ResourceQuota",
+      "LimitRange",
+      "Default Requests",
+      "Multi-Tenancy",
+      "Resource Constraints"
+    ],
+    "code": "apiVersion: v1\nkind: LimitRange\nmetadata:\n  name: default-limits\n  namespace: development\nspec:\n  limits:\n  - default: # Default limits if omitted by developer\n      cpu: \"500m\"\n      memory: \"512Mi\"\n    defaultRequest: # Default requests if omitted\n      cpu: \"100m\"\n      memory: \"128Mi\"\n    max:\n      cpu: \"2000m\"\n      memory: \"2Gi\"\n    type: Container\n---\napiVersion: v1\nkind: ResourceQuota\nmetadata:\n  name: compute-quota\n  namespace: development\nspec:\n  hard:\n    requests.cpu: \"10\"\n    requests.memory: \"20Gi\"\n    limits.cpu: \"20\"\n    limits.memory: \"40Gi\"\n    pods: \"30\"\n    services.loadbalancers: \"1\"",
+    "breakdown": "LimitRange injects default CPU/memory requests if developers omit them, preventing unconstrained containers. ResourceQuota bounds total namespace footprint, preventing noisy neighbor starvation.",
+    "expectedOutput": "Development namespace caps total resource usage to 10 CPUs / 20Gi RAM, automatically injecting default container sizes."
+  },
+  {
+    "id": "k8s-ex-49",
+    "title": "Secret Encryption at Rest via kube-apiserver KMS v2 Provider",
+    "category": "Security, RBAC & Policy Governance",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "The kube-apiserver EncryptionConfiguration manifest implementing envelope encryption with external cloud KMS (AWS KMS / HashiCorp Vault) for Secrets stored in etcd.",
+    "conceptsCovered": [
+      "EncryptionConfiguration",
+      "KMS v2 Provider",
+      "Envelope Encryption",
+      "etcd ciphertext",
+      "DEK/KEK"
+    ],
+    "code": "apiVersion: apiserver.config.k8s.io/v1\nkind: EncryptionConfiguration\nresources:\n  - resources:\n      - secrets\n      - configmaps\n    providers:\n      # 1. Primary: Cloud KMS v2 Provider (Envelope Encryption)\n      - kms:\n          apiVersion: v2\n          name: aws-kms-provider\n          endpoint: unix:///var/run/kmsplugin/socket.sock\n          timeout: 3s\n      # 2. Secondary fallback (Read existing AES-CBC secrets during migration)\n      - aescbc:\n          keys:\n            - name: legacy-key\n              secret: c2VjcmV0IGlzIGEgMzItYnl0ZSBzdHJpbmc=\n      # 3. Identity (Plaintext fallback for unencrypted legacy objects)\n      - identity: {}",
+    "breakdown": "Configures kube-apiserver to encrypt Secret values before writing to etcd using KMS envelope encryption. If the etcd disk is stolen, the raw database contains only unreadable ciphertext.",
+    "expectedOutput": "etcd stores Secrets as ciphertext encrypted with dynamic DEKs rotated and protected by cloud hardware KMS."
+  },
+  {
+    "id": "k8s-ex-50",
+    "title": "Ephemeral Containers (kubectl debug) for Live Production Troubleshooting",
+    "category": "Observability, Operations & Troubleshooting",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Using ephemeral debug containers to attach interactive troubleshooting toolkits (curl, tcpdump, gdb) to live distroless production pods without restarting them.",
+    "conceptsCovered": [
+      "kubectl debug",
+      "Ephemeral Containers",
+      "Distroless Debugging",
+      "Process Namespace Sharing"
+    ],
+    "code": "# 1. Attach an ephemeral debugging container into a live distroless pod\n$ kubectl debug -it payment-api-78f99-z9k12 \\\n    --image=nicolaka/netshoot \\\n    --target=payment-api \\\n    -n production\n\n# Inside the netshoot ephemeral container:\n# You now share the pod's network namespace and process namespace!\n$ tcpdump -i eth0 -nn -s0 -v port 8080\n$ curl -v http://localhost:8080/healthz\n$ strace -p 1 -f -e trace=network\n\n# 2. Alternatively, copy a crashing pod with an interactive override\n$ kubectl debug pod/crashing-pod-abc \\\n    --copy-to=debug-pod \\\n    --container=app \\\n    --sh",
+    "breakdown": "Solves the dilemma of inspecting hardened distroless containers (which lack shells and package managers): dynamically injects a temporary debugging container into the pod's shared Linux namespaces.",
+    "expectedOutput": "Instant interactive shell inside the production pod's network and process namespace with zero workload disruption."
+  },
+  {
+    "id": "k8s-ex-51",
+    "title": "PriorityClass Hierarchy: Critical System Workloads vs Batch Jobs",
+    "category": "Scheduling & Resource Allocation",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Defining cluster-wide PriorityClass tiers with preemption policies to guarantee mission-critical microservices pre-empt low-priority batch jobs during capacity shortages.",
+    "conceptsCovered": [
+      "PriorityClass",
+      "preemptionPolicy",
+      "PreemptLowerPriority",
+      "Cluster Capacity Governance"
+    ],
+    "code": "apiVersion: scheduling.k8s.io/v1\nkind: PriorityClass\nmetadata:\n  name: mission-critical-service\nvalue: 1000000000 # High priority\nglobalDefault: false\ndescription: \"Core revenue-generating microservices (payment, checkout).\"\n---\napiVersion: scheduling.k8s.io/v1\nkind: PriorityClass\nmetadata:\n  name: background-batch-job\nvalue: 1000 # Low priority\nglobalDefault: false\npreemptionPolicy: Never # Never pre-empt other workloads\ndescription: \"Non-critical batch data processing.\"\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payment-engine\n  namespace: production\nspec:\n  replicas: 4\n  template:\n    spec:\n      priorityClassName: mission-critical-service\n      containers:\n      - name: payment\n        image: payment:v2",
+    "breakdown": "When nodes reach 100% capacity, kube-scheduler evicts low-priority batch jobs (value: 1000) to ensure mission-critical service pods (value: 1000000000) schedule without delay.",
+    "expectedOutput": "Mission-critical pods immediately pre-empt background jobs during node resource crunch."
+  },
+  {
+    "id": "k8s-ex-52",
+    "title": "Cluster API (CAPI) AWS Managed Control Plane & Worker MachineDeployment",
+    "category": "Architecture & Control Plane",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A declarative Cluster API manifest defining a Kubernetes cluster, its AWS managed EKS control plane, and an auto-scaling worker MachineDeployment via GitOps.",
+    "conceptsCovered": [
+      "Cluster API (CAPI)",
+      "AWSManagedControlPlane",
+      "MachineDeployment",
+      "Infrastructure-as-Code in K8s"
+    ],
+    "code": "apiVersion: cluster.x-k8s.io/v1beta1\nkind: Cluster\nmetadata:\n  name: prod-cluster-us-east\n  namespace: capi-clusters\nspec:\n  clusterNetwork:\n    pods:\n      cidrBlocks: [\"10.244.0.0/16\"]\n    services:\n      cidrBlocks: [\"10.96.0.0/12\"]\n  controlPlaneRef:\n    apiVersion: controlplane.cluster.x-k8s.io/v1beta2\n    kind: AWSManagedControlPlane\n    name: prod-control-plane\n  infrastructureRef:\n    apiVersion: infrastructure.cluster.x-k8s.io/v1beta2\n    kind: AWSManagedCluster\n    name: prod-cluster-infra\n---\napiVersion: cluster.x-k8s.io/v1beta1\nkind: MachineDeployment\nmetadata:\n  name: prod-worker-pool-m6i\n  namespace: capi-clusters\nspec:\n  clusterName: prod-cluster-us-east\n  replicas: 10\n  selector:\n    matchLabels:\n      cluster.x-k8s.io/cluster-name: prod-cluster-us-east\n  template:\n    spec:\n      clusterName: prod-cluster-us-east\n      version: v1.30.0\n      bootstrap:\n        configRef:\n          apiVersion: bootstrap.cluster.x-k8s.io/v1beta2\n          kind: EKSConfigTemplate\n          name: prod-eks-config\n      infrastructureRef:\n        apiVersion: infrastructure.cluster.x-k8s.io/v1beta2\n        kind: AWSManagedMachinePool\n        name: prod-worker-m6i-pool",
+    "breakdown": "Treats entire Kubernetes clusters as declarative custom resources. Upgrading Kubernetes minor versions or resizing worker pools is managed through Git commits and CAPI controllers.",
+    "expectedOutput": "A fully functional, multi-node managed Kubernetes cluster provisioned entirely via declarative Kubernetes CRDs."
+  }
+]

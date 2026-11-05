@@ -8,8 +8,16 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+
   server: {
-    port: 5173,
+    port: 5176,
     open: false,
+    allowedHosts: [
+      'bbwildmaster.com' // Allows Nginx to forward this clean domain
+    ],
+    hmr: {
+      protocol: 'wss',
+      host: 'bbwildmaster.com',
+    }
   },
 });

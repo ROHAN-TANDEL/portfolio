@@ -1,0 +1,282 @@
+[
+  {
+    "id": "ms-prod-01",
+    "topic": "Cascading Outage via Thread Pool & Socket Exhaustion",
+    "category": "Reliability & Resilience",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "A minor recommendation microservice experiences a slow database lock, increasing its response time from 35ms to 8,000ms. Calling upstream services (Product Catalog and Checkout API Gateway) execute synchronous calls without aggressive timeouts. Within 90 seconds, all worker threads and epoll socket pools across the cluster are 100% saturated waiting on I/O. The entire platform stops accepting new incoming HTTP connections, returning 504 Gateway Timeout on 100% of user traffic.",
+    "howItWorksInternally": "When an HTTP client initiates a synchronous network call without a bounded deadline, the operating system holds open a socket descriptor and worker thread. In thread-per-request runtimes (like Tomcat or Spring Boot), the thread pool (default 200 threads) exhausts rapidly. In event-driven runtimes (Node.js), the asynchronous event loop queue fills with thousands of pending callback closures, exhausting heap memory and spiking GC pauses. As connections back up, upstream reverse proxies (NGINX/Envoy) fill their client connection queues and reject new incoming TCP SYNs.",
+    "productionCode": "// Emergency Remediation: Circuit Breaker with Hard 400ms Deadline and Fallback Stub\nimport { ProductionCircuitBreaker } from \"./circuitBreaker.js\";\n\nconst recsBreaker = new ProductionCircuitBreaker(\n  3,     // Trip after 3 consecutive failures\n  15000, // Stay OPEN for 15s before probing\n  2      // Half-open target\n);\n\nexport async function getRecommendationsWithIsolation(productId: string) {\n  return recsBreaker.fire(\n    async () => {\n      // 1. Strict AbortController deadline budget (400ms max)\n      const res = await fetch(`http://recommendation-service:8080/recs/${productId}`, {\n        signal: AbortSignal.timeout(400)\n      });\n      if (!res.ok) throw new Error(`Downstream HTTP ${res.status}`);\n      return res.json();\n    },\n    // 2. Fallback Stub: Gracefully degrade immediately without blocking threads!\n    () => {\n      console.warn(`[Degradation] Serving static recommendation fallback for ${productId}`);\n      return [\n        { id: \"fallback-item-1\", title: \"Top Trending Item\" },\n        { id: \"fallback-item-2\", title: \"Best Seller\" }\n      ];\n    }\n  );\n}",
+    "monitoringMetrics": [
+      "sum(rate(http_requests_total{status_code=~'504|503'}[1m])) by (service)",
+      "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route))",
+      "process_active_requests or jvm_threads_busy / jvm_threads_max"
+    ],
+    "productionChecklist": [
+      "Deploy emergency Envoy VirtualService setting timeout: 500ms on degraded service route.",
+      "Trip circuit breaker to OPEN state via dynamic feature flag to stop outbound network calls.",
+      "Restart stalled upstream pods after enabling fallback stubs to clear blocked socket queues.",
+      "Verify recovery by observing p99 latency drop back below 250ms and error rates return to zero."
+    ]
+  },
+  {
+    "id": "ms-prod-02",
+    "topic": "Kafka Consumer Group Poison Pill & Offset Commit Stall",
+    "category": "Event-Driven Messaging",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "A producer publishes an unparseable malformed JSON message (Poison Pill) to a high-volume Kafka partition. The consumer crashes with a SyntaxError during JSON.parse(), unhandled by the consumer loop. The consumer restarts, re-fetches the exact same uncommitted offset, and crashes again in an infinite crash loop. The consumer lag for that partition balloons into millions of unconsumed messages, halting order fulfillment platform-wide.",
+    "howItWorksInternally": "When a Kafka consumer fails before issuing a manual or automatic offset commit, the message remains at the current partition offset. On restart, the consumer group coordinator assigns the partition back to the consumer, which seeks to the last committed offset and re-reads the poison pill. Because the crash happens before the offset commit, the message acts as an impassable roadblock, permanently blocking all subsequent valid messages queued behind it in the partition log.",
+    "productionCode": "// Production Fix: Poison Pill Interceptor with Dead Letter Queue Routing\nexport async function resilientConsumerLoop(consumer: any, dlqProducer: any) {\n  await consumer.run({\n    autoCommit: false,\n    eachMessage: async ({ topic, partition, message }: any) => {\n      let payload: any;\n      const rawText = message.value?.toString();\n\n      // 1. Defend against malformed JSON (Poison Pill detection)\n      try {\n        payload = JSON.parse(rawText || \"{}\");\n      } catch (parseError: any) {\n        console.error(`POISON PILL DETECTED at offset ${message.offset}! Routing to DLQ.`);\n\n        // Forward raw poisoned bytes to Dead Letter Queue for offline debugging\n        await dlqProducer.send({\n          topic: `${topic}.POISON_PILL_DLQ`,\n          messages: [{\n            key: message.key,\n            value: message.value,\n            headers: {\n              \"x-poison-reason\": parseError.message,\n              \"x-source-topic\": topic,\n              \"x-source-partition\": partition.toString(),\n              \"x-source-offset\": message.offset\n            }\n          }]\n        });\n\n        // CRITICAL: Commit offset past the poison pill so consumer never blocks!\n        await consumer.commitOffsets([\n          { topic, partition, offset: (BigInt(message.offset) + 1n).toString() }\n        ]);\n        return;\n      }\n\n      // 2. Normal business processing\n      await processOrderEvent(payload);\n\n      // 3. Commit valid offset\n      await consumer.commitOffsets([\n        { topic, partition, offset: (BigInt(message.offset) + 1n).toString() }\n      ]);\n    }\n  });\n}",
+    "monitoringMetrics": [
+      "kafka_consumergroup_lag{topic='order.lifecycle'}",
+      "sum(rate(kafka_consumer_records_consumed_total[1m])) by (partition)",
+      "kafka_consumer_crash_loop_count"
+    ],
+    "productionChecklist": [
+      "Identify the stuck partition and consumer group lag using kafka-consumer-groups.sh.",
+      "Check error logs for SyntaxError or schema deserialization exceptions.",
+      "Deploy poison pill interceptor that commits past corrupted messages while routing to DLQ.",
+      "Alternatively, use kafka-consumer-groups.sh --reset-offsets --shift-by 1 to manually skip poison offset."
+    ]
+  },
+  {
+    "id": "ms-prod-03",
+    "topic": "Thundering Herd Retry Storm after Downstream Recovery",
+    "category": "Reliability & Resilience",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "Payment Service recovers from a 15-minute database outage. Instantly, 50,000 clients that failed during the outage execute automated retries at the exact same second using fixed backoff intervals (e.g. retry every 2000ms). The massive surge in traffic (10x normal peak load) instantly crashes Payment Service again, generating a repeating cycle of crashes and preventing genuine service recovery.",
+    "howItWorksInternally": "When thousands of microservice clients fail concurrently, deterministic retry algorithms (fixed delay or exponential backoff without jitter) synchronize the retry timings. Clients generate rhythmic waves of requests that peak simultaneously. Even if the backend database could handle steady-state traffic, the massive instantaneous burst exhausts TCP listen backlogs (SYN queue overflow), triggers database connection timeouts, and trips upstream circuit breakers.",
+    "productionCode": "// Production Mitigation: AWS Full Jitter Retry Engine + Circuit Breaker Rate-Gate\nexport async function retryWithFullJitter<T>(\n  operation: () => Promise<T>,\n  maxAttempts = 5,\n  baseDelayMs = 200,\n  maxDelayMs = 8000\n): Promise<T> {\n  let attempt = 0;\n\n  while (attempt < maxAttempts) {\n    try {\n      return await operation();\n    } catch (err: any) {\n      attempt++;\n      if (attempt >= maxAttempts) throw err;\n\n      // 1. Exponential ceiling\n      const ceiling = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt));\n\n      // 2. Full Jitter: randomize uniformly between 0 and ceiling\n      // This completely decorrelates 50,000 clients across a smooth time spectrum!\n      const sleepTime = Math.floor(Math.random() * ceiling);\n\n      console.warn(`[Retry] Attempt ${attempt} failed. Full Jitter sleep: ${sleepTime}ms`);\n      await new Promise(r => setTimeout(r, sleepTime));\n    }\n  }\n\n  throw new Error(\"Retry exhausted\");\n}",
+    "monitoringMetrics": [
+      "sum(rate(http_requests_total{service='payment-service'}[1m]))",
+      "node_netstat_Tcp_ListenOverflows",
+      "sum(rate(http_requests_total{status_code='429'}[1m]))"
+    ],
+    "productionChecklist": [
+      "Deploy emergency edge rate-limiting policy in Envoy to drop 60% of retry traffic.",
+      "Update client SDK configurations to enforce Full Jitter instead of fixed intervals.",
+      "Scale up Payment Service container replicas before releasing the traffic gate.",
+      "Gradually throttle traffic back up using Istio VirtualService weights."
+    ]
+  },
+  {
+    "id": "ms-prod-04",
+    "topic": "Split-Brain Inconsistency during Saga Compensation Failure",
+    "category": "Transactions & Consistency",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "During a multi-step Checkout Saga, Step 1 (Debit User Points) succeeds, Step 2 (Reserve Inventory) succeeds, but Step 3 (Payment Gateway) fails. The Saga Orchestrator triggers backward compensation. The compensation to release inventory succeeds, but the compensation to refund user points times out due to a network blip. The user is charged points for an order that was canceled, creating financial inconsistency and customer complaints.",
+    "howItWorksInternally": "Unlike ACID database rollbacks managed by a single transaction manager, distributed Sagas execute compensating transactions over the network. Network timeouts or downstream server 500s can cause a compensation to fail. If the orchestrator treats a failed compensation as 'done' or drops the workflow, the system enters an inconsistent split-brain state where part of the transaction committed and another part aborted.",
+    "productionCode": "// Production Fix: Durable Saga Orchestrator with Persistent Compensation Retries\nexport class DurableSagaRunner {\n  constructor(private sagaStateStore: any) {}\n\n  async executeCompensationWithGuaranteedDelivery(sagaId: string, compensation: { name: string; run: () => Promise<void> }) {\n    let attempt = 0;\n    const maxRetries = 10;\n\n    while (attempt < maxRetries) {\n      try {\n        console.log(`[SagaCompensation] Attempting ${compensation.name} for Saga ${sagaId}`);\n        await compensation.run();\n\n        // Mark compensation resolved in persistent database\n        await this.sagaStateStore.markStepCompensated(sagaId, compensation.name);\n        return;\n      } catch (err: any) {\n        attempt++;\n        const backoff = Math.min(30000, 1000 * Math.pow(2, attempt));\n        console.error(`Compensation ${compensation.name} failed (attempt ${attempt}). Retrying in ${backoff}ms`);\n        await new Promise(r => setTimeout(r, backoff));\n      }\n    }\n\n    // If compensation fails after 10 attempts: Trigger CRITICAL PagerDuty Alarm for Human Intervention!\n    await this.sagaStateStore.markStalledHumanTriage(sagaId, compensation.name);\n    await triggerPagerDutyAlert({\n      severity: \"CRITICAL\",\n      summary: `SAGA COMPENSATION PERMANENTLY FAILED: ${compensation.name} on Saga ${sagaId}`,\n      details: \"Requires immediate database ledger adjustment by finance/on-call.\"\n    });\n  }\n}",
+    "monitoringMetrics": [
+      "saga_compensation_failures_total",
+      "saga_in_flight_duration_seconds",
+      "saga_stalled_human_triage_count"
+    ],
+    "productionChecklist": [
+      "Query saga state table for status = 'COMPENSATION_FAILED' or 'STALLED'.",
+      "Ensure all compensating activities are strictly idempotent so retries do not double-refund.",
+      "Configure Temporal / Orchestrator to retry compensations indefinitely with backoff.",
+      "Audit financial ledgers and manually reconcile stalled transactions using compensation scripts."
+    ]
+  },
+  {
+    "id": "ms-prod-05",
+    "topic": "Kubernetes Liveness Probe Cascading Restart Death Spiral",
+    "category": "Reliability & Resilience",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "Under sudden marketing campaign traffic, the shared PostgreSQL database CPU spikes to 99%. A developer configured the microservice Liveness probe to execute 'SELECT 1' against the database. Because the database is saturated, the health check query times out after 1 second. Kubernetes concludes that all 40 microservice pods are dead, terminating and restarting all 40 containers simultaneously. The container restarts trigger connection storms against the database, permanently killing the cluster.",
+    "howItWorksInternally": "Kubernetes Liveness probes test whether the application process is internally deadlocked or crashed. If a liveness probe fails consecutive times, kubelet issues a SIGTERM followed by SIGKILL to restart the container. When liveness probes test external shared resources (databases, caches, third-party APIs), any blip in the external resource causes Kubernetes to restart healthy containers, destroying active in-flight user requests and generating thunderous initialization connection surges.",
+    "productionCode": "// Production Fix: Decouple Liveness (Internal Event Loop) from Readiness (External Deps)\nimport express from \"express\";\nconst app = express();\n\nlet isShuttingDown = false;\n\n// 1. LIVENESS PROBE: Strictly internal! NEVER PING DATABASES HERE!\n// If this endpoint responds, the Node.js event loop is ticking.\napp.get(\"/healthz/liveness\", (req, res) => {\n  if (isShuttingDown) {\n    return res.status(503).send(\"Shutting down\");\n  }\n  return res.status(200).send(\"OK\");\n});\n\n// 2. READINESS PROBE: Validates if the pod can actively accept incoming traffic\n// If DB is slow, return 503 to REMOVE POD FROM SERVICE TRAFFIC WITHOUT KILLING IT!\napp.get(\"/healthz/readiness\", async (req, res) => {\n  if (isShuttingDown) return res.status(503).send(\"Draining\");\n\n  try {\n    // Check DB with short timeout\n    await db.query(\"SELECT 1\", { timeoutMs: 500 });\n    return res.status(200).send(\"READY\");\n  } catch {\n    // Pod is temporarily unready: Kube-proxy stops sending traffic, but container keeps running!\n    return res.status(503).send(\"DATABASE_UNREACHABLE\");\n  }\n});\n\n// 3. Graceful Shutdown Signal Handler\nprocess.on(\"SIGTERM\", () => {\n  isShuttingDown = true;\n  console.log(\"SIGTERM received. Draining connections before shutdown.\");\n});",
+    "monitoringMetrics": [
+      "kube_pod_container_status_restarts_total",
+      "sum(rate(kube_pod_container_status_waiting[5m]))",
+      "pg_stat_activity_count"
+    ],
+    "productionChecklist": [
+      "Inspect Kubernetes pod restart counts using kubectl get pods -n prod.",
+      "Verify deployment manifests: immediately remove database queries from livenessProbe.httpGet.",
+      "Tune livenessProbe initialDelaySeconds (e.g. 15s) and failureThreshold (e.g. 5).",
+      "Ensure readinessProbe removes degraded pods from Service endpoints without triggering restarts."
+    ]
+  },
+  {
+    "id": "ms-prod-06",
+    "topic": "PostgreSQL Connection Pool Starvation via Pod Autoscaling",
+    "category": "Data & Persistence",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "During Black Friday, the Kubernetes Horizontal Pod Autoscaler (HPA) scales the Order Service from 8 pods to 40 pods. Each pod is configured with a PostgreSQL connection pool of max: 25 connections. 40 pods * 25 connections = 1,000 connections. PostgreSQL's max_connections is configured to 300. The database immediately throws 'FATAL: remaining connection slots are reserved for non-superuser connections'. All database writes across the entire company freeze.",
+    "howItWorksInternally": "PostgreSQL uses a process-per-connection architecture where each active connection consumes 5MB-10MB of RAM and competes for CPU scheduling. When hundreds of uncoordinated microservice replicas autoscale, they independently checkout TCP sockets. Once max_connections is exhausted, PostgreSQL rejects all new connection attempts, including health checks and administrative SSH access.",
+    "productionCode": "// Production Fix: Deploy PgBouncer in Transaction Pooling Mode + Conservative Pool Sizing\n// 1. In Microservice: Restrict pool size and enforce aggressive checkout timeouts\nimport { Pool } from \"pg\";\n\nexport const dbPool = new Pool({\n  host: process.env.PGBOUNCER_HOST || \"pgbouncer.database.svc.cluster.local\",\n  port: 6432, // PgBouncer port\n  max: 4,     // Keep small! 40 pods * 4 = 160 connections (safe below 300 ceiling)\n  idleTimeoutMillis: 10000,\n  connectionTimeoutMillis: 1500, // Fail fast if connection cannot be checked out in 1.5s\n  statement_timeout: 4000        // Kill rogue queries taking > 4s\n});\n\n// 2. PgBouncer Configuration (pgbouncer.ini):\n/*\n[databases]\norders = host=postgres-primary port=5432 dbname=orders\n\n[pgbouncer]\nlisten_port = 6432\nlisten_addr = *\nauth_type = md5\nauth_file = /etc/pgbouncer/userlist.txt\npool_mode = transaction       # Reuses server connections immediately after each transaction commits!\nmax_client_conn = 5000       # Allows 5,000 frontend microservice connections\ndefault_pool_size = 50       # Keeps only 50 active persistent sockets to real PostgreSQL!\n*/",
+    "monitoringMetrics": [
+      "pg_stat_database_numbackends / pg_settings_max_connections",
+      "pgbouncer_pools_cl_waiting",
+      "pgbouncer_pools_sv_active"
+    ],
+    "productionChecklist": [
+      "Check active PostgreSQL connection counts via SELECT count(*) FROM pg_stat_activity.",
+      "Deploy PgBouncer connection pooler in Transaction Pooling mode between pods and database.",
+      "Reduce max connections per pod in deployment ConfigMaps from 25 to 4.",
+      "Cap HPA maxReplicas so (maxReplicas * poolSize) never exceeds PgBouncer client limits."
+    ]
+  },
+  {
+    "id": "ms-prod-07",
+    "topic": "Distributed Tracing Context Loss & Orphaned Spans",
+    "category": "Observability & Telemetry",
+    "severity": "P1 - High Severity",
+    "theProblem": "Engineers investigating high checkout latency discover that distributed traces truncate abruptly at Order Service. Payment and Inventory child spans appear as disconnected root traces with brand-new Trace IDs, rendering trace waterfall visualizations broken and making root-cause latency attribution across microservices impossible.",
+    "howItWorksInternally": "Context loss occurs when a microservice uses uninstrumented HTTP/gRPC clients or spawns uncoordinated background tasks (e.g. raw setTimeout or un-wrapped worker threads). If the outbound network client fails to extract the active OpenTelemetry context and inject the W3C traceparent header into the HTTP carrier, downstream services assume the incoming request is a brand-new transaction, generating a new Trace ID and breaking the trace DAG.",
+    "productionCode": "// Production Fix: Automatic Context Propagation over Outbound HTTP Calls\nimport { context, propagation, trace } from \"@opentelemetry/api\";\n\nexport async function tracedHttpClientFetch(url: string, options: RequestInit = {}): Promise<Response> {\n  const headers: Record<string, string> = {};\n\n  // 1. Copy user headers\n  if (options.headers) {\n    Object.entries(options.headers).forEach(([k, v]) => {\n      headers[k] = v.toString();\n    });\n  }\n\n  // 2. Inject current active trace context (traceparent & tracestate) into outgoing headers\n  propagation.inject(context.active(), headers);\n\n  // 3. Create child span for outbound HTTP hop\n  const tracer = trace.getTracer(\"http-client\");\n  return tracer.startActiveSpan(`HTTP ${options.method || \"GET\"} ${url}`, async (span) => {\n    try {\n      const response = await fetch(url, { ...options, headers });\n      span.setAttribute(\"http.status_code\", response.status);\n      return response;\n    } catch (err: any) {\n      span.recordException(err);\n      throw err;\n    } finally {\n      span.end();\n    }\n  });\n}",
+    "monitoringMetrics": [
+      "otelcol_receiver_accepted_spans",
+      "sum(rate(traces_missing_parent_span_total[5m]))",
+      "jaeger_traces_orphan_count"
+    ],
+    "productionChecklist": [
+      "Verify that all outbound HTTP and gRPC client libraries are wrapped with OpenTelemetry auto-instrumentation.",
+      "Inspect incoming request headers in downstream logs: confirm 'traceparent' header is present.",
+      "Ensure asynchronous background promises maintain context using context.with(parentCtx, ...).",
+      "Validate complete trace DAGs in Jaeger / Grafana Tempo dashboards."
+    ]
+  },
+  {
+    "id": "ms-prod-08",
+    "topic": "API Gateway Ingress Saturation & Tail Latency Amplification",
+    "category": "Ingress & Edge",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "Under flash sale traffic, the API Gateway CPU reaches 100%, and edge p99 latency spikes to 14,000ms. An investigation reveals that the gateway executes synchronous scatter-gather aggregation across 12 downstream microservices for the homepage. Due to tail latency amplification, if each service has a 1% chance of a 2-second blip, over 11% of homepage gateway requests experience severe latency spikes.",
+    "howItWorksInternally": "Tail latency amplification follows the probability equation P(tail) = 1 - (1 - p)^n, where n is the number of concurrent downstream services. When an edge gateway waits synchronously on 12 services, the slowest response dictates overall response time. Slow requests keep gateway connection sockets open, consuming file descriptors and worker event loops until the gateway cannot process new connections.",
+    "productionCode": "// Production Fix: Bounded Concurrency Scatter-Gather with Aggressive Partial Degradation\nexport class ResilientGatewayAggregator {\n  async getHomepageFeed(userId: string) {\n    const timeoutMs = 350; // Hard edge budget\n\n    // Scatter phase with strict deadlines\n    const [heroBanner, products, recommendations, notifications] = await Promise.allSettled([\n      fetchWithTimeout(\"http://banner-service/hero\", timeoutMs),\n      fetchWithTimeout(\"http://product-service/featured\", timeoutMs),\n      fetchWithTimeout(`http://recs-service/user/${userId}`, timeoutMs),\n      fetchWithTimeout(`http://notification-service/user/${userId}`, timeoutMs)\n    ]);\n\n    // Mandatory core: fail if products fail\n    if (products.status === \"rejected\") {\n      throw new Error(\"Core product catalog unavailable\");\n    }\n\n    // Graceful partial degradation for secondary widgets\n    return {\n      hero: heroBanner.status === \"fulfilled\" ? heroBanner.value : { title: \"Welcome to Our Store\", image: \"/default.jpg\" },\n      products: products.value,\n      recommendations: recommendations.status === \"fulfilled\" ? recommendations.value : [],\n      notificationsCount: notifications.status === \"fulfilled\" ? notifications.value.count : 0,\n      degraded: recommendations.status === \"rejected\" || notifications.status === \"rejected\"\n    };\n  }\n}\n\nfunction fetchWithTimeout(url: string, ms: number) {\n  return fetch(url, { signal: AbortSignal.timeout(ms) }).then(r => r.json());\n}",
+    "monitoringMetrics": [
+      "histogram_quantile(0.99, sum(rate(envoy_http_downstream_rq_time_bucket[1m])) by (le))",
+      "envoy_http_downstream_rq_5xx",
+      "gateway_scatter_gather_degraded_total"
+    ],
+    "productionChecklist": [
+      "Enforce maximum 350ms timeouts on all scattered downstream requests.",
+      "Deploy Redis edge caching for static components (hero banner, categories).",
+      "Configure HPA on API Gateway pods targeting 60% CPU utilization.",
+      "Ensure non-essential widgets return fallback stubs rather than failing the entire page."
+    ]
+  },
+  {
+    "id": "ms-prod-09",
+    "topic": "High-Cardinality Metric Explosion Crashing Prometheus TSDB",
+    "category": "Observability & Telemetry",
+    "severity": "P1 - High Severity",
+    "theProblem": "A newly deployed release adds user_id and email as labels to an HTTP request counter metric. Within 2 hours, 4 million unique time series are created. The Prometheus server exhausts its 32GB RAM, triggers Out-Of-Memory (OOM) kernel kills, and enters a crash loop during WAL replay. The engineering organization loses 100% of metrics and alerting capability during an active production deployment.",
+    "howItWorksInternally": "Prometheus stores time series indexed by unique combinations of metric names and label key-value pairs. Each distinct label value creates a separate time-series chunk in memory and disk index. Unbounded fields (UUIDs, emails, timestamps, credit card hashes) possess infinite cardinality, causing the inverted index memory footprint to balloon exponentially until the TSDB crashes.",
+    "productionCode": "// Production Fix: Strict Low-Cardinality Metric Labels + Relabel Config\n// 1. Application Metric: Keep labels strictly bounded to low-cardinality enums!\nimport client from \"prom-client\";\n\nexport const httpRequestsTotal = new client.Counter({\n  name: \"http_requests_total\",\n  help: \"Total HTTP requests\",\n  labelNames: [\"method\", \"route_template\", \"status_class\"] // Low cardinality!\n});\n\nexport function recordHttpMetrics(method: string, parameterizedRoute: string, statusCode: number) {\n  // Use route template (/users/:id) instead of raw URL (/users/881923)!\n  const statusClass = `${Math.floor(statusCode / 100)}xx`; // 2xx, 4xx, 5xx\n  httpRequestsTotal.inc({ method, route_template: parameterizedRoute, status_class: statusClass });\n}\n\n// 2. Prometheus Metric Relabel Config to drop rogue high-cardinality labels:\n/*\nscrape_configs:\n  - job_name: 'microservices'\n    metric_relabel_configs:\n      - regex: '(user_id|email|customer_id|order_id)'\n        action: labeldrop\n*/",
+    "monitoringMetrics": [
+      "prometheus_tsdb_head_series",
+      "process_resident_memory_bytes{job='prometheus'}",
+      "sum(rate(prometheus_target_scrapes_sample_limit_rejected_total[1m]))"
+    ],
+    "productionChecklist": [
+      "Deploy emergency Prometheus config with metric_relabel_configs dropping rogue labels.",
+      "Restart Prometheus with --storage.tsdb.retention.size=20GB to bound disk storage.",
+      "Inspect code for unbounded Prometheus labels (user_id, IP address, UUIDs).",
+      "Move high-cardinality debugging attributes exclusively to OpenTelemetry Traces and Logs."
+    ]
+  },
+  {
+    "id": "ms-prod-10",
+    "topic": "Service Mesh mTLS Certificate Expiration & Mutual Auth Blackout",
+    "category": "Security & Identity",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "At midnight, the root intermediate CA certificate for the Istio service mesh expires. Instantly, all Envoy sidecar proxies reject incoming TCP connections with 'SSL: certificate verify failed: certificate has expired'. 100% of inter-service east-west communications collapse across the entire Kubernetes cluster.",
+    "howItWorksInternally": "In a service mesh running STRICT mTLS, every sidecar proxy validates the cryptographic X.509 certificate presented by calling pods against the trusted root CA. If the intermediate CA or root CA reaches its expiration timestamp without automated rotation, all cryptographic handshakes fail at the TLS layer before any HTTP application bytes can be exchanged.",
+    "productionCode": "// Production Triage Script: Automated SPIFFE Certificate Expiry Check & Emergency Rotation\nimport { execSync } from \"node:child_process\";\n\nexport function checkMeshCertificateExpiry() {\n  console.log(\"Checking Istio root certificate expiration...\");\n  try {\n    // Extract root CA expiration date from Kubernetes secret\n    const certOutput = execSync(\n      \"kubectl get secret -n istio-system cacerts -o jsonpath='{.data.ca-cert\\\\.pem}' | base64 -d | openssl x509 -noout -enddate\",\n      { encoding: \"utf-8\" }\n    );\n    console.log(\"Root CA Expiry:\", certOutput.trim());\n\n    // Emergency Fallback: Switch Istio PeerAuthentication to PERMISSIVE during renewal\n    console.log(\"Executing emergency permissive mTLS fallback policy...\");\n    execSync(\n      \"kubectl apply -f - <<EOF\\n\" +\n      \"apiVersion: security.istio.io/v1beta1\\n\" +\n      \"kind: PeerAuthentication\\n\" +\n      \"metadata:\\n\" +\n      \"  name: emergency-permissive\\n\" +\n      \"  namespace: istio-system\\n\" +\n      \"spec:\\n\" +\n      \"  mtls:\\n\" +\n      \"    mode: PERMISSIVE\\n\" +\n      \"EOF\"\n    );\n    console.log(\"PERMISSIVE mode applied. Network connectivity restored while certificates regenerate.\");\n  } catch (err: any) {\n    console.error(\"Certificate check failed:\", err.message);\n  }\n}",
+    "monitoringMetrics": [
+      "citadel_secret_controller_active_root_cert_expiry_timestamp",
+      "envoy_ssl_handshake_errors",
+      "sum(rate(envoy_ssl_connection_error[1m]))"
+    ],
+    "productionChecklist": [
+      "Check mesh certificate expiration timestamps via istioctl pc secret <pod-name>.",
+      "If expired, apply emergency PeerAuthentication mode: PERMISSIVE to restore traffic.",
+      "Rotate root CA certificate using cert-manager or Vault PKI engine.",
+      "Re-apply PeerAuthentication mode: STRICT and verify successful mTLS handshakes."
+    ]
+  },
+  {
+    "id": "ms-prod-11",
+    "topic": "SSRF Attack on Cloud Metadata Service via Unsanitized Ingress",
+    "category": "Security & Identity",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "A profile service features an 'Import Avatar from URL' endpoint. An attacker submits 'http://169.254.169.254/latest/meta-data/iam/security-credentials/k8s-pod-role'. The microservice fetches the URL and returns the JSON response containing raw AWS temporary access keys and session tokens. The attacker gains full IAM permissions to download private S3 buckets and alter cloud databases.",
+    "howItWorksInternally": "Server-Side Request Forgery occurs when a server fetches a remote resource without restricting destination IP ranges. In cloud environments (AWS, GCP, Azure), the link-local address 169.254.169.254 hosts the instance metadata service (IMDS). If IMDSv1 is enabled, a single unauthenticated GET request reveals the IAM role credentials attached to the underlying compute instance.",
+    "productionCode": "// Production Fix: IMDSv2 Enforcement + SSRF Hardened Fetch Client\nimport dns from \"node:dns/promises\";\nimport ipaddr from \"ipaddr.js\";\n\nexport async function ssrfHardenedFetch(rawUrl: string): Promise<Response> {\n  const parsed = new URL(rawUrl);\n\n  // 1. Protocol Restriction\n  if (![\"http:\", \"https:\"].includes(parsed.protocol)) {\n    throw new Error(\"Protocol not permitted\");\n  }\n\n  // 2. Resolve DNS hostname to raw IP addresses\n  const resolvedIps = await dns.resolve4(parsed.hostname);\n\n  for (const ip of resolvedIps) {\n    const addr = ipaddr.parse(ip);\n    const range = addr.range();\n\n    // 3. Block private subnets, loopbacks, and cloud metadata link-local\n    if ([\"private\", \"loopback\", \"linkLocal\"].includes(range) || ip === \"169.254.169.254\") {\n      throw new Error(`SSRF Violation: Resolved IP ${ip} is strictly forbidden!`);\n    }\n  }\n\n  return fetch(rawUrl);\n}\n\n// AWS Infrastructure Hardening: Enforce IMDSv2 via AWS CLI:\n// aws ec2 modify-instance-metadata-options --instance-id i-xxxx \\\n//   --http-tokens required --http-endpoint enabled",
+    "monitoringMetrics": [
+      "waf_ssrf_blocked_requests_total",
+      "cloudtrail_suspicious_iam_credential_usage",
+      "container_egress_metadata_attempts_total"
+    ],
+    "productionChecklist": [
+      "Enforce AWS IMDSv2 (http-tokens required) across all EC2 and EKS nodes.",
+      "Deploy Calico/Cilium NetworkPolicy blocking egress traffic to 169.254.169.254/32 from application namespaces.",
+      "Deploy SSRF-hardened HTTP client rejecting link-local and private IP addresses.",
+      "Immediately rotate compromised IAM credentials in AWS Secrets Manager."
+    ]
+  },
+  {
+    "id": "ms-prod-12",
+    "topic": "Out-of-Order Event Processing & Stale State Overwrites",
+    "category": "Event-Driven Messaging",
+    "severity": "P1 - High Severity",
+    "theProblem": "Customer updates their billing address from 'Old Street' to 'New Avenue'. Two events are emitted: OrderCreated (Version 1) and AddressUpdated (Version 2). Due to network delays and multi-partition parallel consumer processing, the consumer receives AddressUpdated (v2) first, followed by OrderCreated (v1). The v1 event blindly overwrites the database with the old address, causing orders to be shipped to the wrong destination.",
+    "howItWorksInternally": "Kafka guarantees ordering strictly within a single partition. If a producer publishes events with different partition keys, or if a consumer processes records concurrently across worker threads, message arrival order can invert. If consumer handlers execute unconditional SQL updates without verifying entity version numbers, older historical states overwrite newer states (Lost Update anomaly).",
+    "productionCode": "// Production Fix: Optimistic Concurrency Control with Monotonic Version Guard\nimport { Pool } from \"pg\";\nconst pool = new Pool({ connectionString: process.env.DATABASE_URL });\n\nexport async function processCustomerUpdateEvent(event: {\n  customerId: string;\n  address: string;\n  version: number; // Monotonically increasing version number\n  eventTimestamp: string;\n}) {\n  const client = await pool.connect();\n  try {\n    await client.query(\"BEGIN\");\n\n    // Atomic conditional update: update ONLY IF incoming version is strictly greater!\n    const res = await client.query(\n      `UPDATE customer_profiles\n       SET address = $1,\n           version = $2,\n           updated_at = NOW()\n       WHERE customer_id = $3\n         AND version < $2`, // Version guard prevents stale overwrites!\n      [event.address, event.version, event.customerId]\n    );\n\n    if (res.rowCount === 0) {\n      console.warn(\n        `[StaleEventIgnored] Event version ${event.version} is older or equal to current DB version for customer ${event.customerId}. Dropping.`\n      );\n    }\n\n    await client.query(\"COMMIT\");\n  } catch (err) {\n    await client.query(\"ROLLBACK\");\n    throw err;\n  } finally {\n    client.release();\n  }\n}",
+    "monitoringMetrics": [
+      "stale_events_dropped_total",
+      "kafka_consumer_out_of_order_detected",
+      "customer_profile_version_mismatch_total"
+    ],
+    "productionChecklist": [
+      "Ensure producer uses customerId as the partition key so all updates land in the same partition.",
+      "Enforce monotonic version numbers on all entity domain events.",
+      "Add WHERE version < incoming_version to all consumer SQL update statements.",
+      "Verify that stale out-of-order events are logged and discarded safely."
+    ]
+  },
+  {
+    "id": "ms-prod-13",
+    "topic": "Reactive Consumer Buffer Overflow & OOMKilled Containers",
+    "category": "Performance & Streaming",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "A background data synchronization microservice consumes 20,000 inventory updates per second from Kafka and writes them to a slow relational database. The developer piped the Kafka stream into an unbounded asynchronous loop without backpressure. In-memory message queues balloon to 3GB RAM within 4 minutes. The Linux kernel kills the container with OOMKilled (Exit Code 137). The pod restarts, re-reads uncommitted offsets, and enters an endless OOM crash loop.",
+    "howItWorksInternally": "When an asynchronous event consumer pulls messages from network sockets faster than its worker pipeline can flush them to disk, in-flight closures accumulate in the V8 / JVM heap. As memory approaches the container's cgroup memory limit, the garbage collector runs continuously (100% CPU lockup), after which the kernel's Out-Of-Memory Killer sends SIGKILL (exit code 137) to protect host operating system memory.",
+    "productionCode": "// Production Fix: Stream Backpressure with Dynamic Ingestion Pausing\nimport { Kafka } from \"kafkajs\";\n\nconst kafka = new Kafka({ brokers: [\"localhost:9092\"] });\nconst consumer = kafka.consumer({ groupId: \"inventory-sync-group\" });\n\nexport async function runBackpressuredConsumer(dbWriter: any) {\n  await consumer.connect();\n  await consumer.subscribe({ topic: \"inventory.stream\" });\n\n  let inFlight = 0;\n  const HIGH_WATERMARK = 100; // Pause ingestion when 100 operations are in-flight\n  const LOW_WATERMARK = 20;   // Resume ingestion when queue drains to 20\n\n  await consumer.run({\n    autoCommit: false,\n    eachMessage: async ({ topic, partition, message }) => {\n      inFlight++;\n\n      // Apply backpressure if worker queue is saturated\n      if (inFlight >= HIGH_WATERMARK) {\n        console.warn(`[Backpressure] In-flight queue reached ${inFlight}. Pausing consumer.`);\n        consumer.pause([{ topic, partitions: [partition] }]);\n      }\n\n      // Process write asynchronously\n      dbWriter.write(message.value)\n        .then(async () => {\n          inFlight--;\n          await consumer.commitOffsets([\n            { topic, partition, offset: (BigInt(message.offset) + 1n).toString() }\n          ]);\n\n          // Resume consumer when buffer drains below low watermark\n          if (inFlight <= LOW_WATERMARK) {\n            consumer.resume([{ topic, partitions: [partition] }]);\n          }\n        })\n        .catch((err: any) => console.error(\"Writer error\", err));\n    }\n  });\n}",
+    "monitoringMetrics": [
+      "container_memory_working_set_bytes / container_spec_memory_limit_bytes",
+      "kube_pod_container_status_last_terminated_reason{reason='OOMKilled'}",
+      "consumer_in_flight_operations_count"
+    ],
+    "productionChecklist": [
+      "Check pod termination reason via kubectl describe pod <pod-name> (look for OOMKilled 137).",
+      "Implement consumer.pause() and consumer.resume() based on in-flight high/low watermarks.",
+      "Increase container memory limits in deployment YAML if steady-state requirements dictate.",
+      "Verify container memory stabilizes under high load without OOM terminations."
+    ]
+  },
+  {
+    "id": "ms-prod-14",
+    "topic": "Destructive Database Schema Migration in Rolling Deployment",
+    "category": "Deployment & Delivery",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "During a routine rolling deployment of Order Service v2, the CI/CD pipeline runs a database migration script: 'ALTER TABLE orders DROP COLUMN user_email; ALTER TABLE orders ADD COLUMN customer_id VARCHAR(50);'. The migration executes instantly against PostgreSQL. However, 80% of active pods in the cluster are still running Order Service v1, which actively issues SQL queries selecting 'user_email'. Active v1 pods fail with 'column user_email does not exist', causing 10,000 checkout failures during the 10-minute rolling deployment.",
+    "howItWorksInternally": "In a Kubernetes rolling update, new pods start up and old pods drain connections concurrently over a 5 to 15-minute window. Both software versions query the exact same database simultaneously. Running a destructive DDL migration (dropping a column, renaming a table, adding a non-null constraint without defaults) instantly breaks the backward compatibility required by the older running pods.",
+    "productionCode": "// Production Fix: Pre-Deployment Backward-Compatibility Linter & Safe Expand Migration\n// 1. CI/CD Pre-Deployment Schema Verification Gate (Fails build if DDL is destructive):\nexport function validateMigrationSafety(sql: string) {\n  const forbiddenPatterns = [\n    /DROP\\s+COLUMN/i,\n    /DROP\\s+TABLE/i,\n    /RENAME\\s+COLUMN/i,\n    /ADD\\s+COLUMN\\s+.*NOT\\s+NULL(?!.*DEFAULT)/i\n  ];\n\n  for (const pattern of forbiddenPatterns) {\n    if (pattern.test(sql)) {\n      throw new Error(\n        `FATAL: Destructive migration detected (${pattern})! \\n` +\n        `Migrations must follow Expand-and-Contract. Breaking DDL is forbidden in rolling deployments.`\n      );\n    }\n  }\n}\n\n// 2. Safe Phase 1 (Expand) Migration: Add new column as nullable with zero downtime\nexport const safeExpandSql = `\n  -- SAFE: Adds new column as nullable; v1 pods continue running unaffected!\n  ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_id VARCHAR(50);\n`;",
+    "monitoringMetrics": [
+      "sum(rate(postgresql_errors_total{error='undefined_column'}[1m]))",
+      "http_requests_total{status_code='500'}",
+      "deployment_rollout_duration_seconds"
+    ],
+    "productionChecklist": [
+      "Incorporate migration linter into CI/CD preventing DROP and RENAME statements in release builds.",
+      "Enforce Expand-and-Contract: Release N adds column, Release N+1 switches reads, Release N+2 drops column.",
+      "If broken migration occurs in production: immediately restore column via ALTER TABLE ADD COLUMN.",
+      "Ensure all columns added in migrations are either nullable or include a DEFAULT value."
+    ]
+  }
+]

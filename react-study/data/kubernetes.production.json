@@ -1,0 +1,282 @@
+[
+  {
+    "id": "k8s-prod-01",
+    "topic": "etcd Quorum Loss & Control Plane Complete Outage Recovery",
+    "category": "Architecture & Control Plane",
+    "severity": "P0 - Total Cluster Outage",
+    "theProblem": "During a cloud availability zone outage, two out of three etcd control plane instances were permanently terminated. The surviving etcd node lost Raft quorum (Q = 2), causing kube-apiserver to reject all incoming read and write requests with HTTP 500 / context deadline exceeded. All deployments, ingress updates, and pod reschedules halted globally.",
+    "howItWorksInternally": "etcd uses Raft consensus. In an N-node cluster, write operations and linearizable reads require an active majority quorum of floor(N/2) + 1 nodes. With 2 of 3 nodes dead, only 1 node survives (1 < 2), so Raft enters state follower/candidate without an elected leader. The surviving node refuses all client mutations to prevent split-brain. Kubelet and existing running pods continue executing locally, but control plane reconciliation completely freezes.",
+    "productionCode": "#!/usr/bin/env bash\n# runbooks/emergency_etcd_quorum_restore.sh - Execute on surviving control plane host\nset -euo pipefail\n\nSURVIVING_HOST_IP=\"10.0.1.15\"\nBACKUP_DIR=\"/var/lib/etcd-disaster-recovery\"\nRESTORE_DATA_DIR=\"/var/lib/etcd-recovered\"\n\necho \"[SEV-0] Initiating Emergency Single-Member etcd Cluster Re-initialization...\"\n\n# 1. Quarantine kube-apiserver to prevent concurrent connections\nsudo mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/kube-apiserver.yaml.bak || true\n\n# 2. Take immediate safety copy of live bbolt database\nsudo mkdir -p \"${BACKUP_DIR}\"\nsudo cp -r /var/lib/etcd/member/snap/db \"${BACKUP_DIR}/pre_restore_db_$(date +%s).db\"\n\n# 3. Restore snapshot re-initializing cluster membership to single surviving node\nsudo rm -rf \"${RESTORE_DATA_DIR}\"\nsudo ETCDCTL_API=3 etcdctl snapshot restore \"${BACKUP_DIR}/pre_restore_db_*.db\" \\\n  --data-dir=\"${RESTORE_DATA_DIR}\" \\\n  --name=master-survivor \\\n  --initial-cluster=\"master-survivor=https://${SURVIVING_HOST_IP}:2380\" \\\n  --initial-cluster-token=\"etcd-recovered-token-$(date +%s)\" \\\n  --initial-advertise-peer-urls=\"https://${SURVIVING_HOST_IP}:2380\"\n\n# 4. Patch static pod manifest /etc/kubernetes/manifests/etcd.yaml to point to RESTORE_DATA_DIR\nsudo sed -i \"s|/var/lib/etcd|/var/lib/etcd-recovered|g\" /etc/kubernetes/manifests/etcd.yaml\n\n# 5. Restart kubelet to launch single-member etcd\nsudo systemctl restart kubelet\nsleep 10\n\n# 6. Verify etcd endpoint health\nsudo ETCDCTL_API=3 etcdctl endpoint health \\\n  --endpoints=\"https://127.0.0.1:2379\" \\\n  --cacert=/etc/kubernetes/pki/etcd/ca.crt \\\n  --cert=/etc/kubernetes/pki/etcd/server.crt \\\n  --key=/etc/kubernetes/pki/etcd/server.key\n\n# 7. Restore kube-apiserver static pod\nsudo mv /tmp/kube-apiserver.yaml.bak /etc/kubernetes/manifests/kube-apiserver.yaml\necho \"[SEV-0] Control plane restored on single node. Proceed to provision replacement members.\"",
+    "monitoringMetrics": [
+      "etcd_server_has_leader == 0",
+      "etcd_disk_wal_fsync_duration_seconds{quantile='0.99'} > 0.05",
+      "sum(rate(apiserver_request_total{code=~'5..'}[1m])) / sum(rate(apiserver_request_total[1m])) > 0.10"
+    ],
+    "productionChecklist": [
+      "Quarantine kube-apiserver by moving static pod manifests to /tmp before touching etcd.",
+      "Always take a byte-level backup copy of /var/lib/etcd/member/snap/db before executing restore commands.",
+      "Re-initialize single-member cluster using snapshot restore with a new initial-cluster-token.",
+      "Add new replacement control plane nodes sequentially via 'etcdctl member add' to rebuild 3-node quorum."
+    ]
+  },
+  {
+    "id": "k8s-prod-02",
+    "topic": "CoreDNS Blackout & Cluster-Wide 5-Second Conntrack Timeout Storm",
+    "category": "Networking & Services",
+    "severity": "P0 - Critical Degradation",
+    "theProblem": "A surge in inter-service RPC traffic caused thousands of microservice pods to intermittently suffer 5.00-second DNS lookup delays. High-volume payment gateways timed out, cascading into circuit breaker trips and 504 Gateway Timeouts across the entire user base.",
+    "howItWorksInternally": "When Linux glibc executes UDP DNS queries, it sends A and AAAA lookups concurrently over two separate UDP sockets using the same source port. Under iptables SNAT, the Linux kernel conntrack module evaluates both packets simultaneously. Due to an internal kernel race condition in nf_conntrack_netlink, one packet is inserted while the second packet experiences a tuple collision and is silently dropped. Glibc waits for its 5.0-second UDP timeout before retrying.",
+    "productionCode": "// daemonset/nodelocaldns-hotfix.yaml - Deploy NodeLocal DNSCache\napiVersion: apps/v1\nkind: DaemonSet\nmetadata:\n  name: node-local-dns\n  namespace: kube-system\n  labels:\n    k8s-app: node-local-dns\nspec:\n  selector:\n    matchLabels:\n      k8s-app: node-local-dns\n  template:\n    metadata:\n      labels:\n        k8s-app: node-local-dns\n    spec:\n      priorityClassName: system-node-critical\n      hostNetwork: true\n      dnsPolicy: Default\n      containers:\n      - name: node-cache\n        image: registry.k8s.io/dns/k8s-dns-node-cache:1.22.28\n        args:\n        - -localip\n        - 169.254.20.10\n        - -conf\n        - /etc/Corefile\n        - -upstreamsvc\n        - kube-dns\n        securityContext:\n          privileged: true\n        volumeMounts:\n        - mountPath: /run/xtables.lock\n          name: xtables-lock\n      volumes:\n      - name: xtables-lock\n        hostPath:\n          path: /run/xtables.lock\n          type: FileOrCreate\n---\n# Pod DNSConfig Patch (Applied to Microservices)\n# dnsConfig:\n#   options:\n#     - name: single-request-reopen  # Disables parallel A/AAAA lookups on same socket\n#     - name: ndots\n#       value: \"2\"                  # Reduces internal recursive search domain traversal",
+    "monitoringMetrics": [
+      "sum(rate(coredns_dns_request_duration_seconds_bucket{le='0.005'}[5m])) / sum(rate(coredns_dns_request_duration_seconds_count[5m])) < 0.95",
+      "node_netfilter_conntrack_entries / node_netfilter_conntrack_limit > 0.85",
+      "sum(rate(coredns_forward_requests_total{status='SERVFAIL'}[1m])) > 10"
+    ],
+    "productionChecklist": [
+      "Deploy NodeLocal DNSCache on IP 169.254.20.10 to serve DNS queries locally over TCP.",
+      "Tune application pod dnsConfig options with single-request-reopen and lower ndots from default 5 down to 2.",
+      "Increase nf_conntrack_max on host nodes via sysctl: net.netfilter.nf_conntrack_max = 1048576.",
+      "Verify CoreDNS HPA is scaling based on core DNS request rates rather than CPU alone."
+    ]
+  },
+  {
+    "id": "k8s-prod-03",
+    "topic": "Cascading Node Eviction Storm & Cluster-Wide Out-Of-Memory Collapse",
+    "category": "Scheduling & Resource Allocation",
+    "severity": "P0 - Cascading Cluster Meltdown",
+    "theProblem": "A memory leak in a newly deployed worker microservice caused Node A to breach its hard eviction threshold (memory.available < 100Mi). Kubelet evicted 45 pods simultaneously. Kube-scheduler scheduled all evicted pods onto Node B, which immediately exceeded its threshold and evicted 80 pods onto Node C. Within 6 minutes, every worker node in the cluster collapsed in a cascading loop.",
+    "howItWorksInternally": "When node allocatable memory drops below evictionHard, Kubelet sorts pods by priority and memory consumption exceeding requests, terminating them with SIGKILL. Because no PodDisruptionBudgets existed and no global priority class separation protected system infrastructure, the scheduler relocated memory-hungry victim pods to neighboring nodes that were already operating at 85% capacity. This transferred the memory spike, creating a self-reinforcing cascading failure across the cluster.",
+    "productionCode": "// runbooks/stop_eviction_storm.sh - Emergency Intervention\n#!/usr/bin/env bash\nset -euo pipefail\n\nLEAKING_DEPLOYMENT=\"analytics-worker\"\nNAMESPACE=\"data-platform\"\n\necho \"[SEV-0] Cordoning all surviving worker nodes to halt scheduling wave...\"\nkubectl get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}' | xargs -n1 kubectl cordon\n\necho \"[SEV-0] Scaling culprit memory-leaking deployment to 0 replicas immediately...\"\nkubectl scale deployment \"${LEAKING_DEPLOYMENT}\" -n \"${NAMESPACE}\" --replicas=0\n\necho \"[SEV-0] Deleting terminating and evicted ghost pods to unblock node allocatable...\"\nkubectl get pods -A --field-selector 'status.phase=Failed' -o json | jq -r '.items[] | select(.status.reason==\"Evicted\") | \"(.metadata.namespace) (.metadata.name)\"' | while read ns pod; do\n  kubectl delete pod \"${pod}\" -n \"${ns}\" --force --grace-period=0\ndone\n\necho \"[SEV-0] Incrementally uncordoning healthy nodes...\"\nkubectl get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}' | xargs -n1 kubectl uncordon",
+    "monitoringMetrics": [
+      "sum(increase(kube_pod_status_reason{reason='Evicted'}[5m])) > 5",
+      "node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.10",
+      "sum(kube_pod_container_status_restarts_total) by (pod) > 10"
+    ],
+    "productionChecklist": [
+      "Immediately cordon worker nodes to stop scheduler from spreading memory-saturated pods.",
+      "Scale the memory-leaking culprit workload down to 0 replicas to eliminate the root memory drain.",
+      "Purge zombie Evicted pod records to clean up Kubelet memory tracking tables.",
+      "Enforce strict PodDisruptionBudgets and LimitRanges requiring explicit memory requests and limits."
+    ]
+  },
+  {
+    "id": "k8s-prod-04",
+    "topic": "Ingress Certificate Expiration & Global TLS Handshake Termination Failure",
+    "category": "Security, RBAC & Policy Governance",
+    "severity": "P0 - Total Customer Traffic Severance",
+    "theProblem": "At 00:00 UTC, the production wildcard TLS certificate (*.company.com) expired. Cert-Manager failed to renew the certificate automatically due to an expired Cloudflare API token. Every public customer web and mobile request was severed with SEC_ERROR_EXPIRED_CERTIFICATE, halting global checkout revenue.",
+    "howItWorksInternally": "Cert-Manager utilizes a ClusterIssuer evaluating ACME DNS-01 or HTTP-01 challenges. When the ACME order was initiated 30 days prior to expiration, the DNS-01 challenge failed with 401 Unauthorized because the cloud DNS API secret had rotated. Cert-Manager logged warnings but could not complete challenge propagation. The existing Secret remained unchanged until its x509 NotAfter timestamp passed, causing NGINX Ingress and browser TLS handshakes to instantly fail.",
+    "productionCode": "// runbooks/emergency_tls_rotation.sh - Immediate Manual Secret Patch\n#!/usr/bin/env bash\nset -euo pipefail\n\nCERT_FILE=\"/tmp/wildcard_company_com.crt\"\nKEY_FILE=\"/tmp/wildcard_company_com.key\"\nSECRET_NAME=\"wildcard-production-tls\"\nNAMESPACE=\"ingress-nginx\"\n\necho \"[SEV-0] Overwriting expired TLS secret with freshly signed emergency certificate...\"\nkubectl create secret tls \"${SECRET_NAME}\" \\\n  --cert=\"${CERT_FILE}\" \\\n  --key=\"${KEY_FILE}\" \\\n  --namespace=\"${NAMESPACE}\" \\\n  --dry-run=client -o yaml | kubectl apply -f -\n\necho \"[SEV-0] Reloading Ingress NGINX controller pods...\"\nkubectl rollout restart deployment/ingress-nginx-controller -n \"${NAMESPACE}\"\nkubectl rollout status deployment/ingress-nginx-controller -n \"${NAMESPACE}\" --timeout=120s\n\necho \"[SEV-0] Validating live TLS handshake...\"\necho | openssl s_client -connect api.company.com:443 -servername api.company.com 2>/dev/null | openssl x509 -noout -dates",
+    "monitoringMetrics": [
+      "x509_cert_expiry_seconds < 86400 * 7 # Alert if cert expires in < 7 days",
+      "certmanager_certificate_ready_status{condition='False'} == 1",
+      "sum(rate(nginx_ingress_controller_requests{status='495'}[1m])) > 0 # Client SSL cert error"
+    ],
+    "productionChecklist": [
+      "Manually apply newly issued wildcard cert secret using 'kubectl create secret tls ... --dry-run=client -o yaml | kubectl apply -f -'.",
+      "Execute rolling restart of ingress controllers to force immediate reload of in-memory TLS context.",
+      "Fix Cert-Manager ClusterIssuer API credentials and verify ACME DNS-01 challenge completion.",
+      "Set up Prometheus alert on x509_cert_expiry_seconds alerting at 30 days, 14 days, and 7 days."
+    ]
+  },
+  {
+    "id": "k8s-prod-05",
+    "topic": "Silent TCP Stalls & Network Hangs from MTU Misalignment on VXLAN Overlays",
+    "category": "Networking & Services",
+    "severity": "P1 - Intermittent High-Impact Outage",
+    "theProblem": "Pods communicated reliably on lightweight HTTP health checks and REST endpoints, but large payload requests (e.g. 5MB PDF downloads, database bulk inserts, image uploads) hung indefinitely without returning errors, causing client timeouts after 60 seconds.",
+    "howItWorksInternally": "The physical underlay network had a standard MTU of 1500 bytes. The CNI plugin (e.g. Flannel/Calico VXLAN) encapsulates Pod IP packets inside an outer UDP header, adding 50 bytes of encapsulation overhead. Pods configured with default MTU 1500 transmitted 1500-byte packets; when encapsulated, the outer packet measured 1550 bytes. The host kernel attempted Path MTU Discovery (PMTUD) by returning ICMP 'Fragmentation Needed', but internal firewalls dropped ICMP. Packets were silently blackholed.",
+    "productionCode": "// daemonset/cni-mtu-patch.yaml - Permanent Flannel / Calico MTU Fix\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cni-network-config\n  namespace: kube-system\ndata:\n  cni-conf.json: |\n    {\n      \"name\": \"cbr0\",\n      \"cniVersion\": \"0.3.1\",\n      \"plugins\": [\n        {\n          \"type\": \"flannel\",\n          \"delegate\": {\n            \"hairpinMode\": true,\n            \"isDefaultGateway\": true,\n            \"mtu\": 1450 # 1500 Physical MTU - 50 bytes VXLAN header overhead!\n          }\n        }\n      ]\n    }\n---\n# Host Level Immediate Sysctl Workaround (TCP MSS Clamping via iptables)\n# sudo iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu",
+    "monitoringMetrics": [
+      "rate(node_network_transmit_drop_total[5m]) > 5",
+      "rate(node_network_receive_drop_total[5m]) > 5",
+      "sum(rate(http_requests_total{status='504'}[5m])) > 2"
+    ],
+    "productionChecklist": [
+      "Calculate CNI MTU: Physical MTU minus encapsulation overhead (e.g. 1500 - 50 = 1450 for VXLAN, 1440 for Geneve).",
+      "Apply iptables TCPMSS clamping as an immediate runtime mitigation across all worker nodes.",
+      "Update CNI ConfigMap (Flannel/Calico) with explicit MTU and perform rolling restart of CNI DaemonSet.",
+      "Verify large payload transfer between cross-node pods using 'curl -o /dev/null -v http://cross-node-pod/largefile'."
+    ]
+  },
+  {
+    "id": "k8s-prod-06",
+    "topic": "Cloud Block Storage Multi-Attach Deadlock during Node Crash Rescheduling",
+    "category": "Storage & Persistence",
+    "severity": "P1 - Persistent Stateful Pod Downtime",
+    "theProblem": "A physical hardware host died abruptly in AWS EC2. The StatefulSet PostgreSQL primary pod (pg-0) was scheduled to a healthy node, but remained trapped in 'ContainerCreating' state for 35 minutes with error: 'Multi-Attach error for volume pvc-abcde: Volume is already exclusively attached to one node and can't be attached to another'.",
+    "howItWorksInternally": "Cloud block storage (EBS gp3, GCP PD) supports ReadWriteOnce (RWO), attaching to exactly one VM at a time. When the host node crashed without sending a clean shutdown signal, the AWS cloud API still registered the EBS volume as attached to the dead instance. Kubernetes VolumeAttachment controller waited for the CSI detachment timeout (default 6 minutes) while the dead Kubelet failed to respond. Attachment deadlocks occurred because AWS refused concurrent attachments.",
+    "productionCode": "// runbooks/force_ebs_volume_detach.sh - Emergency Cloud Block Storage Recovery\n#!/usr/bin/env bash\nset -euo pipefail\n\nVOLUME_ID=\"vol-0a1b2c3d4e5f67890\" # Extracted from PVC or describe pod\nFAILED_NODE_INSTANCE=\"i-0deadbeef12345678\"\n\necho \"[SEV-1] Forcing detachment of locked EBS volume from dead EC2 instance...\"\naws ec2 detach-volume \\\n  --volume-id \"${VOLUME_ID}\" \\\n  --instance-id \"${FAILED_NODE_INSTANCE}\" \\\n  --force\n\necho \"[SEV-1] Waiting for volume state to transition to 'available'...\"\naws ec2 wait volume-available --volume-ids \"${VOLUME_ID}\"\n\necho \"[SEV-1] Deleting stuck VolumeAttachment Kubernetes object...\"\nSTUCK_VA=$(kubectl get volumeattachment -o json | jq -r '.items[] | select(.spec.source.persistentVolumeName==\"'${VOLUME_ID}'\") | .metadata.name')\nif [ -n \"${STUCK_VA}\" ]; then\n  kubectl delete volumeattachment \"${STUCK_VA}\" --force --grace-period=0\nfi\n\necho \"[SEV-1] Volume unlocked. Kubelet on new node will now successfully attach and mount.\"",
+    "monitoringMetrics": [
+      "sum(kube_pod_status_phase{phase='Pending'}) by (pod) > 0",
+      "storage_operation_duration_seconds{operation_name='volume_attach',status='fail'} > 0",
+      "rate(kubelet_volume_manager_attach_total{status='failed'}[5m]) > 2"
+    ],
+    "productionChecklist": [
+      "Locate the locked cloud volume ID from 'kubectl describe pod' or the VolumeAttachment resource.",
+      "Execute forced cloud API volume detachment against the dead virtual machine instance.",
+      "Force-delete the stale Kubernetes VolumeAttachment object to reset the volume manager state.",
+      "Ensure non-graceful node shutdown feature gate is enabled in Kubernetes 1.28+ for automated fencing."
+    ]
+  },
+  {
+    "id": "k8s-prod-07",
+    "topic": "Flaky Canary Analysis & Cascading Production Rollback Loop in Argo Rollouts",
+    "category": "Packaging, GitOps & Progressive Delivery",
+    "severity": "P1 - Release Pipeline Deadlock",
+    "theProblem": "During continuous deployment of a critical payment microservice, every single release deployment advanced to the 5% canary step, executed AnalysisRun for 2 minutes, failed with 'metric successCondition violated', and rolled back to stable. Engineers were unable to ship critical hotfixes despite the code being 100% defect-free.",
+    "howItWorksInternally": "The AnalysisTemplate evaluated PromQL: 'sum(rate(http_5xx[1m])) / sum(rate(http_total[1m])) <= 0.01'. Because the canary replica received only 5% of traffic, the sample size was minute (e.g. 10 total requests in 1 minute). A single synthetic healthcheck or vulnerability scanner request returning HTTP 404/500 caused the calculated error rate to spike to 10% (0.10 > 0.01), breaching the threshold and aborting the rollout due to low statistical power and lack of query smoothing.",
+    "productionCode": "// templates/hardened-analysis-template.yaml - Production Smoothed Canary Metric\napiVersion: argoproj.io/v1alpha1\nkind: AnalysisTemplate\nmetadata:\n  name: payment-success-rate-hardened\n  namespace: finance\nspec:\n  metrics:\n  - name: success-rate\n    interval: 2m\n    # 1. Require minimum traffic threshold before evaluating (avoid low sample size false-positives!)\n    # 2. Smooth query over 5m sliding window and filter out synthetic 4xx scanning noise\n    successCondition: |\n      len(result) > 0 && (\n        result[0] <= 0.01 || \n        scalar(sum(rate(http_requests_total{app=\"payment-canary\"}[5m]))) < 50\n      )\n    failureLimit: 3 # Allow up to 3 intermittent blips before aborting\n    provider:\n      prometheus:\n        address: http://prometheus-k8s.monitoring:9090\n        query: |\n          sum(rate(http_requests_total{status=~\"5.*\",app=\"payment-canary\"}[5m]))\n          /\n          clamp_min(sum(rate(http_requests_total{app=\"payment-canary\"}[5m])), 1)",
+    "monitoringMetrics": [
+      "sum(rate(argo_rollouts_analysis_run_reconcile_total{status='Failure'}[5m])) > 0",
+      "argo_rollouts_info{phase='Degraded'} == 1",
+      "sum(rate(http_requests_total{app='payment-canary'}[1m]))"
+    ],
+    "productionChecklist": [
+      "Use clamp_min() in PromQL division to eliminate division-by-zero NaN errors when traffic is low.",
+      "Enforce minimum request volume conditions in successCondition so low-traffic canaries do not fail on single blips.",
+      "Increase failureLimit from 1 to 3 to absorb transient infrastructure blips during pod cold starts.",
+      "Lengthen evaluation windows from 1m to 5m for statistically significant sample distributions."
+    ]
+  },
+  {
+    "id": "k8s-prod-08",
+    "topic": "API Server Request Saturation & Thundering Herd from Controller Informer Starvation",
+    "category": "Architecture & Control Plane",
+    "severity": "P0 - Control Plane Starvation",
+    "theProblem": "After a network blip between worker nodes and control plane, kube-apiserver CPU utilization surged to 100%, memory usage exceeded 64GB, and kubectl commands hung indefinitely with 'i/o timeout'. Over 40 custom controllers and operators bombarded the API server with non-cached LIST requests simultaneously.",
+    "howItWorksInternally": "When client-go Informers lose their HTTP/2 WATCH connection for longer than the etcd compaction window, the API server terminates the stream with HTTP 410 Gone. The Informer's Reflector is forced to fall back to an un-indexed full collection 'LIST /api/v1/pods'. Because 40 controllers did this concurrently, kube-apiserver had to deserialize 50,000 pod objects from etcd into memory 40 times in parallel. This exhausted memory and triggered massive GC pause storms.",
+    "productionCode": "// manifests/apiserver-flow-control.yaml - Enable Priority & Fairness (APF)\napiVersion: flowcontrol.apiserver.k8s.io/v1\nkind: FlowSchema\nmetadata:\n  name: isolate-custom-controllers\nspec:\n  priorityLevelConfiguration:\n    name: workload-low\n  matchingPrecedence: 500\n  rules:\n  - subjects:\n    - kind: Group\n      group:\n        name: system:serviceaccounts:custom-operators\n    resourceRules:\n    - verbs: [\"list\", \"watch\"]\n      apiGroups: [\"*\"]\n      resources: [\"*\"]\n---\napiVersion: flowcontrol.apiserver.k8s.io/v1\nkind: PriorityLevelConfiguration\nmetadata:\n  name: workload-low\nspec:\n  type: Limited\n  limited:\n    nominalConcurrencyShares: 20\n    limitResponse:\n      type: Queue\n      queuing:\n        queues: 64\n        handShakeQueueLength: 50",
+    "monitoringMetrics": [
+      "apiserver_flowcontrol_rejected_requests_total > 0",
+      "apiserver_current_inflight_requests{request_kind='readOnly'} > 800",
+      "sum(rate(apiserver_request_duration_seconds_bucket{le='1'}[5m])) / sum(rate(apiserver_request_duration_seconds_count[5m])) < 0.8"
+    ],
+    "productionChecklist": [
+      "Configure API Priority and Fairness (APF) FlowSchemas to isolate custom controllers from human kubectl traffic.",
+      "Ensure all custom controllers use SharedInformerFactory to share a single in-memory watch cache across controllers.",
+      "Verify client-go code sets 'resourceVersion=0' in ListOptions to read from API server memory cache rather than etcd.",
+      "Increase etcd compaction interval and raise apiserver --max-requests-inflight thresholds."
+    ]
+  },
+  {
+    "id": "k8s-prod-09",
+    "topic": "CFS CPU Quota Bandwidth Throttling Latency Spikes in High-Concurrency Services",
+    "category": "Workloads & Pod Lifecycle",
+    "severity": "P1 - Severe Microservice Latency Degradation",
+    "theProblem": "A high-concurrency Go/Java payment gateway microservice exhibited severe 99th-percentile latency spikes (rising from 15ms to 850ms) during traffic peaks. CPU utilization reported by Metrics Server was only 28%, but end-user requests timed out continuously.",
+    "howItWorksInternally": "Linux CFS (Completely Fair Scheduler) enforces Kubernetes CPU limits using quota periods (typically 100ms). When 'limits.cpu: 2' is specified, the container is granted 200ms of runtime per 100ms wall-clock period across all threads. A Go/Java runtime spawning 16 worker threads can consume 200ms of CPU in just 12.5ms of real time (16 threads * 12.5ms = 200ms). The Linux kernel completely halts (throttles) all execution of the container for the remaining 87.5ms of the period.",
+    "productionCode": "// manifests/production-cpu-tuning.yaml - Eliminating CFS Throttling\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payment-engine\n  namespace: production\nspec:\n  replicas: 8\n  template:\n    spec:\n      containers:\n      - name: payment-engine\n        image: payment-engine:v3.2.0\n        resources:\n          # BEST PRACTICE: Set generous CPU requests to guarantee capacity on node,\n          # but OMIT CPU limits (or set limits to null) to eliminate CFS throttling entirely!\n          requests:\n            cpu: 2000m\n            memory: 4Gi\n          limits:\n            memory: 4Gi\n            # cpu limit omitted intentionally to prevent CFS latency spikes\n---\n# Runtime Diagnostics to verify CPU throttling:\n# kubectl exec -it payment-engine-pod -- cat /sys/fs/cgroup/cpu.stat\n# Look for nr_throttled and throttled_usec!",
+    "monitoringMetrics": [
+      "sum(increase(container_cpu_cfs_throttled_periods_total[5m])) / sum(increase(container_cpu_cfs_periods_total[5m])) > 0.15 # >15% throttled",
+      "rate(container_cpu_cfs_throttled_seconds_total[5m]) > 0.5",
+      "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 0.5"
+    ],
+    "productionChecklist": [
+      "Check /sys/fs/cgroup/cpu.stat for nr_throttled to confirm CFS throttling as the root cause of latency.",
+      "Remove CPU limits while maintaining strict CPU requests for multi-threaded latency-sensitive microservices.",
+      "Always maintain strict memory limits to protect nodes from Out-Of-Memory (OOM) kernel crashes.",
+      "If enterprise policy mandates CPU limits, increase limit-to-request ratio to at least 4:1."
+    ]
+  },
+  {
+    "id": "k8s-prod-10",
+    "topic": "Silent Lateral Movement from Permissive Default Network Policy & Stolen Token",
+    "category": "Security, RBAC & Policy Governance",
+    "severity": "P0 - Security Breach",
+    "theProblem": "A security researcher exploited an SSRF vulnerability in a public-facing WordPress pod, extracted the default mounted ServiceAccount JWT from /var/run/secrets/kubernetes.io/serviceaccount/token, and accessed private internal financial databases and AWS IAM credentials via the cloud metadata API.",
+    "howItWorksInternally": "By default, Kubernetes creates a flat network without barriers (any pod can connect to any IP). Furthermore, Kubernetes historically automatically injected a ServiceAccount token into every pod with automountServiceAccountToken: true. The attacker used the stolen token to query kube-apiserver and made HTTP requests to http://169.254.169.254/latest/meta-data/ to retrieve cloud IAM node instance profiles because no egress network policies were in place.",
+    "productionCode": "// manifests/zero-trust-hardening.yaml - Remediating Pod Token & Network Attack Surface\napiVersion: v1\nkind: Namespace\nmetadata:\n  name: external-apps\n---\n# 1. Default-Deny ALL Ingress and Egress traffic in namespace\napiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: default-deny-all\n  namespace: external-apps\nspec:\n  podSelector: {}\n  policyTypes:\n  - Ingress\n  - Egress\n---\n# 2. Block Cloud Instance Metadata IP (169.254.169.254) permanently\napiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: block-cloud-metadata\n  namespace: external-apps\nspec:\n  podSelector: {}\n  policyTypes:\n  - Egress\n  egress:\n  - to:\n    - ipBlock:\n        cidr: 0.0.0.0/0\n        except:\n        - 169.254.169.254/32 # Block AWS / GCP / Azure metadata endpoint\n---\n# 3. Disable ServiceAccount automount on Pods that do not query K8s API\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: public-wordpress\n  namespace: external-apps\nspec:\n  template:\n    spec:\n      automountServiceAccountToken: false # NEVER mount K8s API credentials in untrusted pods!\n      containers:\n      - name: wordpress\n        image: wordpress:6-php8.1",
+    "monitoringMetrics": [
+      "sum(rate(apiserver_request_total{code='403',username=~'.*external-apps.*'}[5m])) > 5",
+      "count(cilium_drop_count_total{reason=~'.*Policy.*'}) > 10",
+      "rate(audit_events_unauthorized_token_access_total[1m]) > 0"
+    ],
+    "productionChecklist": [
+      "Set automountServiceAccountToken: false across all workloads that do not interact with kube-apiserver.",
+      "Deploy default-deny Ingress and Egress NetworkPolicies in every application namespace.",
+      "Explicitly block egress to the 169.254.169.254 cloud metadata service to prevent IAM credential theft.",
+      "Rotate compromised ServiceAccounts and verify RBAC bindings using 'kubectl auth can-i --as'."
+    ]
+  },
+  {
+    "id": "k8s-prod-11",
+    "topic": "GitOps Self-Healing Infinite Loop Caused by Mutating Webhook Field Injection",
+    "category": "Packaging, GitOps & Progressive Delivery",
+    "severity": "P1 - Control Plane & GitOps Degradation",
+    "theProblem": "After enabling automated self-healing in ArgoCD, the application controller entered an infinite sync loop, executing 500 sync operations per minute against kube-apiserver. GitOps server CPU pinned at 100%, deployment revisions ballooned to revision 5000, and etcd disk IOPS spiked drastically.",
+    "howItWorksInternally": "An admission webhook (e.g. Istio sidecar injector or cloud security agent) mutated incoming Deployment specifications by adding default annotations and container resource limits. Because these injected fields were absent in the Git repository source manifests, ArgoCD computed a 3-way strategic merge diff, marked the resource OutOfSync, and triggered self-healing to overwrite the live object with Git state. The admission webhook re-injected the fields, triggering an infinite sync loop.",
+    "productionCode": "// argocd/application-patch.yaml - Configure ignoreDifferences in ArgoCD\napiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: order-service\n  namespace: argocd\nspec:\n  project: default\n  source:\n    repoURL: 'https://github.com/company/fleet.git'\n    path: apps/order-service\n  destination:\n    server: 'https://kubernetes.default.svc'\n    namespace: orders\n  # SOLUTION: Tell ArgoCD diff engine to ignore dynamically injected webhook fields!\n  ignoreDifferences:\n  - group: apps\n    kind: Deployment\n    jsonPointers:\n    - /spec/template/metadata/annotations/sidecar.istio.io~1status\n    - /spec/template/spec/containers/0/resources/limits\n  syncPolicy:\n    automated:\n      selfHeal: true\n      prune: true\n    syncOptions:\n    - RespectIgnoreDifferences=true # Strictly adhere to ignored fields during sync calculation",
+    "monitoringMetrics": [
+      "rate(argocd_app_sync_total[1m]) > 10 # High frequency sync storm",
+      "sum(rate(apiserver_request_total{verb='patch',resource='deployments'}[1m])) > 20",
+      "etcd_disk_backend_commit_duration_seconds{quantile='0.99'} > 0.05"
+    ],
+    "productionChecklist": [
+      "Inspect ArgoCD UI diff viewer to identify the exact field oscillating between Git and cluster state.",
+      "Add ignoreDifferences with jsonPointers targeting the mutating webhook's injected annotations or limits.",
+      "Enable syncOptions: ['RespectIgnoreDifferences=true'] to halt continuous self-healing re-applications.",
+      "Prune orphaned deployment revisions from etcd using 'kubectl rollout history' and trim revisionHistoryLimit."
+    ]
+  },
+  {
+    "id": "k8s-prod-12",
+    "topic": "High-Cardinality Prometheus Memory Explosion & TSDB OOMKilled Crash Loop",
+    "category": "Observability, Operations & Troubleshooting",
+    "severity": "P0 - Total Monitoring Blackout",
+    "theProblem": "The core Prometheus monitoring pod crashed with Exit Code 137 (OOMKilled) after exceeding its 32GB memory limit. Upon restarting, Prometheus attempted to replay its write-ahead log (WAL), ran out of memory during WAL recovery, and entered a continuous CrashLoopBackOff, blinding operations to all cluster metrics.",
+    "howItWorksInternally": "A developer deployed a microservice emitting an HTTP metric with raw user UUIDs and full URLs as labels: http_requests_total{user_id='uuid-1234', url='/orders/194829?token=xyz'}. This generated 12,000,000 unique time series in less than 2 hours. Prometheus TSDB maintains an in-memory inverted index (head block) of all active series. The memory required to index 12 million series surpassed 32GB, causing the Linux kernel to invoke OOM killer.",
+    "productionCode": "// runbooks/recover_prometheus_wal.sh - Emergency TSDB Recovery\n#!/usr/bin/env bash\nset -euo pipefail\n\nPROM_POD=\"prometheus-k8s-0\"\nNAMESPACE=\"monitoring\"\n\necho \"[SEV-0] 1. Scaling Prometheus StatefulSet to 0 to safely access persistent volume...\"\nkubectl scale statefulset prometheus-k8s -n \"${NAMESPACE}\" --replicas=0\n\necho \"[SEV-0] 2. Temporarily patching Prometheus resources to 64GB RAM for WAL replay...\"\nkubectl patch statefulset prometheus-k8s -n \"${NAMESPACE}\" --type='json' -p='[\n  {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/resources/limits/memory\", \"value\": \"64Gi\"},\n  {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/resources/requests/memory\", \"value\": \"32Gi\"}\n]'\n\necho \"[SEV-0] 3. Scaling back to 1 replica to execute WAL replay...\"\nkubectl scale statefulset prometheus-k8s -n \"${NAMESPACE}\" --replicas=1\n\necho \"[SEV-0] 4. Applying MetricRelabelingConfig to drop high-cardinality labels at scrape time...\"\n# Add to ServiceMonitor / PodMonitor:\n# metricRelabelings:\n# - regex: \"user_id|token|order_id\"\n#   action: labeldrop",
+    "monitoringMetrics": [
+      "prometheus_tsdb_head_series > 2000000 # Alert on series exceeding 2M",
+      "rate(prometheus_tsdb_head_samples_appended_total[5m]) > 50000",
+      "container_memory_working_set_bytes{container='prometheus'} / container_spec_memory_limit_bytes > 0.85"
+    ],
+    "productionChecklist": [
+      "Temporarily boost Prometheus memory limits to allow successful completion of the WAL replay cycle.",
+      "Identify the high-cardinality metric using Prometheus TSDB status API: /api/v1/status/tsdb.",
+      "Apply metricRelabelings with 'labeldrop' or 'drop' in the ServiceMonitor to reject unbounded labels.",
+      "Educate development teams on the golden rule of metrics: never include user IDs or timestamps as labels."
+    ]
+  },
+  {
+    "id": "k8s-prod-13",
+    "topic": "Spot Instance Interruption Wave & Simultaneous Quorum Pod Eviction Collapse",
+    "category": "Autoscaling & Capacity Planning",
+    "severity": "P0 - Quorum-Based Distributed System Collapse",
+    "theProblem": "During a cloud capacity rebalancing event, AWS reclaimed 40 Spot EC2 instances across two Availability Zones within a 90-second window. A 5-node ZooKeeper / Kafka cluster hosted entirely on Spot nodes lost 4 nodes simultaneously, completely destroying broker consensus and halting asynchronous transaction pipelines.",
+    "howItWorksInternally": "Spot instances offer massive cost savings but can be interrupted with only 2 minutes notice via AWS EC2 Instance Metadata. If quorum-based stateful systems (etcd, ZooKeeper, Kafka, Cassandra) run on Spot instances without node affinity rules or anti-affinity spread constraints, a sudden cloud capacity reclaiming wave can evict multiple quorum members simultaneously, dropping the active count below floor(N/2) + 1 and making automatic failover mathematically impossible.",
+    "productionCode": "// manifests/hardened-stateful-quorum.yaml - Protect Distributed Consensus\napiVersion: apps/v1\nkind: StatefulSet\nmetadata:\n  name: kafka-broker\n  namespace: messaging\nspec:\n  replicas: 5\n  template:\n    spec:\n      # RULE 1: Quorum masters MUST run on On-Demand instances, NOT Spot!\n      affinity:\n        nodeAffinity:\n          requiredDuringSchedulingIgnoredDuringExecution:\n            nodeSelectorTerms:\n            - matchExpressions:\n              - key: karpenter.sh/capacity-type\n                operator: In\n                values: [\"on-demand\"] # Strict On-Demand guarantee\n        # RULE 2: Pod Anti-Affinity across Availability Zones\n        podAntiAffinity:\n          requiredDuringSchedulingIgnoredDuringExecution:\n          - labelSelector:\n              matchLabels:\n                app: kafka-broker\n            topologyKey: topology.kubernetes.io/zone\n---\n# RULE 3: Strict PodDisruptionBudget ensuring quorum is never compromised during drains\napiVersion: policy/v1\nkind: PodDisruptionBudget\nmetadata:\n  name: kafka-quorum-guard\n  namespace: messaging\nspec:\n  minAvailable: 3 # In a 5-node cluster, at least 3 nodes must stay online!\n  selector:\n    matchLabels:\n      app: kafka-broker",
+    "monitoringMetrics": [
+      "sum(increase(node_interruption_warning_events_total[5m])) > 0",
+      "kafka_server_replicamanager_underreplicatedpartitions > 0",
+      "sum(kube_pod_status_phase{phase='Running',app='kafka-broker'}) < 3"
+    ],
+    "productionChecklist": [
+      "Never run consensus quorum members (ZooKeeper, etcd, Kafka controllers) on Spot instances; enforce on-demand affinity.",
+      "Deploy AWS Node Termination Handler or Karpenter native disruption handling to gracefully cordon and drain nodes.",
+      "Enforce PodDisruptionBudgets with minAvailable set to the mathematical quorum threshold (floor(N/2) + 1).",
+      "Distribute replicas strictly across 3 distinct Availability Zones using topologySpreadConstraints."
+    ]
+  },
+  {
+    "id": "k8s-prod-14",
+    "topic": "Zombie Process Accumulation & PID Table Exhaustion in Container Namespace",
+    "category": "Workloads & Pod Lifecycle",
+    "severity": "P1 - Container Runtime Denial of Service",
+    "theProblem": "A Python/Node.js web application periodically running external shell scripts gradually stopped accepting new connections. Executing 'kubectl exec' returned error: 'fork /bin/sh: resource temporarily unavailable'. The entire worker node became unresponsive and stopped accepting new container processes.",
+    "howItWorksInternally": "When an application process spawns child subprocesses via fork/exec and terminates without waiting for child exit status via waitpid(), the terminated subprocesses enter the 'Zombie' (Z) state. Because container PID 1 does not implement a sub-reaper signal handler, zombie processes accumulate indefinitely. Once the total thread/PID count exceeds the node's /proc/sys/kernel/pid_max or the container's cgroup pids.max, no new processes or threads can be spawned anywhere in that cgroup.",
+    "productionCode": "// manifests/zombie-reaper-deployment.yaml - Tini Init / ShareProcessNamespace\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: process-safe-app\n  namespace: production\nspec:\n  replicas: 3\n  template:\n    spec:\n      # OPTION 1: Enable shared process namespace so Kubelet pause container reaps zombies\n      shareProcessNamespace: true\n      containers:\n      - name: app\n        image: python:3.11-slim\n        # OPTION 2: Use an explicit lightweight init reaper (like tini) as container entrypoint\n        command: [\"/usr/bin/tini\", \"--\"]\n        args: [\"python\", \"server.py\"]\n        resources:\n          limits:\n            memory: 1Gi\n---\n# Diagnostic command to count zombie processes inside container:\n# kubectl exec -it <pod> -- ps -eo stat,pid,cmd | grep -c '^Z'",
+    "monitoringMetrics": [
+      "sum(container_threads{container!=''}) by (pod) > 1000",
+      "node_processes_threads / node_processes_max_threads > 0.85",
+      "sum(rate(container_cpu_usage_seconds_total[5m])) by (pod)"
+    ],
+    "productionChecklist": [
+      "Use tini or dumb-init as the container entrypoint to automatically reap orphaned zombie subprocesses.",
+      "Enable shareProcessNamespace: true in Pod spec to allow the pause container (PID 1) to act as zombie sub-reaper.",
+      "Configure Kubelet with --pod-pids-limit (e.g. 4096) to prevent a single runaway container from exhausting node PID tables.",
+      "Audit application source code to ensure child process exit signals (SIGCHLD) are captured and awaited."
+    ]
+  }
+]

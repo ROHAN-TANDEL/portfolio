@@ -1,0 +1,1146 @@
+[
+  {
+    "id": "ms-ex-01",
+    "title": "Strangler Fig Ingress Router with Dynamic Path Rewriting",
+    "category": "Decomposition & DDD",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A production reverse proxy router using Fastify and http-proxy that routes specific modernized bounded context paths to newly built microservices while passing legacy traffic to the monolithic server.",
+    "conceptsCovered": [
+      "Strangler Fig",
+      "Reverse Proxy",
+      "Prefix Stripping",
+      "Path Rewriting",
+      "Zero-Downtime Migration"
+    ],
+    "code": "import Fastify from \"fastify\";\nimport proxy from \"@fastify/http-proxy\";\n\nconst server = Fastify({ logger: true });\n\n// 1. Modernized Order Microservice (Migrated Bounded Context)\nawait server.register(proxy, {\n  upstream: \"http://order-microservice.prod.svc.cluster.local:8080\",\n  prefix: \"/api/v1/orders\",\n  rewritePrefix: \"/orders\",\n  http2: false,\n  replyOptions: {\n    rewriteRequestHeaders: (req, headers) => ({\n      ...headers,\n      \"x-strangler-route\": \"microservice-v1-orders\",\n      \"x-forwarded-host\": req.hostname\n    })\n  }\n});\n\n// 2. Modernized Customer Loyalty Microservice\nawait server.register(proxy, {\n  upstream: \"http://loyalty-microservice.prod.svc.cluster.local:8081\",\n  prefix: \"/api/v1/loyalty\",\n  rewritePrefix: \"/loyalty\",\n  http2: false\n});\n\n// 3. Fallback Route: All un-migrated paths go directly to the legacy monolith\nawait server.register(proxy, {\n  upstream: \"http://legacy-monolith.internal:3000\",\n  prefix: \"/\",\n  replyOptions: {\n    rewriteRequestHeaders: (req, headers) => ({\n      ...headers,\n      \"x-strangler-route\": \"legacy-monolith-fallback\"\n    })\n  }\n});\n\nawait server.listen({ port: 80, host: \"0.0.0.0\" });\nconsole.log(\"Strangler Fig Proxy running on port 80\");",
+    "breakdown": [
+      "Registers explicit prefixes for migrated microservices ahead of the root fallback.",
+      "Rewrites public URL paths (/api/v1/orders) to internal container paths (/orders).",
+      "Injects diagnostic headers to track route migration and verification in distributed logs.",
+      "Ensures the legacy monolith remains untouched while incremental migration proceeds."
+    ],
+    "expectedOutput": "Incoming GET /api/v1/orders/123 proxies to order-microservice:8080/orders/123. Unmapped routes hit legacy-monolith."
+  },
+  {
+    "id": "ms-ex-02",
+    "title": "Anti-Corruption Layer (ACL) Domain Model Adapter",
+    "category": "Decomposition & DDD",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "An Anti-Corruption Layer translating legacy database rows and messy terminology into clean, strictly validated domain entities using TypeScript and Zod.",
+    "conceptsCovered": [
+      "Anti-Corruption Layer",
+      "DDD",
+      "Domain Translation",
+      "Zod Validation",
+      "Decoupling"
+    ],
+    "code": "import { z } from \"zod\";\n\n// Modern Clean Domain Entity\nexport interface CustomerAccount {\n  id: string;\n  email: string;\n  fullName: string;\n  tier: \"STANDARD\" | \"VIP\" | \"ENTERPRISE\";\n  isActive: boolean;\n}\n\n// Raw Legacy Model from 15-year-old Monolith Database\ninterface LegacyCustomerRow {\n  CUST_ID: number;\n  CUST_EMAIL_ADDR: string;\n  CUST_FNAME: string;\n  CUST_LNAME: string;\n  ACCT_STATUS_FLAG: number; // 1 = Active, 0 = Inactive, 9 = Suspended\n  MEMBERSHIP_LVL_CD: string; // \"S\", \"V\", \"E\"\n}\n\nexport class CustomerAntiCorruptionLayer {\n  static toDomain(legacyRow: LegacyCustomerRow): CustomerAccount {\n    const tierMap: Record<string, CustomerAccount[\"tier\"]> = {\n      S: \"STANDARD\",\n      V: \"VIP\",\n      E: \"ENTERPRISE\"\n    };\n\n    return {\n      id: `cust_${legacyRow.CUST_ID}`,\n      email: legacyRow.CUST_EMAIL_ADDR.trim().toLowerCase(),\n      fullName: `${legacyRow.CUST_FNAME.trim()} ${legacyRow.CUST_LNAME.trim()}`,\n      tier: tierMap[legacyRow.MEMBERSHIP_LVL_CD] || \"STANDARD\",\n      isActive: legacyRow.ACCT_STATUS_FLAG === 1\n    };\n  }\n\n  static toLegacy(domain: CustomerAccount): Partial<LegacyCustomerRow> {\n    const reverseTier: Record<CustomerAccount[\"tier\"], string> = {\n      STANDARD: \"S\",\n      VIP: \"V\",\n      ENTERPRISE: \"E\"\n    };\n\n    const [first, ...rest] = domain.fullName.split(\" \");\n    return {\n      CUST_EMAIL_ADDR: domain.email,\n      CUST_FNAME: first,\n      CUST_LNAME: rest.join(\" \"),\n      MEMBERSHIP_LVL_CD: reverseTier[domain.tier],\n      ACCT_STATUS_FLAG: domain.isActive ? 1 : 0\n    };\n  }\n}\n\n// Usage in new microservice repository:\nconst legacyRecord: LegacyCustomerRow = {\n  CUST_ID: 9812,\n  CUST_EMAIL_ADDR: \"  ALICE@DOMAIN.COM \",\n  CUST_FNAME: \"Alice\",\n  CUST_LNAME: \"Smith\",\n  ACCT_STATUS_FLAG: 1,\n  MEMBERSHIP_LVL_CD: \"V\"\n};\n\nconst domainEntity = CustomerAntiCorruptionLayer.toDomain(legacyRecord);\nconsole.log(\"Clean Domain Model:\", domainEntity);",
+    "breakdown": [
+      "Decouples internal modern microservice types from legacy snake_case database columns.",
+      "Transforms ambiguous numerical flags (1/0/9) into explicit TypeScript union types.",
+      "Sanitizes strings and formats names cleanly.",
+      "Provides bi-directional mapping so the new microservice can write back without corrupting legacy systems."
+    ],
+    "expectedOutput": "Clean Domain Model: { id: 'cust_9812', email: 'alice@domain.com', fullName: 'Alice Smith', tier: 'VIP', isActive: true }"
+  },
+  {
+    "id": "ms-ex-03",
+    "title": "gRPC Server Implementation with Protobuf in TypeScript",
+    "category": "Inter-Service Networking",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A complete gRPC server implementing an Inventory Service using @grpc/grpc-js, featuring status codes, request validation, and binary response framing.",
+    "conceptsCovered": [
+      "gRPC",
+      "Protobuf",
+      "HTTP/2",
+      "Status Codes",
+      "Service Definition"
+    ],
+    "code": "import * as grpc from \"@grpc/grpc-js\";\nimport * as protoLoader from \"@grpc/proto-loader\";\nimport path from \"node:path\";\n\n// Mock database\nconst inventoryDb = new Map<string, number>([\n  [\"item-sku-001\", 45],\n  [\"item-sku-002\", 0],\n  [\"item-sku-003\", 120]\n]);\n\nconst PROTO_PATH = path.resolve(process.cwd(), \"proto/inventory.proto\");\nconst packageDefinition = protoLoader.loadSync(PROTO_PATH, {\n  keepCase: true,\n  longs: String,\n  enums: String,\n  defaults: true,\n  oneofs: true\n});\n\nconst protoDescriptor = grpc.loadPackageDefinition(packageDefinition) as any;\nconst inventoryProto = protoDescriptor.inventory.v1;\n\nconst server = new grpc.Server();\n\n// Implementing RPC Handlers\nserver.addService(inventoryProto.InventoryService.service, {\n  checkStock: (call: any, callback: any) => {\n    const { item_id } = call.request;\n\n    if (!item_id) {\n      return callback({\n        code: grpc.status.INVALID_ARGUMENT,\n        message: \"item_id parameter is required\"\n      });\n    }\n\n    if (!inventoryDb.has(item_id)) {\n      return callback({\n        code: grpc.status.NOT_FOUND,\n        message: `Item ${item_id} not found in inventory`\n      });\n    }\n\n    const available = inventoryDb.get(item_id)!;\n    callback(null, {\n      item_id,\n      available_units: available,\n      in_stock: available > 0\n    });\n  }\n});\n\nserver.bindAsync(\n  \"0.0.0.0:50051\",\n  grpc.ServerCredentials.createInsecure(),\n  (err, port) => {\n    if (err) throw err;\n    console.log(`gRPC Inventory Server listening on port ${port}`);\n  }\n);",
+    "breakdown": [
+      "Loads dynamic Protobuf definition at runtime using proto-loader.",
+      "Implements strict gRPC status codes (INVALID_ARGUMENT, NOT_FOUND) mapped to gRPC conventions.",
+      "Returns binary Protobuf structures over HTTP/2 framing.",
+      "Provides high-throughput inter-service query capability without textual JSON parsing."
+    ],
+    "expectedOutput": "gRPC Inventory Server listening on port 50051. Responds with binary StockResponse."
+  },
+  {
+    "id": "ms-ex-04",
+    "title": "gRPC Client with Bounded Deadlines & Interceptors",
+    "category": "Inter-Service Networking",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A resilient gRPC client featuring client-side interceptors for trace context injection, logging, and strict deadline enforcement.",
+    "conceptsCovered": [
+      "gRPC Client",
+      "Deadlines",
+      "Client Interceptors",
+      "Distributed Tracing",
+      "Timeout Budgets"
+    ],
+    "code": "import * as grpc from \"@grpc/grpc-js\";\nimport * as protoLoader from \"@grpc/proto-loader\";\n\n// Client Tracing Interceptor\nfunction createTracingInterceptor(traceId: string) {\n  return (options: any, nextCall: any) => {\n    return new grpc.InterceptingCall(nextCall(options), {\n      start: (metadata, listener, next) => {\n        // Inject W3C traceparent into gRPC metadata\n        metadata.set(\"traceparent\", `00-${traceId}-00f067aa0ba902b7-01`);\n        next(metadata, listener);\n      }\n    });\n  };\n}\n\nexport class InventoryServiceClient {\n  private client: any;\n\n  constructor(serverAddress: string) {\n    const packageDef = protoLoader.loadSync(\"./proto/inventory.proto\");\n    const proto = (grpc.loadPackageDefinition(packageDef) as any).inventory.v1;\n    this.client = new proto.InventoryService(\n      serverAddress,\n      grpc.credentials.createInsecure()\n    );\n  }\n\n  async checkStock(itemId: string, timeoutMs = 800, traceId = \"4bf92f3577b34da6a3ce929d0e0e4736\"): Promise<any> {\n    const deadline = new Date(Date.now() + timeoutMs);\n    const interceptor = createTracingInterceptor(traceId);\n\n    return new Promise((resolve, reject) => {\n      this.client.checkStock(\n        { item_id: itemId },\n        { deadline, interceptors: [interceptor] },\n        (err: any, response: any) => {\n          if (err) {\n            if (err.code === grpc.status.DEADLINE_EXCEEDED) {\n              return reject(new Error(`[Timeout] gRPC deadline exceeded after ${timeoutMs}ms`));\n            }\n            return reject(err);\n          }\n          resolve(response);\n        }\n      );\n    });\n  }\n}\n\n// Client execution\nconst invClient = new InventoryServiceClient(\"localhost:50051\");\ninvClient.checkStock(\"item-sku-001\", 500)\n  .then(res => console.log(\"gRPC Response:\", res))\n  .catch(err => console.error(\"gRPC Error:\", err.message));",
+    "breakdown": [
+      "Enforces a hard deadline timestamp using Date.now() + timeoutMs.",
+      "Implements client interceptors to automatically inject W3C traceparent headers.",
+      "Catches DEADLINE_EXCEEDED errors and translates them into domain timeout exceptions.",
+      "Decouples callers from raw callback syntax using clean async/await promises."
+    ],
+    "expectedOutput": "gRPC Response: { item_id: 'item-sku-001', available_units: 45, in_stock: true }"
+  },
+  {
+    "id": "ms-ex-05",
+    "title": "Client-Side Round-Robin Load Balancer with Health Checks",
+    "category": "Inter-Service Networking",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A client-side load balancer implementing weighted round-robin distribution, background health probing, and automatic eviction of degraded instance endpoints.",
+    "conceptsCovered": [
+      "Client-Side Load Balancing",
+      "Health Probing",
+      "Endpoint Eviction",
+      "Round-Robin",
+      "Failover"
+    ],
+    "code": "export interface ServiceEndpoint {\n  url: string;\n  isHealthy: boolean;\n  consecutiveFailures: number;\n}\n\nexport class ClientSideLoadBalancer {\n  private endpoints: ServiceEndpoint[];\n  private currentIndex = 0;\n\n  constructor(endpoints: string[], private healthCheckIntervalMs = 5000) {\n    this.endpoints = endpoints.map(url => ({\n      url,\n      isHealthy: true,\n      consecutiveFailures: 0\n    }));\n\n    this.startHealthChecks();\n  }\n\n  // Select next healthy endpoint via Round-Robin\n  getNextEndpoint(): string {\n    const healthy = this.endpoints.filter(e => e.isHealthy);\n    if (healthy.length === 0) {\n      throw new Error(\"No healthy service endpoints available\");\n    }\n\n    const endpoint = healthy[this.currentIndex % healthy.length];\n    this.currentIndex++;\n    return endpoint.url;\n  }\n\n  // Record outcome to detect degraded nodes immediately\n  recordOutcome(url: string, success: boolean) {\n    const ep = this.endpoints.find(e => e.url === url);\n    if (!ep) return;\n\n    if (success) {\n      ep.consecutiveFailures = 0;\n      ep.isHealthy = true;\n    } else {\n      ep.consecutiveFailures++;\n      if (ep.consecutiveFailures >= 3) {\n        ep.isHealthy = false;\n        console.warn(`[LB] Ejected degraded endpoint: ${url} (3 consecutive failures)`);\n      }\n    }\n  }\n\n  private startHealthChecks() {\n    setInterval(async () => {\n      for (const ep of this.endpoints) {\n        try {\n          const res = await fetch(`${ep.url}/healthz`, { signal: AbortSignal.timeout(1000) });\n          if (res.ok) {\n            ep.isHealthy = true;\n            ep.consecutiveFailures = 0;\n          } else {\n            ep.isHealthy = false;\n          }\n        } catch {\n          ep.isHealthy = false;\n        }\n      }\n    }, this.healthCheckIntervalMs);\n  }\n}\n\n// Verification:\nconst lb = new ClientSideLoadBalancer([\n  \"http://srv-node-1.internal\",\n  \"http://srv-node-2.internal\",\n  \"http://srv-node-3.internal\"\n]);\n\nconsole.log(\"Selected:\", lb.getNextEndpoint());\nconsole.log(\"Selected:\", lb.getNextEndpoint());\nlb.recordOutcome(\"http://srv-node-1.internal\", false);\nlb.recordOutcome(\"http://srv-node-1.internal\", false);\nlb.recordOutcome(\"http://srv-node-1.internal\", false); // Ejected!\nconsole.log(\"Selected after ejection:\", lb.getNextEndpoint());",
+    "breakdown": [
+      "Tracks health status and consecutive failure counters per endpoint.",
+      "Implements round-robin selection strictly filtered across currently healthy instances.",
+      "Passively detects failure on active requests and proactively verifies recovery via periodic health probes.",
+      "Prevents cascading failure by removing failing pods before active traffic stalls."
+    ],
+    "expectedOutput": "Rotates through healthy nodes. Ejects node 1 after 3 failures, routing exclusively to nodes 2 and 3."
+  },
+  {
+    "id": "ms-ex-06",
+    "title": "API Composition & In-Memory Join Aggregation",
+    "category": "Decomposition & DDD",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "An API Composer service aggregating user orders, shipping tracking details, and inventory line-items across three independent microservices concurrently.",
+    "conceptsCovered": [
+      "API Composition",
+      "Scatter-Gather",
+      "Promise.allSettled",
+      "Partial Failure",
+      "Denormalization"
+    ],
+    "code": "export class OrderDetailComposer {\n  constructor(\n    private readonly orderClientUrl: string,\n    private readonly shippingClientUrl: string,\n    private readonly catalogClientUrl: string\n  ) {}\n\n  async getOrderDetails(orderId: string, traceparent: string) {\n    const headers = { traceparent, \"Content-Type\": \"application/json\" };\n    const timeout = 600; // 600ms budget\n\n    // 1. Fetch primary order entity (Mandatory)\n    const orderRes = await fetch(`${this.orderClientUrl}/orders/${orderId}`, {\n      headers,\n      signal: AbortSignal.timeout(timeout)\n    });\n    if (!orderRes.ok) throw new Error(`Order ${orderId} not found`);\n    const order = await orderRes.json();\n\n    // 2. Concurrently fetch Shipping Status and Catalog Item enrichment\n    const [shippingResult, catalogResult] = await Promise.allSettled([\n      fetch(`${this.shippingClientUrl}/shipments/${order.trackingId}`, {\n        headers,\n        signal: AbortSignal.timeout(timeout)\n      }).then(r => r.json()),\n      fetch(`${this.catalogClientUrl}/items/batch`, {\n        method: \"POST\",\n        headers,\n        body: JSON.stringify({ itemIds: order.itemIds }),\n        signal: AbortSignal.timeout(timeout)\n      }).then(r => r.json())\n    ]);\n\n    // 3. Compose response with graceful degradation for non-critical enrichment\n    return {\n      orderId: order.id,\n      totalAmount: order.amount,\n      status: order.status,\n      shipping: shippingResult.status === \"fulfilled\"\n        ? shippingResult.value\n        : { status: \"TRACKING_TEMPORARILY_UNAVAILABLE\", eta: null },\n      items: catalogResult.status === \"fulfilled\"\n        ? catalogResult.value\n        : order.itemIds.map((id: string) => ({ id, name: \"Item details unavailable\" })),\n      degraded: shippingResult.status === \"rejected\" || catalogResult.status === \"rejected\"\n    };\n  }\n}",
+    "breakdown": [
+      "Performs mandatory primary query first to extract foreign entity IDs.",
+      "Executes parallel downstream queries using Promise.allSettled with strict abort signal timeouts.",
+      "Handles partial downstream failure gracefully by substituting fallback stubs.",
+      "Surfaces an explicit degraded telemetry flag for API consumers and monitoring dashboards."
+    ],
+    "expectedOutput": "Composed Order payload containing order fields, live shipping data, and enriched catalog line items."
+  },
+  {
+    "id": "ms-ex-07",
+    "title": "GraphQL Federation Subgraph with Apollo Server v4",
+    "category": "Decomposition & DDD",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A complete federated GraphQL subgraph for a Review microservice that extends the Product entity defined in a foreign subgraph.",
+    "conceptsCovered": [
+      "GraphQL Federation",
+      "Apollo Server",
+      "Subgraphs",
+      "Entity Resolution",
+      "Key Directives"
+    ],
+    "code": "import { ApolloServer } from \"@apollo/server\";\nimport { startStandaloneServer } from \"@apollo/server/standalone\";\nimport { buildSubgraphSchema } from \"@apollo/subgraph\";\nimport gql from \"graphql-tag\";\n\n// Mock reviews database\nconst reviewsDb = [\n  { id: \"rev-1\", productId: \"prod-101\", rating: 5, comment: \"Exceptional quality!\" },\n  { id: \"rev-2\", productId: \"prod-101\", rating: 4, comment: \"Fast shipping.\" },\n  { id: \"rev-3\", productId: \"prod-102\", rating: 2, comment: \"Arrived damaged.\" }\n];\n\n// Subgraph Schema extending foreign Product entity\nconst typeDefs = gql`\n  extend schema\n    @link(url: \"https://specs.apollo.dev/federation/v2.0\", import: [\"@key\"])\n\n  type Review {\n    id: ID!\n    rating: Int!\n    comment: String!\n  }\n\n  # Federated Entity Extension\n  type Product @key(fields: \"id\") {\n    id: ID!\n    reviews: [Review!]!\n  }\n`;\n\nconst resolvers = {\n  Product: {\n    // __resolveReference handles entity federation lookup requested by Gateway Router\n    __resolveReference: (reference: { id: string }) => {\n      const productReviews = reviewsDb.filter(r => r.productId === reference.id);\n      return { id: reference.id, reviews: productReviews };\n    }\n  }\n};\n\nconst server = new ApolloServer({\n  schema: buildSubgraphSchema({ typeDefs, resolvers })\n});\n\nconst { url } = await startStandaloneServer(server, { listen: { port: 4002 } });\nconsole.log(`Review Federated Subgraph ready at ${url}`);",
+    "breakdown": [
+      "Defines a federated schema declaring the @key directive on Product.",
+      "Implements the __resolveReference hook required by the Apollo Federation Gateway router.",
+      "Allows the Review team to own review data while seamlessly enriching Product queries without coupling.",
+      "Operates as an autonomous subgraph deployable on its own CI/CD cycle."
+    ],
+    "expectedOutput": "Review Subgraph running on port 4002, resolving Product.reviews across the federated supergraph."
+  },
+  {
+    "id": "ms-ex-08",
+    "title": "Contract Testing with Pact v3 (Consumer Specification)",
+    "category": "Deployment & Testing",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A Pact v3 consumer contract test verifying that an Order Client correctly asserts the contract expected from the Payment microservice.",
+    "conceptsCovered": [
+      "Pact v3",
+      "Consumer-Driven Contract",
+      "Mock Server",
+      "Matchers",
+      "can-i-deploy"
+    ],
+    "code": "import { PactV3, MatchersV3 } from \"@pact-foundation/pact\";\nimport path from \"node:path\";\nconst { string, integer } = MatchersV3;\n\nconst provider = new PactV3({\n  consumer: \"OrderService\",\n  provider: \"PaymentService\",\n  dir: path.resolve(process.cwd(), \"pacts\")\n});\n\ndescribe(\"OrderService -> PaymentService Pact Contract\", () => {\n  it(\"authorizes a valid payment transaction\", async () => {\n    provider\n      .given(\"account has sufficient credit\")\n      .uponReceiving(\"a request to authorize a credit charge\")\n      .withRequest({\n        method: \"POST\",\n        path: \"/v1/charges\",\n        headers: { \"Content-Type\": \"application/json\" },\n        body: {\n          accountId: string(\"acc_88192\"),\n          amountCents: integer(4500),\n          currency: string(\"USD\")\n        }\n      })\n      .willRespondWith({\n        status: 201,\n        headers: { \"Content-Type\": \"application/json\" },\n        body: {\n          chargeId: string(\"ch_live_9921\"),\n          status: string(\"AUTHORIZED\")\n        }\n      });\n\n    await provider.executeTest(async (mockserver) => {\n      // Execute consumer client against local Pact mockserver URL\n      const client = new PaymentHttpClient(mockserver.url);\n      const res = await client.authorize(\"acc_88192\", 4500, \"USD\");\n\n      expect(res.chargeId).toBe(\"ch_live_9921\");\n      expect(res.status).toBe(\"AUTHORIZED\");\n    });\n  });\n});\n\nclass PaymentHttpClient {\n  constructor(private baseUrl: string) {}\n  async authorize(accountId: string, amountCents: number, currency: string) {\n    const res = await fetch(`${this.baseUrl}/v1/charges`, {\n      method: \"POST\",\n      headers: { \"Content-Type\": \"application/json\" },\n      body: JSON.stringify({ accountId, amountCents, currency })\n    });\n    return res.json();\n  }\n}",
+    "breakdown": [
+      "Sets up PactV3 provider and consumer relationship.",
+      "Defines exact request headers, bodies, and response matchers using flexible type matchers.",
+      "Generates a verified pact JSON file written to /pacts for verification in provider CI.",
+      "Verifies the HTTP client integration without running the live Payment microservice."
+    ],
+    "expectedOutput": "Pact test passes; generates pacts/OrderService-PaymentService.json for provider validation."
+  },
+  {
+    "id": "ms-ex-09",
+    "title": "Shared Database Antipattern Refactoring via Microservice API",
+    "category": "Decomposition & DDD",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Refactoring two microservices sharing a monolithic database schema into isolated databases using an asynchronous event-driven replication bridge.",
+    "conceptsCovered": [
+      "Shared Database Antipattern",
+      "Database-per-Service",
+      "Event Bridge",
+      "Decoupling",
+      "PostgreSQL"
+    ],
+    "code": "// BEFORE: Order Service executed raw SQL join on Inventory Service's table:\n// SELECT o.*, i.stock FROM orders o JOIN inventory i ON o.item_id = i.id; (COUPLED!)\n\n// AFTER: Dedicated Databases + Async Replicated Local Projection\nimport { Pool } from \"pg\";\n\n// 1. Order Service's Private Database Pool\nconst orderDb = new Pool({ connectionString: process.env.ORDER_DB_URL });\n\n// 2. Order Service maintains a local read-only projection table for inventory snapshots\nexport class OrderServiceWithLocalProjection {\n  async createOrder(orderId: string, itemId: string, quantity: number) {\n    const client = await orderDb.connect();\n    try {\n      await client.query(\"BEGIN\");\n\n      // Verify stock using LOCAL read projection table (no remote join needed!)\n      const stockRes = await client.query(\n        \"SELECT available_units FROM local_inventory_cache WHERE item_id = $1\",\n        [itemId]\n      );\n\n      if (stockRes.rows.length === 0 || stockRes.rows[0].available_units < quantity) {\n        throw new Error(\"Insufficient stock in local projection\");\n      }\n\n      await client.query(\n        \"INSERT INTO orders (id, item_id, quantity, status) VALUES ($1, $2, $3, 'CONFIRMED')\",\n        [orderId, itemId, quantity]\n      );\n\n      await client.query(\"COMMIT\");\n    } finally {\n      client.release();\n    }\n  }\n\n  // 3. Kafka Consumer continuously updates the local projection table asynchronously\n  async handleInventoryStockUpdatedEvent(event: { itemId: string; newStock: number }) {\n    await orderDb.query(\n      `INSERT INTO local_inventory_cache (item_id, available_units, updated_at)\n       VALUES ($1, $2, NOW())\n       ON CONFLICT (item_id) DO UPDATE SET available_units = $2, updated_at = NOW()`,\n      [event.itemId, event.newStock]\n    );\n  }\n}",
+    "breakdown": [
+      "Eliminates cross-service SQL joins and shared database connection coupling.",
+      "Maintains a local denormalized projection table inside Order Service's private database.",
+      "Subscribes to asynchronous inventory stock events to keep the local projection synchronized.",
+      "Enables Order Service to survive an outage of Inventory Service without failing reads."
+    ],
+    "expectedOutput": "Order Service operates against its private DB with zero reliance on foreign database tables."
+  },
+  {
+    "id": "ms-ex-10",
+    "title": "Domain Event Definition & Schema Versioning",
+    "category": "Event-Driven Systems",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A typed Domain Event envelope pattern implementing CloudEvents specification, semantic versioning, and strict schema validation with Zod.",
+    "conceptsCovered": [
+      "CloudEvents",
+      "Domain Events",
+      "Schema Evolution",
+      "Zod",
+      "Envelope Pattern"
+    ],
+    "code": "import { z } from \"zod\";\nimport crypto from \"node:crypto\";\n\n// CloudEvents v1.0 Compliant Envelope Schema\nexport const CloudEventEnvelopeSchema = z.object({\n  specversion: z.literal(\"1.0\"),\n  id: z.string().uuid(),\n  source: z.string(), // e.g. \"/services/order-service\"\n  type: z.string(),   // e.g. \"com.enterprise.order.created.v2\"\n  time: z.string().datetime(),\n  datacontenttype: z.literal(\"application/json\"),\n  data: z.record(z.any())\n});\n\n// Domain Event Payload (Version 2)\nexport const OrderCreatedV2PayloadSchema = z.object({\n  orderId: z.string(),\n  customerId: z.string(),\n  totalCents: z.number().int().positive(),\n  currency: z.string().length(3),\n  items: z.array(z.object({\n    sku: z.string(),\n    quantity: z.number().int().positive()\n  }))\n});\n\nexport class DomainEventFactory {\n  static createOrderCreatedEvent(payload: z.infer<typeof OrderCreatedV2PayloadSchema>) {\n    // Validate payload against schema before publishing\n    const validatedData = OrderCreatedV2PayloadSchema.parse(payload);\n\n    return {\n      specversion: \"1.0\" as const,\n      id: crypto.randomUUID(),\n      source: \"/services/order-service\",\n      type: \"com.enterprise.order.created.v2\",\n      time: new Date().toISOString(),\n      datacontenttype: \"application/json\" as const,\n      data: validatedData\n    };\n  }\n}\n\n// Emitting event\nconst event = DomainEventFactory.createOrderCreatedEvent({\n  orderId: \"ord-9821\",\n  customerId: \"cust-4412\",\n  totalCents: 1999,\n  currency: \"USD\",\n  items: [{ sku: \"ITEM-A\", quantity: 2 }]\n});\n\nconsole.log(\"Published CloudEvent:\", JSON.stringify(event, null, 2));",
+    "breakdown": [
+      "Complies with the industry-standard CNCF CloudEvents 1.0 envelope format.",
+      "Embeds schema version directly in the event type identifier (v2).",
+      "Validates payloads at creation time with Zod to prevent publishing corrupted event data.",
+      "Provides universal metadata (id, source, time) for distributed tracing and deduplication."
+    ],
+    "expectedOutput": "Valid CloudEvent JSON ready for Kafka/RabbitMQ publishing with standard metadata."
+  },
+  {
+    "id": "ms-ex-11",
+    "title": "Transactional Outbox Pattern with PostgreSQL SKIP LOCKED",
+    "category": "Event-Driven Systems",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A production Transactional Outbox implementation that atomically writes business entities and events in a single transaction, with a concurrent polling publisher using FOR UPDATE SKIP LOCKED.",
+    "conceptsCovered": [
+      "Transactional Outbox",
+      "SKIP LOCKED",
+      "PostgreSQL",
+      "Atomic Commitment",
+      "Message Relaying"
+    ],
+    "code": "import { Pool, PoolClient } from \"pg\";\n\nconst pool = new Pool({ connectionString: process.env.DATABASE_URL });\n\n// 1. Business Service writing Order + Outbox Event in ONE ACID Transaction\nexport async function createOrderWithOutbox(orderId: string, total: number, customerId: string) {\n  const client: PoolClient = await pool.connect();\n  try {\n    await client.query(\"BEGIN\");\n\n    // Write domain entity\n    await client.query(\n      \"INSERT INTO orders (id, total, customer_id, status) VALUES ($1, $2, $3, 'CREATED')\",\n      [orderId, total, customerId]\n    );\n\n    // Write outbox event\n    const eventPayload = { orderId, total, customerId, timestamp: new Date().toISOString() };\n    await client.query(\n      `INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload, status)\n       VALUES ('ORDER', $1, 'OrderCreated', $2, 'PENDING')`,\n      [orderId, JSON.stringify(eventPayload)]\n    );\n\n    await client.query(\"COMMIT\");\n  } catch (err) {\n    await client.query(\"ROLLBACK\");\n    throw err;\n  } finally {\n    client.release();\n  }\n}\n\n// 2. High-Throughput Concurrent Outbox Worker using SKIP LOCKED\nexport async function pollAndPublishOutbox(kafkaProducer: any, batchSize = 50) {\n  const client = await pool.connect();\n  try {\n    await client.query(\"BEGIN\");\n\n    // FOR UPDATE SKIP LOCKED allows multiple parallel worker pods to lock distinct batches without blocking!\n    const res = await client.query(\n      `SELECT id, aggregate_id, event_type, payload\n       FROM outbox_events\n       WHERE status = 'PENDING'\n       ORDER BY created_at ASC\n       LIMIT $1\n       FOR UPDATE SKIP LOCKED`,\n      [batchSize]\n    );\n\n    if (res.rows.length === 0) {\n      await client.query(\"COMMIT\");\n      return 0;\n    }\n\n    // Publish to Kafka\n    for (const row of res.rows) {\n      await kafkaProducer.send({\n        topic: \"order.events\",\n        messages: [{ key: row.aggregate_id, value: JSON.stringify(row.payload) }]\n      });\n    }\n\n    // Mark processed rows\n    const ids = res.rows.map(r => r.id);\n    await client.query(\n      \"UPDATE outbox_events SET status = 'PROCESSED', processed_at = NOW() WHERE id = ANY($1)\",\n      [ids]\n    );\n\n    await client.query(\"COMMIT\");\n    return res.rows.length;\n  } catch (err) {\n    await client.query(\"ROLLBACK\");\n    throw err;\n  } finally {\n    client.release();\n  }\n}",
+    "breakdown": [
+      "Guarantees that an event is written if and only if the business order is committed.",
+      "Uses FOR UPDATE SKIP LOCKED to prevent lock contention across multiple outbox worker replicas.",
+      "Safely commits the outbox transaction only after Kafka acknowledges message receipt.",
+      "Eliminates the dual-write vulnerability completely."
+    ],
+    "expectedOutput": "Outbox worker locks 50 pending records, publishes to Kafka, and updates status to PROCESSED."
+  },
+  {
+    "id": "ms-ex-12",
+    "title": "Debezium CDC Kafka Connector Configuration",
+    "category": "Event-Driven Systems",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A production JSON configuration for Debezium PostgreSQL connector that captures WAL logical replication events from outbox tables and transforms them into Kafka topics.",
+    "conceptsCovered": [
+      "Debezium",
+      "CDC",
+      "Kafka Connect",
+      "PostgreSQL WAL",
+      "Event Routing"
+    ],
+    "code": "/*\nPOST /connectors HTTP/1.1\nHost: kafka-connect.internal:8083\nContent-Type: application/json\n\n{\n  \"name\": \"postgres-outbox-connector\",\n  \"config\": {\n    \"connector.class\": \"io.debezium.connector.postgresql.PostgresConnector\",\n    \"tasks.max\": \"1\",\n    \"plugin.name\": \"pgoutput\",\n    \"database.hostname\": \"postgres-primary.database.svc.cluster.local\",\n    \"database.port\": \"5432\",\n    \"database.user\": \"debezium_cdc\",\n    \"database.password\": \"${file:/secrets/db-credentials.properties:cdc_password}\",\n    \"database.dbname\": \"orders_db\",\n    \"database.server.name\": \"orders_cdc\",\n    \"table.include.list\": \"public.outbox_events\",\n    \"tombstones.on.delete\": \"false\",\n    \"decimal.handling.mode\": \"double\",\n\n    # SMT (Single Message Transform): Route outbox events to dynamic Kafka topics based on event_type\n    \"transforms\": \"outbox\",\n    \"transforms.outbox.type\": \"io.debezium.transforms.outbox.EventRouter\",\n    \"transforms.outbox.table.fields.additional.placement\": \"event_type:header:eventType\",\n    \"transforms.outbox.route.topic.replacement\": \"${routedByValue}.events\",\n    \"transforms.outbox.route.by.field\": \"aggregate_type\",\n\n    # Slot management\n    \"slot.name\": \"debezium_orders_slot\",\n    \"slot.drop.on.stop\": \"false\",\n    \"publication.autocreate.mode\": \"filtered\"\n  }\n}\n*/\n\n// SQL script preparing PostgreSQL for Debezium logical replication:\nexport const dbSetupSql = `\n  -- Enable logical replication in postgresql.conf: wal_level = logical\n  CREATE ROLE debezium_cdc WITH REPLICATION LOGIN PASSWORD 'secret_pass';\n  GRANT SELECT ON ALL TABLES IN SCHEMA public TO debezium_cdc;\n  ALTER TABLE public.outbox_events REPLICA IDENTITY FULL;\n`;",
+    "breakdown": [
+      "Configures pgoutput logical decoder plugin for zero-overhead WAL streaming.",
+      "Employs Debezium's specialized Outbox EventRouter transform to dynamically set Kafka topics.",
+      "Extracts event_type into Kafka message headers for consumer routing.",
+      "Guarantees near-zero replication lag (< 50ms) without polling queries."
+    ],
+    "expectedOutput": "Kafka Connect registers connector; streams committed outbox rows directly into Kafka."
+  },
+  {
+    "id": "ms-ex-13",
+    "title": "Kafka Producer with Idempotence & Murmur2 Partition Keys",
+    "category": "Event-Driven Systems",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A KafkaJS producer configured with idempotence (enableIdempotence: true, acks: all), retry limits, and consistent partition key hashing.",
+    "conceptsCovered": [
+      "Kafka Producer",
+      "Idempotence",
+      "Partition Keys",
+      "Murmur2",
+      "At-Least-Once"
+    ],
+    "code": "import { Kafka, CompressionTypes, Partitioners } from \"kafkajs\";\n\nconst kafka = new Kafka({\n  clientId: \"order-service-producer\",\n  brokers: [\"kafka-broker-1:9092\", \"kafka-broker-2:9092\"],\n  retry: {\n    initialRetryTime: 100,\n    retries: 8\n  }\n});\n\n// Configure Idempotent Producer\nexport const producer = kafka.producer({\n  // Built-in Kafka idempotence prevents duplicates during transient network retries\n  createPartitioner: Partitioners.DefaultPartitioner, // Murmur2 partitioner\n  idempotent: true,\n  maxInFlightRequests: 1, // Guarantees strict ordering during retries\n  transactionalId: \"order-service-tx-id\"\n});\n\nexport async function publishOrderEvent(orderId: string, eventType: string, payload: any) {\n  await producer.connect();\n\n  const record = {\n    // Partition key MUST be orderId so all events for this specific order land on the same partition in order!\n    key: orderId,\n    value: JSON.stringify({\n      eventType,\n      payload,\n      timestamp: Date.now()\n    }),\n    headers: {\n      \"correlation-id\": \"corr-998811\",\n      \"event-type\": eventType\n    }\n  };\n\n  const metadata = await producer.send({\n    topic: \"order.lifecycle\",\n    compression: CompressionTypes.GZIP,\n    messages: [record]\n  });\n\n  console.log(`Message published to partition ${metadata[0].partition} at offset ${metadata[0].offset}`);\n}",
+    "breakdown": [
+      "Enables producer idempotence to prevent duplicate messages if ACK packets drop.",
+      "Sets orderId as the partition key to guarantee FIFO order across order state transitions.",
+      "Enforces maxInFlightRequests = 1 to preserve ordering during automatic retries.",
+      "Applies GZIP compression to optimize wire bandwidth."
+    ],
+    "expectedOutput": "Message published to partition 2 at offset 1044 with guaranteed single-delivery semantics."
+  },
+  {
+    "id": "ms-ex-14",
+    "title": "Kafka Consumer Group with Manual Offset Commits",
+    "category": "Event-Driven Systems",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A resilient KafkaJS consumer group that disables auto-commit, processing messages individually and manually committing offsets only after successful database persistence.",
+    "conceptsCovered": [
+      "Kafka Consumer Group",
+      "Manual Offset Commit",
+      "Rebalance Listener",
+      "At-Least-Once",
+      "Backpressure"
+    ],
+    "code": "import { Kafka } from \"kafkajs\";\n\nconst kafka = new Kafka({\n  clientId: \"payment-consumer-worker\",\n  brokers: [\"kafka-broker-1:9092\", \"kafka-broker-2:9092\"]\n});\n\nconst consumer = kafka.consumer({\n  groupId: \"payment-processing-group\",\n  sessionTimeout: 30000,\n  heartbeatInterval: 3000\n});\n\nexport async function startConsumer(db: any) {\n  await consumer.connect();\n  await consumer.subscribe({ topic: \"order.lifecycle\", fromBeginning: false });\n\n  // Monitor rebalance events\n  consumer.on(consumer.events.GROUP_JOIN, (e) => {\n    console.log(`Consumer joined group. Assigned partitions: ${JSON.stringify(e.payload.memberAssignment)}`);\n  });\n\n  // Run with eachMessage and disable auto-commit\n  await consumer.run({\n    autoCommit: false,\n    eachMessage: async ({ topic, partition, message }) => {\n      const orderId = message.key?.toString();\n      const payload = JSON.parse(message.value?.toString() || \"{}\");\n\n      console.log(`Processing ${payload.eventType} for order ${orderId}`);\n\n      try {\n        // 1. Process business logic inside database transaction\n        await db.processPaymentForOrder(orderId, payload.payload);\n\n        // 2. Commit offset ONLY after database commit succeeds!\n        await consumer.commitOffsets([\n          {\n            topic,\n            partition,\n            offset: (BigInt(message.offset) + 1n).toString()\n          }\n        ]);\n      } catch (err: any) {\n        console.error(`Failed to process message at offset ${message.offset}. Pausing partition.`, err);\n        // Throwing error causes KafkaJS to retry or pause partition, preventing data loss\n        throw err;\n      }\n    }\n  });\n}",
+    "breakdown": [
+      "Disables autoCommit: false to prevent marking un-processed messages as complete on crash.",
+      "Commits offsets explicitly with BigInt increment after successful local processing.",
+      "Listens to GROUP_JOIN events to track rebalances.",
+      "Throws error on database failure to halt partition consumption rather than skipping corrupted data."
+    ],
+    "expectedOutput": "Processes messages sequentially per partition, committing offsets manually after DB writes."
+  },
+  {
+    "id": "ms-ex-15",
+    "title": "Dead Letter Queue (DLQ) with Exponential Retry Backoff",
+    "category": "Event-Driven Systems",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A multi-stage Dead Letter Queue (DLQ) architecture in Kafka with retry topics (retry-1, retry-2) and final dead-letter parking to avoid poison pill blocking.",
+    "conceptsCovered": [
+      "DLQ",
+      "Retry Topics",
+      "Poison Pill",
+      "Exponential Backoff",
+      "Error Handling"
+    ],
+    "code": "export class DeadLetterQueueRouter {\n  constructor(private kafkaProducer: any) {}\n\n  async handleFailure(topic: string, message: any, error: Error) {\n    const headers = message.headers || {};\n    const retryCount = parseInt(headers[\"x-retry-count\"]?.toString() || \"0\", 10);\n    const maxRetries = 3;\n\n    if (retryCount < maxRetries) {\n      const nextRetryCount = retryCount + 1;\n      const delayMs = Math.pow(2, nextRetryCount) * 1000; // Exponential: 2s, 4s, 8s\n      const retryTopic = `${topic}.retry-${nextRetryCount}`;\n\n      console.warn(`[Retry] Routing message to ${retryTopic} with delay ${delayMs}ms. Attempt: ${nextRetryCount}`);\n\n      // Dispatch to delayed retry topic with updated retry count header\n      await this.kafkaProducer.send({\n        topic: retryTopic,\n        messages: [{\n          key: message.key,\n          value: message.value,\n          headers: {\n            ...headers,\n            \"x-retry-count\": nextRetryCount.toString(),\n            \"x-retry-delay-ms\": delayMs.toString(),\n            \"x-last-error\": error.message\n          }\n        }]\n      });\n    } else {\n      // Exceeded retry ceiling: Route to Dead Letter Queue for human triage!\n      const dlqTopic = `${topic}.DLQ`;\n      console.error(`[DLQ] Message permanently failed after ${maxRetries} attempts. Routing to ${dlqTopic}`);\n\n      await this.kafkaProducer.send({\n        topic: dlqTopic,\n        messages: [{\n          key: message.key,\n          value: message.value,\n          headers: {\n            ...headers,\n            \"x-dead-letter-reason\": error.message,\n            \"x-failed-at\": new Date().toISOString()\n          }\n        }]\n      });\n    }\n  }\n}",
+    "breakdown": [
+      "Prevents poison pill messages from stalling the main consumer partition indefinitely.",
+      "Routes transient failures to graduated retry topics (retry-1, retry-2).",
+      "Parks permanently failed messages in a .DLQ topic for inspection by SRE teams.",
+      "Injects diagnostic metadata into Kafka headers tracking error messages and attempt timestamps."
+    ],
+    "expectedOutput": "Retries transiently up to 3 times with exponential backoff, then parks permanently in .DLQ."
+  },
+  {
+    "id": "ms-ex-16",
+    "title": "Idempotent Consumer with Redis Sliding Deduplication",
+    "category": "Event-Driven Systems",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "An idempotent consumer wrapper utilizing Redis SET NX with TTL to guarantee that duplicate messages arriving from Kafka are safely discarded.",
+    "conceptsCovered": [
+      "Idempotent Consumer",
+      "Redis SET NX",
+      "Deduplication",
+      "At-Least-Once",
+      "Replay Protection"
+    ],
+    "code": "import Redis from \"ioredis\";\n\nexport class IdempotentMessageConsumer {\n  private redis: Redis;\n\n  constructor(redisUrl: string, private deduplicationTtlSeconds = 86400) {\n    this.redis = new Redis(redisUrl);\n  }\n\n  async processMessage(\n    messageId: string,\n    handler: () => Promise<void>\n  ): Promise<{ status: \"PROCESSED\" | \"SKIPPED_DUPLICATE\" }> {\n    const lockKey = `msg:processed:${messageId}`;\n\n    // Atomic SET if Not Exists with Expiration: returns \"OK\" if key was set, null if key already exists\n    const acquired = await this.redis.set(\n      lockKey,\n      \"LOCKED\",\n      \"EX\",\n      this.deduplicationTtlSeconds,\n      \"NX\"\n    );\n\n    if (!acquired) {\n      console.log(`[Idempotency] Message ${messageId} already processed. Safely skipping.`);\n      return { status: \"SKIPPED_DUPLICATE\" };\n    }\n\n    try {\n      await handler();\n      // Update state to completed\n      await this.redis.set(lockKey, \"COMPLETED\", \"EX\", this.deduplicationTtlSeconds);\n      return { status: \"PROCESSED\" };\n    } catch (err) {\n      // On business failure, remove key so a valid retry can be processed\n      await this.redis.del(lockKey);\n      throw err;\n    }\n  }\n}\n\n// Verification:\nconst consumer = new IdempotentMessageConsumer(\"redis://localhost:6379\");\nconst eventId = \"evt-uuid-112233\";\n\nawait consumer.processMessage(eventId, async () => {\n  console.log(\"Processing financial debit...\");\n});\n\n// Duplicate message arrives:\nconst res = await consumer.processMessage(eventId, async () => {\n  console.log(\"This will NOT execute!\");\n});\nconsole.log(\"Duplicate result:\", res.status);",
+    "breakdown": [
+      "Executes atomic SET NX EX to claim processing rights on messageId.",
+      "Instantly drops duplicate deliveries arriving via network retries or consumer group rebalances.",
+      "Cleans up the lock key if the handler fails, permitting downstream retries.",
+      "Caches completion status for 24 hours to handle delayed replays."
+    ],
+    "expectedOutput": "First invocation prints debit message; duplicate invocation returns SKIPPED_DUPLICATE."
+  },
+  {
+    "id": "ms-ex-17",
+    "title": "Confluent Schema Registry & Avro Serialization",
+    "category": "Event-Driven Systems",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Integrating @kafkajs/confluent-schema-registry with Apache Avro schemas, enforcing backward compatibility and registering dynamic schemas on publish.",
+    "conceptsCovered": [
+      "Schema Registry",
+      "Avro",
+      "Serialization",
+      "Backward Compatibility",
+      "Confluent"
+    ],
+    "code": "import { SchemaRegistry, SchemaType } from \"@kafkajs/confluent-schema-registry\";\n\nconst registry = new SchemaRegistry({ host: \"http://schema-registry.internal:8081\" });\n\n// Avro Schema Definition\nconst orderAvroSchema = {\n  type: \"record\",\n  name: \"OrderEvent\",\n  namespace: \"com.enterprise.events\",\n  fields: [\n    { name: \"orderId\", type: \"string\" },\n    { name: \"customerId\", type: \"string\" },\n    { name: \"amountCents\", type: \"long\" },\n    { name: \"status\", type: { type: \"enum\", name: \"OrderStatus\", symbols: [\"PENDING\", \"CONFIRMED\", \"CANCELLED\"] } },\n    { name: \"discountCode\", type: [\"null\", \"string\"], default: null } // Optional field with default for backward compatibility!\n  ]\n};\n\nexport class AvroEventSerializer {\n  private schemaId: number | null = null;\n\n  async init() {\n    // Register schema with Confluent Schema Registry\n    const { id } = await registry.register(\n      {\n        type: SchemaType.AVRO,\n        schema: JSON.stringify(orderAvroSchema)\n      },\n      { subject: \"order-events-value\" }\n    );\n    this.schemaId = id;\n    console.log(`Avro schema registered with ID ${id}`);\n  }\n\n  async encodePayload(payload: any): Promise<Buffer> {\n    if (!this.schemaId) throw new Error(\"Schema not initialized\");\n    // Serializes JSON to binary Avro with Confluent Magic Byte + Schema ID prefix\n    return registry.encode(this.schemaId, payload);\n  }\n\n  async decodePayload(buffer: Buffer): Promise<any> {\n    return registry.decode(buffer);\n  }\n}",
+    "breakdown": [
+      "Registers Avro schema with the central Schema Registry subject.",
+      "Validates fields and data types against the schema at serialization time.",
+      "Encodes messages with Confluent magic byte (0x00) and 4-byte schema ID header.",
+      "Guarantees that breaking schema changes are rejected by the registry before deployment."
+    ],
+    "expectedOutput": "Registers Avro schema ID; serializes payload into compact binary Buffer with schema ID header."
+  },
+  {
+    "id": "ms-ex-18",
+    "title": "Kafka Topic Compaction & Tombstone Deletion Events",
+    "category": "Event-Driven Systems",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Publishing upsert events and null-payload Tombstone deletion events to a Kafka compacted topic, ensuring only the latest state is retained.",
+    "conceptsCovered": [
+      "Log Compaction",
+      "Tombstones",
+      "State Stores",
+      "Kafka Compaction",
+      "Entity Deletion"
+    ],
+    "code": "import { Kafka } from \"kafkajs\";\n\nconst kafka = new Kafka({ brokers: [\"localhost:9092\"] });\nconst producer = kafka.producer();\n\nexport class CompactedCustomerStateStore {\n  async init() {\n    await producer.connect();\n  }\n\n  // Upsert customer state: latest record for customerId will be retained forever\n  async upsertCustomer(customerId: string, profile: { name: string; tier: string }) {\n    await producer.send({\n      topic: \"customer-state-compacted\",\n      messages: [{\n        key: customerId,\n        value: JSON.stringify(profile)\n      }]\n    });\n    console.log(`Upserted customer state for ${customerId}`);\n  }\n\n  // Delete customer: Emits a TOMBSTONE event (null payload with matching key)\n  async deleteCustomer(customerId: string) {\n    await producer.send({\n      topic: \"customer-state-compacted\",\n      messages: [{\n        key: customerId,\n        value: null // TOMBSTONE: Informs Kafka cleaner to purge all historical offsets for this key!\n      }]\n    });\n    console.log(`Emitted TOMBSTONE deletion for ${customerId}`);\n  }\n}\n\n// Topic Creation Config:\n// kafka-topics.sh --create --topic customer-state-compacted \\\n//   --config cleanup.policy=compact \\\n//   --config delete.retention.ms=86400000",
+    "breakdown": [
+      "Uses Kafka log compaction cleanup policy (cleanup.policy=compact).",
+      "Updates entity state by publishing with the entity ID as partition key.",
+      "Deletes entity permanently by sending a null payload (Tombstone message).",
+      "Allows consumers to reconstruct full state by replaying from beginning without bloat."
+    ],
+    "expectedOutput": "Sends upsert record. Emits null value Tombstone; Kafka cleaner purges old offsets after retention."
+  },
+  {
+    "id": "ms-ex-19",
+    "title": "Event-Sourced Bank Account Aggregate with Snapshots",
+    "category": "Event-Driven Systems",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A complete Event Sourcing aggregate implementation in TypeScript with state hydration, domain event replay, and periodic in-memory snapshots.",
+    "conceptsCovered": [
+      "Event Sourcing",
+      "Aggregate Root",
+      "Hydration",
+      "Snapshots",
+      "Immutable Log"
+    ],
+    "code": "interface DomainEvent {\n  type: string;\n  payload: any;\n  version: number;\n}\n\nexport class BankAccountAggregate {\n  private id: string;\n  private balance = 0;\n  private version = 0;\n  private uncommittedEvents: DomainEvent[] = [];\n\n  constructor(id: string) {\n    this.id = id;\n  }\n\n  // Command 1: Deposit\n  deposit(amount: number) {\n    if (amount <= 0) throw new Error(\"Deposit must be positive\");\n    this.apply({\n      type: \"MoneyDeposited\",\n      payload: { amount },\n      version: this.version + 1\n    });\n  }\n\n  // Command 2: Withdraw\n  withdraw(amount: number) {\n    if (amount > this.balance) throw new Error(\"Insufficient funds\");\n    this.apply({\n      type: \"MoneyWithdrawn\",\n      payload: { amount },\n      version: this.version + 1\n    });\n  }\n\n  // State Mutator: Pure state transformation based on events\n  private mutate(event: DomainEvent) {\n    switch (event.type) {\n      case \"MoneyDeposited\":\n        this.balance += event.payload.amount;\n        break;\n      case \"MoneyWithdrawn\":\n        this.balance -= event.payload.amount;\n        break;\n    }\n    this.version = event.version;\n  }\n\n  private apply(event: DomainEvent) {\n    this.mutate(event);\n    this.uncommittedEvents.push(event);\n  }\n\n  // Hydrate state from historical events or snapshot\n  static loadFromHistory(id: string, events: DomainEvent[], snapshot?: { balance: number; version: number }): BankAccountAggregate {\n    const account = new BankAccountAggregate(id);\n    if (snapshot) {\n      account.balance = snapshot.balance;\n      account.version = snapshot.version;\n    }\n    for (const event of events) {\n      if (event.version > account.version) {\n        account.mutate(event);\n      }\n    }\n    return account;\n  }\n\n  getSnapshot() {\n    return { id: this.id, balance: this.balance, version: this.version };\n  }\n}",
+    "breakdown": [
+      "Eliminates current-state updates in favor of appending immutable events.",
+      "Enforces business invariants in command methods (deposit, withdraw) before applying events.",
+      "Reconstructs aggregate state by folding historical events over time.",
+      "Supports snapshots to prevent replaying millions of historical events on hydration."
+    ],
+    "expectedOutput": "Rebuilds aggregate state from history: Deposit $100, Withdraw $30 -> Balance: $70 at version 2."
+  },
+  {
+    "id": "ms-ex-20",
+    "title": "Event-Carried State Transfer (ECST) Payload Architecture",
+    "category": "Event-Driven Systems",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implementing Event-Carried State Transfer (ECST) where event payloads contain complete snapshot context, eliminating synchronous downstream back-queries.",
+    "conceptsCovered": [
+      "ECST",
+      "Decoupling",
+      "Payload Design",
+      "Event Notification vs ECST",
+      "Autonomous Consumers"
+    ],
+    "code": "// EVENT NOTIFICATION PATTERN (Anti-Pattern for High Scale):\n// { \"type\": \"OrderPlaced\", \"orderId\": \"123\" }\n// Problem: 15 downstream consumers all immediately hammer Order Service via HTTP:\n// \"GET /orders/123\" -> Tail latency spike & cascading failure!\n\n// CORRECT: EVENT-CARRIED STATE TRANSFER (ECST):\n// Contains all state snapshots required by consumers to execute autonomously\nexport interface OrderPlacedECSTEvent {\n  specversion: \"1.0\";\n  id: string;\n  type: \"com.enterprise.order.placed.v1\";\n  time: string;\n  data: {\n    orderId: string;\n    customer: {\n      id: string;\n      email: string;\n      billingTier: \"STANDARD\" | \"VIP\";\n    };\n    shippingAddress: {\n      street: string;\n      city: string;\n      postalCode: string;\n      country: string;\n    };\n    lineItems: Array<{\n      sku: string;\n      quantity: number;\n      unitPriceCents: number;\n    }>;\n    financials: {\n      subtotalCents: number;\n      taxCents: number;\n      totalCents: number;\n      currency: string;\n    };\n  };\n}\n\n// Shipping Microservice Consumer consuming ECST event:\nexport async function handleShippingOnOrderPlaced(event: OrderPlacedECSTEvent, db: any) {\n  // ZERO HTTP CALLS BACK TO ORDER SERVICE REQUIRED!\n  const { orderId, customer, shippingAddress, lineItems } = event.data;\n\n  console.log(`[Shipping] Autonomous processing for Order ${orderId}. Recipient: ${customer.email}`);\n  await db.createShippingLabel({\n    orderId,\n    recipientEmail: customer.email,\n    destination: shippingAddress,\n    itemsToPack: lineItems\n  });\n}",
+    "breakdown": [
+      "Contrasts thin event notification against rich Event-Carried State Transfer.",
+      "Embeds complete customer, shipping, line items, and financial snapshot data in payload.",
+      "Enables downstream consumers to fulfill business actions without making synchronous back-queries.",
+      "Maximizes temporal decoupling and resilience against upstream service outages."
+    ],
+    "expectedOutput": "Shipping consumer processes order autonomously with zero synchronous HTTP calls back to Order Service."
+  },
+  {
+    "id": "ms-ex-21",
+    "title": "Orchestrated Saga State Machine with Compensations",
+    "category": "Transactions & Consistency",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A complete in-code Saga Orchestrator executing a multi-step distributed transaction (Reserve Credit, Reserve Stock, Charge Payment) with backward compensating rollback.",
+    "conceptsCovered": [
+      "Saga Orchestrator",
+      "Compensating Transactions",
+      "Forward Recovery",
+      "Backward Recovery",
+      "Distributed Consistency"
+    ],
+    "code": "interface SagaStep<TContext> {\n  name: string;\n  execute: (ctx: TContext) => Promise<void>;\n  compensate: (ctx: TContext) => Promise<void>;\n}\n\nexport class OrderCheckoutSagaOrchestrator {\n  private steps: SagaStep<any>[] = [];\n\n  addStep(step: SagaStep<any>) {\n    this.steps.push(step);\n    return this;\n  }\n\n  async execute(context: any) {\n    const executedSteps: SagaStep<any>[] = [];\n\n    for (const step of this.steps) {\n      try {\n        console.log(`[Saga] Executing forward step: ${step.name}`);\n        await step.execute(context);\n        executedSteps.push(step);\n      } catch (err: any) {\n        console.error(`[Saga] Step '${step.name}' failed: ${err.message}. Initiating rollback...`);\n        await this.rollback(executedSteps, context);\n        throw new Error(`Saga failed at step '${step.name}'. Rollback executed. Reason: ${err.message}`);\n      }\n    }\n\n    console.log(\"[Saga] All steps completed successfully!\");\n    return context;\n  }\n\n  private async rollback(executedSteps: SagaStep<any>[], context: any) {\n    // Execute compensations in reverse order\n    for (const step of executedSteps.reverse()) {\n      try {\n        console.warn(`[Saga Rollback] Compensating step: ${step.name}`);\n        await step.compensate(context);\n      } catch (compErr: any) {\n        // Compensations must never fail silently; if they fail, alert on-call\n        console.error(`CRITICAL: Compensation for '${step.name}' failed: ${compErr.message}`);\n      }\n    }\n  }\n}\n\n// Defining the Saga Steps:\nconst orchestrator = new OrderCheckoutSagaOrchestrator()\n  .addStep({\n    name: \"ReserveCustomerCredit\",\n    execute: async (ctx) => { ctx.creditReserved = true; console.log(\"Credit reserved\"); },\n    compensate: async (ctx) => { ctx.creditReserved = false; console.log(\"Credit refunded\"); }\n  })\n  .addStep({\n    name: \"ReserveWarehouseInventory\",\n    execute: async (ctx) => { ctx.inventoryReserved = true; console.log(\"Inventory reserved\"); },\n    compensate: async (ctx) => { ctx.inventoryReserved = false; console.log(\"Inventory released\"); }\n  })\n  .addStep({\n    name: \"ProcessPaymentGatewayCharge\",\n    execute: async () => { throw new Error(\"Payment Gateway: Card Declined (500)\"); },\n    compensate: async () => { /* No-op since execution failed */ }\n  });\n\n// Execute Saga:\norchestrator.execute({ orderId: \"ord-881\", amount: 150 })\n  .catch(err => console.log(\"Orchestrator Result:\", err.message));",
+    "breakdown": [
+      "Registers forward execution and reverse compensation handlers per step.",
+      "Tracks completed steps to ensure only executed steps are compensated on failure.",
+      "Executes compensations in strict LIFO (reverse) order.",
+      "Logs critical escalation alarms if any compensation step encounters an error."
+    ],
+    "expectedOutput": "Step 1 and 2 succeed; Step 3 fails. Orchestrator compensator releases inventory, then refunds credit."
+  },
+  {
+    "id": "ms-ex-22",
+    "title": "Temporal Durable Execution Workflow for Checkout",
+    "category": "Transactions & Consistency",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A Temporal.io TypeScript workflow definition implementing durable execution, automatic activity retries, and compensation logic across service failures.",
+    "conceptsCovered": [
+      "Temporal.io",
+      "Durable Execution",
+      "Workflow",
+      "Activity",
+      "Fault Tolerant State Machine"
+    ],
+    "code": "import { proxyActivities, defineSignal, setHandler } from \"@temporalio/workflow\";\n\n// Define Activity Interfaces\ninterface OrderActivities {\n  reserveInventory(orderId: string, sku: string, qty: number): Promise<string>;\n  releaseInventory(reservationId: string): Promise<void>;\n  chargeCreditCard(orderId: string, amountCents: number): Promise<string>;\n  refundPayment(chargeId: string): Promise<void>;\n  dispatchShipping(orderId: string): Promise<string>;\n}\n\n// Proxy activities with retry policies\nconst { reserveInventory, releaseInventory, chargeCreditCard, refundPayment, dispatchShipping } =\n  proxyActivities<OrderActivities>({\n    startToCloseTimeout: \"30 seconds\",\n    retry: {\n      initialInterval: \"1 second\",\n      maximumInterval: \"10 seconds\",\n      backoffCoefficient: 2,\n      maximumAttempts: 5\n    }\n  });\n\n// Durable Workflow Function\nexport async function orderFulfillmentWorkflow(order: { id: string; sku: string; qty: number; amountCents: number }): Promise<string> {\n  let reservationId: string | null = null;\n  let chargeId: string | null = null;\n\n  try {\n    // 1. Reserve Inventory (Durable: Survives server crashes)\n    reservationId = await reserveInventory(order.id, order.sku, order.qty);\n\n    // 2. Charge Payment\n    chargeId = await chargeCreditCard(order.id, order.amountCents);\n\n    // 3. Dispatch Shipping\n    const trackingCode = await dispatchShipping(order.id);\n    return trackingCode;\n  } catch (err) {\n    // Compensations executed on workflow failure\n    if (chargeId) {\n      await refundPayment(chargeId);\n    }\n    if (reservationId) {\n      await releaseInventory(reservationId);\n    }\n    throw err;\n  }\n}",
+    "breakdown": [
+      "Provides durable execution where workflow state survives process crashes and server restarts.",
+      "Defines fine-grained activity retry policies with exponential backoff.",
+      "Guarantees that compensation activities execute even if machines lose power during execution.",
+      "Eliminates manual state persistence and timer management."
+    ],
+    "expectedOutput": "Temporal executes workflow to completion. Automatically rolls back compensations if payment fails."
+  },
+  {
+    "id": "ms-ex-23",
+    "title": "Choreographed Saga with Kafka Event Reactions",
+    "category": "Transactions & Consistency",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A decentralized Choreographed Saga where Inventory and Payment microservices react to Kafka events, publishing success or compensation events.",
+    "conceptsCovered": [
+      "Choreography",
+      "Event Pinball",
+      "Autonomous Reaction",
+      "Kafka Saga",
+      "Compensating Events"
+    ],
+    "code": "// 1. Inventory Service Event Handler (Choreographed)\nexport async function onOrderCreated(event: { orderId: string; sku: string; qty: number }, kafka: any) {\n  const stockAvailable = await checkStock(event.sku, event.qty);\n\n  if (stockAvailable) {\n    await reserveStock(event.orderId, event.sku, event.qty);\n    // Emit success event for Payment service to consume\n    await kafka.send({\n      topic: \"inventory.events\",\n      messages: [{ key: event.orderId, value: JSON.stringify({ type: \"InventoryReserved\", orderId: event.orderId }) }]\n    });\n  } else {\n    // Emit failure event to trigger compensation in upstream services\n    await kafka.send({\n      topic: \"inventory.events\",\n      messages: [{ key: event.orderId, value: JSON.stringify({ type: \"InventoryReservationFailed\", orderId: event.orderId }) }]\n    });\n  }\n}\n\n// 2. Payment Service reacts to InventoryReserved event:\nexport async function onInventoryReserved(event: { orderId: string; amount: number }, kafka: any) {\n  try {\n    await chargeUser(event.orderId, event.amount);\n    await kafka.send({\n      topic: \"payment.events\",\n      messages: [{ key: event.orderId, value: JSON.stringify({ type: \"PaymentSucceeded\", orderId: event.orderId }) }]\n    });\n  } catch (paymentErr) {\n    // Emit PaymentFailed -> triggers Inventory to release stock!\n    await kafka.send({\n      topic: \"payment.events\",\n      messages: [{ key: event.orderId, value: JSON.stringify({ type: \"PaymentFailed\", orderId: event.orderId }) }]\n    });\n  }\n}\n\n// 3. Inventory Service listens to PaymentFailed to COMPENSATE:\nexport async function onPaymentFailed(event: { orderId: string }) {\n  console.warn(`[Compensation] Payment failed for ${event.orderId}. Releasing reserved stock.`);\n  await releaseStock(event.orderId);\n}",
+    "breakdown": [
+      "Implements decentralized choreography with zero centralized coordinator dependency.",
+      "Each microservice listens to upstream domain events and emits its own downstream outcomes.",
+      "Compensations are triggered via explicit negative events (PaymentFailed).",
+      "Best suited for simple 2-3 step workflows without deep branching logic."
+    ],
+    "expectedOutput": "Payment fails; PaymentFailed event is consumed by Inventory Service to release stock."
+  },
+  {
+    "id": "ms-ex-24",
+    "title": "Semantic Locking & Optimistic Concurrency Control (OCC)",
+    "category": "Transactions & Consistency",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Applying Semantic Locks (PENDING status flags) and Optimistic Concurrency Control using database version numbers to prevent dirty reads during in-flight Sagas.",
+    "conceptsCovered": [
+      "Semantic Lock",
+      "OCC",
+      "Dirty Reads",
+      "Isolation in Sagas",
+      "Version Numbers"
+    ],
+    "code": "import { Pool } from \"pg\";\n\nconst pool = new Pool({ connectionString: process.env.DATABASE_URL });\n\nexport class AccountServiceWithOCC {\n  // 1. Debit Account with Semantic Lock: status = 'PENDING_SETTLEMENT'\n  async initiateTransfer(accountId: string, amount: number, transferId: string) {\n    const client = await pool.connect();\n    try {\n      await client.query(\"BEGIN\");\n\n      // Check balance and version\n      const res = await client.query(\n        \"SELECT balance, version, status FROM accounts WHERE id = $1 FOR UPDATE\",\n        [accountId]\n      );\n      const account = res.rows[0];\n\n      if (account.status === \"LOCKED_TRANSFER\") {\n        throw new Error(\"Account has an in-flight transfer pending (Semantic Lock active)\");\n      }\n      if (account.balance < amount) {\n        throw new Error(\"Insufficient funds\");\n      }\n\n      // Apply Semantic Lock\n      await client.query(\n        `UPDATE accounts\n         SET balance = balance - $1,\n             version = version + 1,\n             status = 'LOCKED_TRANSFER',\n             active_transfer_id = $2\n         WHERE id = $3 AND version = $4`,\n        [amount, transferId, accountId, account.version]\n      );\n\n      await client.query(\"COMMIT\");\n    } finally {\n      client.release();\n    }\n  }\n\n  // 2. Finalize Transfer: Release Semantic Lock\n  async confirmTransfer(accountId: string, transferId: string) {\n    await pool.query(\n      `UPDATE accounts\n       SET status = 'ACTIVE',\n           active_transfer_id = NULL,\n           version = version + 1\n       WHERE id = $1 AND active_transfer_id = $2`,\n      [accountId, transferId]\n    );\n  }\n\n  // 3. Compensate / Cancel: Refund balance and Release Lock\n  async cancelTransfer(accountId: string, transferId: string, amount: number) {\n    await pool.query(\n      `UPDATE accounts\n       SET balance = balance + $1,\n           status = 'ACTIVE',\n           active_transfer_id = NULL,\n           version = version + 1\n       WHERE id = $2 AND active_transfer_id = $3`,\n      [amount, accountId, transferId]\n    );\n  }\n}",
+    "breakdown": [
+      "Applies semantic locking (LOCKED_TRANSFER) to protect against concurrent overlapping mutations.",
+      "Uses Optimistic Concurrency Control with version numbers to reject conflicting writes.",
+      "Prevents concurrent sagas from double-spending or observing inconsistent intermediate states.",
+      "Provides clear confirmation and cancellation reconciliation methods."
+    ],
+    "expectedOutput": "Account balance debited with semantic lock applied; subsequent operations blocked until confirmed."
+  },
+  {
+    "id": "ms-ex-25",
+    "title": "CQRS Elasticsearch Read Projection Synchronizer",
+    "category": "Transactions & Consistency",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A CQRS projection engine consuming domain events from Kafka and updating denormalized, ready-to-search read models in Elasticsearch.",
+    "conceptsCovered": [
+      "CQRS",
+      "Elasticsearch",
+      "Read Model",
+      "Denormalization",
+      "Eventual Consistency"
+    ],
+    "code": "import { Client } from \"@elastic/elasticsearch\";\n\nconst esClient = new Client({ node: process.env.ELASTICSEARCH_URL || \"http://localhost:9200\" });\n\nexport class ProductSearchProjectionBuilder {\n  // Handle ProductCreated Event: Insert denormalized search document\n  async onProductCreated(event: { id: string; name: string; category: string; price: number }) {\n    await esClient.index({\n      index: \"product_catalog_read_model\",\n      id: event.id,\n      document: {\n        id: event.id,\n        name: event.name,\n        category: event.category,\n        price: event.price,\n        averageRating: 0,\n        reviewCount: 0,\n        inStock: true,\n        indexedAt: new Date().toISOString()\n      }\n    });\n    console.log(`Indexed new read-model document for product ${event.id}`);\n  }\n\n  // Handle ReviewAdded Event: Update denormalized averageRating without joining review tables!\n  async onReviewAdded(event: { productId: string; newRating: number }) {\n    // Elasticsearch painless script for atomic in-place projection update\n    await esClient.update({\n      index: \"product_catalog_read_model\",\n      id: event.productId,\n      script: {\n        source: `\n          double totalScore = ctx._source.averageRating * ctx._source.reviewCount + params.newRating;\n          ctx._source.reviewCount += 1;\n          ctx._source.averageRating = totalScore / ctx._source.reviewCount;\n        `,\n        params: { newRating: event.newRating }\n      }\n    });\n    console.log(`Updated average rating projection for product ${event.productId}`);\n  }\n\n  // Fast Query API: Executed by read-heavy clients (Zero SQL Joins!)\n  async searchCatalog(query: string, category?: string) {\n    const res = await esClient.search({\n      index: \"product_catalog_read_model\",\n      query: {\n        bool: {\n          must: [{ match: { name: query } }],\n          filter: category ? [{ term: { category } }] : []\n        }\n      }\n    });\n    return res.hits.hits.map(h => h._source);\n  }\n}",
+    "breakdown": [
+      "Separates relational write commands from denormalized Elasticsearch read models.",
+      "Updates calculated aggregates (averageRating) asynchronously using atomic Painless scripts.",
+      "Allows read queries to execute in sub-millisecond speeds without cross-service joins.",
+      "Isolates the search cluster from write database outages."
+    ],
+    "expectedOutput": "Events stream from Kafka to Elasticsearch. Searches return denormalized documents in < 10ms."
+  },
+  {
+    "id": "ms-ex-26",
+    "title": "Read-Your-Own-Writes Consistency Token Pattern",
+    "category": "Transactions & Consistency",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Mitigating eventual consistency lag in CQRS by issuing an OCC Version Token on mutation and waiting on read replicas until the version is caught up.",
+    "conceptsCovered": [
+      "Read-Your-Own-Writes",
+      "Causal Consistency",
+      "Version Tokens",
+      "Replication Lag",
+      "CQRS UX"
+    ],
+    "code": "// Express Middleware enforcing Read-Your-Own-Writes consistency\nimport { Request, Response, NextFunction } from \"express\";\n\nexport function readYourOwnWritesGuard(readModelStore: any) {\n  return async (req: Request, res: Response, next: NextFunction) => {\n    // Client forwards the version token returned by previous POST/PUT mutation\n    const expectedVersionHeader = req.headers[\"x-min-version\"];\n    if (!expectedVersionHeader) return next();\n\n    const expectedVersion = parseInt(expectedVersionHeader as string, 10);\n    const entityId = req.params.id;\n    const maxWaitMs = 1000;\n    const pollIntervalMs = 50;\n    const startTime = Date.now();\n\n    // Poll read replica until projection catches up to the required version\n    while (Date.now() - startTime < maxWaitMs) {\n      const currentDoc = await readModelStore.findById(entityId);\n      if (currentDoc && currentDoc.version >= expectedVersion) {\n        // Read model is caught up! Safe to serve read\n        return next();\n      }\n      await new Promise(r => setTimeout(r, pollIntervalMs));\n    }\n\n    // Fallback: If read model did not catch up within 1s, instruct client to fetch from master\n    res.setHeader(\"X-Degraded-Read\", \"STALE_PROJECTION\");\n    next();\n  };\n}\n\n// Client Workflow:\n// 1. POST /orders -> Returns { id: \"o1\", version: 4 }\n// 2. GET /orders/o1 with Header \"X-Min-Version: 4\"\n// 3. Middleware guarantees client never sees version 3 (eliminating UX flicker!).",
+    "breakdown": [
+      "Addresses user frustration when refreshed UI displays stale data due to async projection lag.",
+      "Client passes expected entity version via X-Min-Version header.",
+      "Server waits briefly (up to 1000ms) for the projection pipeline to catch up.",
+      "Guarantees causal consistency for the active writer while keeping other readers asynchronous."
+    ],
+    "expectedOutput": "Guarantees client observes their own latest mutation, eliminating eventual consistency UI flicker."
+  },
+  {
+    "id": "ms-ex-27",
+    "title": "Conflict-Free Replicated Data Types (PN-Counter CRDT)",
+    "category": "Transactions & Consistency",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A state-based Positive-Negative Counter (PN-Counter) CRDT in TypeScript that converges deterministically across distributed replicas without centralized locks.",
+    "conceptsCovered": [
+      "CRDT",
+      "PN-Counter",
+      "Eventual Convergence",
+      "Active-Active Multi-Region",
+      "Commutative Operations"
+    ],
+    "code": "export class PNCounterCRDT {\n  // Vector of positive increments per replica node ID\n  private P: Record<string, number> = {};\n  // Vector of negative decrements per replica node ID\n  private N: Record<string, number> = {};\n\n  constructor(private nodeId: string) {\n    this.P[nodeId] = 0;\n    this.N[nodeId] = 0;\n  }\n\n  // Increment local counter\n  increment(amount = 1) {\n    this.P[this.nodeId] = (this.P[this.nodeId] || 0) + amount;\n  }\n\n  // Decrement local counter\n  decrement(amount = 1) {\n    this.N[this.nodeId] = (this.N[this.nodeId] || 0) + amount;\n  }\n\n  // Read current converged value: sum(P) - sum(N)\n  value(): number {\n    const totalP = Object.values(this.P).reduce((acc, v) => acc + v, 0);\n    const totalN = Object.values(this.N).reduce((acc, v) => acc + v, 0);\n    return totalP - totalN;\n  }\n\n  // Commutative, Associative, Idempotent Merge function:\n  // Merges remote state vector into local state vector\n  merge(remoteState: { P: Record<string, number>; N: Record<string, number> }) {\n    for (const [node, val] of Object.entries(remoteState.P)) {\n      this.P[node] = Math.max(this.P[node] || 0, val);\n    }\n    for (const [node, val] of Object.entries(remoteState.N)) {\n      this.N[node] = Math.max(this.N[node] || 0, val);\n    }\n  }\n\n  getState() {\n    return { P: { ...this.P }, N: { ...this.N } };\n  }\n}\n\n// Verification across multi-region replicas:\nconst usNode = new PNCounterCRDT(\"region-us\");\nconst euNode = new PNCounterCRDT(\"region-eu\");\n\nusNode.increment(10);\neuNode.increment(5);\neuNode.decrement(2);\n\n// Replicate state asynchronously across ocean:\nusNode.merge(euNode.getState());\neuNode.merge(usNode.getState());\n\nconsole.log(\"Converged US Value:\", usNode.value()); // 13\nconsole.log(\"Converged EU Value:\", euNode.value()); // 13",
+    "breakdown": [
+      "Tracks increments and decrements in distinct vector maps per node ID.",
+      "Uses Math.max() to merge states deterministically without lock coordination.",
+      "Satisfies commutativity, associativity, and idempotence.",
+      "Enables active-active multi-region counters (e.g. inventory likes, upvotes) without split-brain conflicts."
+    ],
+    "expectedOutput": "Both US and EU replicas independently converge to exact value: 13."
+  },
+  {
+    "id": "ms-ex-28",
+    "title": "Idempotent Webhook Receiver with HMAC Verification",
+    "category": "Transactions & Consistency",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A hardened webhook receiver for Stripe/partner webhooks featuring HMAC SHA-256 signature verification, timing attack defense, and database deduplication.",
+    "conceptsCovered": [
+      "Webhooks",
+      "HMAC",
+      "timingSafeEqual",
+      "Idempotency",
+      "Replay Attack Defense"
+    ],
+    "code": "import crypto from \"node:crypto\";\nimport { Request, Response } from \"express\";\n\nexport async function webhookHandler(req: Request, res: Response, db: any) {\n  const signatureHeader = req.headers[\"stripe-signature\"] as string;\n  const webhookSecret = process.env.WEBHOOK_SECRET!;\n  const rawBody = req.body; // Must be raw unparsed buffer for cryptographic signature match!\n\n  // 1. Verify HMAC Signature\n  try {\n    const parts = signatureHeader.split(\",\");\n    const t = parts.find(p => p.startsWith(\"t=\"))?.split(\"=\")[1];\n    const sig = parts.find(p => p.startsWith(\"v1=\"))?.split(\"=\")[1];\n\n    if (!t || !sig) return res.status(400).send(\"Malformed signature header\");\n\n    // Replay attack prevention: tolerance 300s\n    const eventTime = parseInt(t, 10);\n    if (Math.abs(Date.now() / 1000 - eventTime) > 300) {\n      return res.status(400).send(\"Signature timestamp expired\");\n    }\n\n    const expectedSig = crypto\n      .createHmac(\"sha256\", webhookSecret)\n      .update(`${t}.${rawBody.toString()}`)\n      .digest(\"hex\");\n\n    const sigBuf = Buffer.from(sig, \"hex\");\n    const expBuf = Buffer.from(expectedSig, \"hex\");\n    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {\n      return res.status(401).send(\"Invalid cryptographic signature\");\n    }\n  } catch (err) {\n    return res.status(400).send(\"Signature verification failed\");\n  }\n\n  // 2. Parse payload after signature verification\n  const event = JSON.parse(rawBody.toString());\n\n  // 3. Database Idempotency Guard (ON CONFLICT DO NOTHING)\n  const query = `\n    INSERT INTO processed_webhooks (webhook_id, event_type, processed_at)\n    VALUES ($1, $2, NOW())\n    ON CONFLICT (webhook_id) DO NOTHING\n    RETURNING id;\n  `;\n  const result = await db.query(query, [event.id, event.type]);\n\n  if (result.rows.length === 0) {\n    console.log(`Webhook ${event.id} already processed. Acknowledging duplicate.`);\n    return res.status(200).json({ received: true, status: \"DUPLICATE_IGNORED\" });\n  }\n\n  // 4. Process event\n  await handleBusinessEvent(event);\n  return res.status(200).json({ received: true });\n}",
+    "breakdown": [
+      "Verifies raw body payload against HMAC-SHA256 signature.",
+      "Protects against timing attacks using crypto.timingSafeEqual.",
+      "Validates timestamp within a 5-minute sliding window to prevent replay attacks.",
+      "Ensures database idempotency via ON CONFLICT (webhook_id) DO NOTHING."
+    ],
+    "expectedOutput": "Validates HMAC signature; safely deduplicates repeated webhook deliveries."
+  },
+  {
+    "id": "ms-ex-29",
+    "title": "Distributed Mutex with Redis Redlock Algorithm",
+    "category": "Transactions & Consistency",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A multi-node distributed locking manager implementing the Redlock algorithm across independent Redis master nodes with clock drift protection.",
+    "conceptsCovered": [
+      "Distributed Lock",
+      "Redlock",
+      "Redis",
+      "Mutual Exclusion",
+      "Split-Brain"
+    ],
+    "code": "import Redis from \"ioredis\";\nimport crypto from \"node:crypto\";\n\nexport class RedlockDistributedMutex {\n  private redisNodes: Redis[];\n\n  constructor(nodeUrls: string[]) {\n    this.redisNodes = nodeUrls.map(url => new Redis(url));\n  }\n\n  async acquireLock(resource: string, ttlMs = 5000): Promise<{ lockId: string } | null> {\n    const lockId = crypto.randomUUID();\n    const startTime = Date.now();\n    let acquiredNodes = 0;\n\n    // Quorum rule: must acquire lock on majority of nodes: (N / 2) + 1\n    const quorum = Math.floor(this.redisNodes.length / 2) + 1;\n\n    for (const node of this.redisNodes) {\n      try {\n        const res = await node.set(`lock:${resource}`, lockId, \"PX\", ttlMs, \"NX\");\n        if (res === \"OK\") acquiredNodes++;\n      } catch {\n        // Node unreachable\n      }\n    }\n\n    const elapsed = Date.now() - startTime;\n    const validityTime = ttlMs - elapsed;\n\n    if (acquiredNodes >= quorum && validityTime > 0) {\n      console.log(`[Redlock] Acquired lock on '${resource}' across ${acquiredNodes}/${this.redisNodes.length} nodes`);\n      return { lockId };\n    }\n\n    // Failed to achieve quorum: release partial locks across all nodes immediately!\n    await this.releaseLock(resource, lockId);\n    return null;\n  }\n\n  async releaseLock(resource: string, lockId: string) {\n    const luaUnlock = `\n      if redis.call(\"get\", KEYS[1]) == ARGV[1] then\n        return redis.call(\"del\", KEYS[1])\n      else\n        return 0\n      end\n    `;\n\n    for (const node of this.redisNodes) {\n      try {\n        await node.eval(luaUnlock, 1, `lock:${resource}`, lockId);\n      } catch {\n        // Node error\n      }\n    }\n  }\n}",
+    "breakdown": [
+      "Queries multiple independent Redis master nodes concurrently.",
+      "Enforces majority quorum voting ((N/2) + 1) to prevent split-brain locks.",
+      "Calculates elapsed time to account for clock drift and processing latency.",
+      "Releases locks using an atomic Lua script that verifies lockId ownership before deletion."
+    ],
+    "expectedOutput": "Acquires distributed lock across majority of nodes. Releases atomically via Lua."
+  },
+  {
+    "id": "ms-ex-30",
+    "title": "2PC Disaster Simulation & Non-Blocking Saga Transition",
+    "category": "Transactions & Consistency",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A diagnostic simulation demonstrating how traditional Two-Phase Commit (2PC) blocks all database connections when a coordinator node crashes, and refactors it to a resilient Saga.",
+    "conceptsCovered": [
+      "Two-Phase Commit (2PC)",
+      "Blocking Protocol",
+      "Coordinator Crash",
+      "Saga Transition",
+      "CAP Availability"
+    ],
+    "code": "// Simulation demonstrating why 2PC destroys Availability under network partitions:\nexport class TwoPhaseCommitSimulation {\n  async run2PC() {\n    console.log(\"=== 2PC PHASE 1: PREPARE ===\");\n    console.log(\"Coordinator: 'PREPARE' sent to DB-1 (Orders) and DB-2 (Payments)\");\n    console.log(\"DB-1: Locks Row #42, writes to WAL, returns VOTE_COMMIT\");\n    console.log(\"DB-2: Locks Account #88, writes to WAL, returns VOTE_COMMIT\");\n\n    console.log(\"=== COORDINATOR CRASHES HERE ===\");\n    // In 2PC, because both DBs voted yes, they MUST HOLD ROW LOCKS INDEFINITELY\n    // until the coordinator reboots and issues COMMIT or ABORT!\n    console.error(\"DISASTER: DB-1 and DB-2 hold persistent locks. All concurrent queries on Row #42 stall!\");\n  }\n}\n\n// REFACTORED TO SAGA PATTERN (Non-blocking):\nexport class SagaNonBlockingApproach {\n  async runSaga(orderId: string, accountId: string, amount: number) {\n    console.log(\"=== SAGA APPROACH ===\");\n    // Step 1: Local commit with Semantic Flag (NO REMOTE LOCKS HELD!)\n    console.log(\"DB-1: INSERT order status='PENDING'. Local commit completes in 2ms. Locks released!\");\n\n    // Step 2: Asynchronous RPC to Payment Service\n    try {\n      const paymentSuccess = await callPaymentGateway(accountId, amount);\n      if (paymentSuccess) {\n        console.log(\"DB-1: UPDATE order status='CONFIRMED'. Commit completes!\");\n      }\n    } catch {\n      // Step 3: Backward Compensation\n      console.warn(\"Payment failed: Executing compensation -> UPDATE order status='CANCELLED'.\");\n    }\n  }\n}",
+    "breakdown": [
+      "Demonstrates the fundamental flaw of 2PC: blocking coordinator failure modes.",
+      "Shows how holding distributed locks across network boundaries destroys database throughput.",
+      "Demonstrates the non-blocking nature of Sagas: each step commits locally immediately.",
+      "Maintains system availability and partition tolerance (AP in CAP Theorem)."
+    ],
+    "expectedOutput": "2PC blocks threads indefinitely on crash; Saga completes local commit and compensates safely."
+  },
+  {
+    "id": "ms-ex-31",
+    "title": "Fastify Edge API Gateway with JWT & Dynamic Proxying",
+    "category": "Ingress & Edge",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A high-performance edge API Gateway built with Fastify, verifying Bearer JWTs at ingress, stripping perimeter tokens, and forwarding requests to upstream microservices.",
+    "conceptsCovered": [
+      "API Gateway",
+      "Fastify",
+      "JWT Verification",
+      "Reverse Proxy",
+      "Header Sanitization"
+    ],
+    "code": "import Fastify from \"fastify\";\nimport proxy from \"@fastify/http-proxy\";\nimport jwt from \"@fastify/jwt\";\n\nconst gateway = Fastify({ logger: true });\n\n// 1. Register JWT verification plugin\nawait gateway.register(jwt, {\n  secret: process.env.JWT_PUBLIC_KEY || \"super-secret-public-key\"\n});\n\n// 2. Global Pre-Handler Security Hook\ngateway.addHook(\"preHandler\", async (req, reply) => {\n  // Allow public authentication and health routes\n  if (req.url.startsWith(\"/public\") || req.url === \"/healthz\") return;\n\n  try {\n    await req.jwtVerify();\n    // Sanitization: Strip client-supplied user headers to prevent spoofing\n    delete req.headers[\"x-user-id\"];\n    delete req.headers[\"x-user-role\"];\n\n    // Inject cryptographically verified identity claims for internal services\n    req.headers[\"x-authenticated-user-id\"] = (req.user as any).sub;\n    req.headers[\"x-authenticated-user-role\"] = (req.user as any).role;\n  } catch (err) {\n    return reply.status(401).send({ error: \"Unauthorized Gateway Ingress\" });\n  }\n});\n\n// 3. Upstream Routing: Orders Microservice\nawait gateway.register(proxy, {\n  upstream: \"http://order-service.internal:8080\",\n  prefix: \"/v1/orders\",\n  rewritePrefix: \"/orders\",\n  http2: false\n});\n\n// 4. Upstream Routing: Catalog Microservice\nawait gateway.register(proxy, {\n  upstream: \"http://catalog-service.internal:8081\",\n  prefix: \"/v1/catalog\",\n  rewritePrefix: \"/catalog\"\n});\n\nawait gateway.listen({ port: 8080, host: \"0.0.0.0\" });",
+    "breakdown": [
+      "Verifies public JWTs at the network perimeter before traffic enters internal VPC.",
+      "Strips untrusted user headers to defend against header injection spoofing.",
+      "Injects verified internal identity headers for downstream microservices.",
+      "Routes traffic dynamically to dedicated microservices with path prefix rewriting."
+    ],
+    "expectedOutput": "Gateway listens on port 8080, verifies JWTs, and proxies requests to upstream services."
+  },
+  {
+    "id": "ms-ex-32",
+    "title": "Mobile vs Web Backend for Frontend (BFF) Aggregator",
+    "category": "Ingress & Edge",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A dedicated Mobile BFF aggregator that batches downstream calls, strips heavyweight payload metadata, and minifies responses for low-bandwidth mobile devices.",
+    "conceptsCovered": [
+      "BFF",
+      "Payload Pruning",
+      "Mobile Optimization",
+      "Scatter-Gather",
+      "Over-Fetching"
+    ],
+    "code": "export class MobileBffAggregator {\n  constructor(\n    private readonly userClient: any,\n    private readonly orderClient: any,\n    private readonly catalogClient: any\n  ) {}\n\n  async getMobileHomeScreen(userId: string) {\n    // Concurrent downstream calls with strict timeout\n    const [userRes, ordersRes, recsRes] = await Promise.allSettled([\n      this.userClient.getUser(userId),\n      this.orderClient.getRecentOrders(userId, { limit: 2 }),\n      this.catalogClient.getRecommendations(userId, { limit: 4 })\n    ]);\n\n    // PRUNING & MINIFICATION FOR MOBILE:\n    // Strip unnecessary fields (e.g. detailed billing addresses, raw HTML descriptions)\n    return {\n      user: userRes.status === \"fulfilled\"\n        ? { id: userRes.value.id, name: userRes.value.displayName, avatar: userRes.value.thumbUrl }\n        : { id: userId, name: \"Valued Customer\", avatar: null },\n      recentOrders: ordersRes.status === \"fulfilled\"\n        ? ordersRes.value.map((o: any) => ({\n            id: o.id,\n            totalFormatted: `$${(o.totalCents / 100).toFixed(2)}`,\n            status: o.status\n          }))\n        : [],\n      featuredItems: recsRes.status === \"fulfilled\"\n        ? recsRes.value.map((i: any) => ({\n            id: i.id,\n            title: i.shortTitle,\n            img: i.mobileThumbnailUrl,\n            price: i.price\n          }))\n        : []\n    };\n  }\n}",
+    "breakdown": [
+      "Executes parallel downstream queries with Promise.allSettled.",
+      "Minifies response payload size by 75% compared to raw microservice outputs.",
+      "Formats display fields on the backend to reduce mobile CPU rendering load.",
+      "Provides graceful degradation if non-essential widgets fail."
+    ],
+    "expectedOutput": "Returns compact, minified JSON tailored specifically for mobile UI render."
+  },
+  {
+    "id": "ms-ex-33",
+    "title": "Redis Atomic Sliding Window Rate Limiter",
+    "category": "Ingress & Edge",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A sliding window rate limiter implemented in an atomic Redis Lua script, preventing boundary burst attacks across gateway nodes.",
+    "conceptsCovered": [
+      "Rate Limiting",
+      "Sliding Window",
+      "Redis Lua",
+      "Boundary Bursting",
+      "HTTP 429"
+    ],
+    "code": "import Redis from \"ioredis\";\nimport { Request, Response, NextFunction } from \"express\";\n\nconst redis = new Redis(process.env.REDIS_URL || \"redis://localhost:6379\");\n\nconst slidingWindowLua = `\n  local key = KEYS[1]\n  local now = tonumber(ARGV[1])\n  local window = tonumber(ARGV[2])\n  local limit = tonumber(ARGV[3])\n  local clearBefore = now - window\n\n  -- Remove all timestamps older than window\n  redis.call('ZREMRANGEBYSCORE', key, 0, clearBefore)\n  local count = redis.call('ZCARD', key)\n\n  if count < limit then\n    redis.call('ZADD', key, now, now .. '-' .. redis.call('INCR', key .. ':seq'))\n    redis.call('PEXPIRE', key, window)\n    return { 1, limit - count - 1 }\n  else\n    return { 0, 0 }\n  end\n`;\n\nexport function slidingWindowRateLimiter(maxRequests = 100, windowMs = 60000) {\n  return async (req: Request, res: Response, next: NextFunction) => {\n    const identifier = req.headers[\"x-client-id\"] || req.ip;\n    const key = `ratelimit:${identifier}`;\n    const now = Date.now();\n\n    const [allowed, remaining] = (await redis.eval(\n      slidingWindowLua,\n      1,\n      key,\n      now,\n      windowMs,\n      maxRequests\n    )) as [number, number];\n\n    res.setHeader(\"X-RateLimit-Limit\", maxRequests);\n    res.setHeader(\"X-RateLimit-Remaining\", remaining);\n\n    if (allowed === 1) {\n      return next();\n    }\n\n    res.setHeader(\"Retry-After\", Math.ceil(windowMs / 1000));\n    return res.status(429).json({\n      error: \"Too Many Requests\",\n      message: \"Rate limit exceeded. Please back off.\"\n    });\n  };\n}",
+    "breakdown": [
+      "Executes atomic evaluation inside a single Redis Lua script.",
+      "Cleans up expired timestamps on every call using ZREMRANGEBYSCORE.",
+      "Guarantees that traffic bursts across window boundaries are strictly bounded.",
+      "Emits standard X-RateLimit headers and Retry-After on rejection."
+    ],
+    "expectedOutput": "Allows up to 100 requests per minute smoothly; returns HTTP 429 when quota is reached."
+  },
+  {
+    "id": "ms-ex-34",
+    "title": "Edge Caching with Surrogate-Keys Invalidation",
+    "category": "Ingress & Edge",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A gateway edge caching middleware that indexes responses by Surrogate-Key cache tags, enabling instant multi-key invalidation when domain updates occur.",
+    "conceptsCovered": [
+      "Edge Caching",
+      "Surrogate-Keys",
+      "Cache Invalidation",
+      "Stale-While-Revalidate",
+      "Tag Purging"
+    ],
+    "code": "import Redis from \"ioredis\";\n\nexport class EdgeCacheManager {\n  private redis: Redis;\n\n  constructor(redisUrl: string) {\n    this.redis = new Redis(redisUrl);\n  }\n\n  // Store response with Surrogate Tags (e.g. \"product:123 category:electronics\")\n  async cacheResponse(url: string, body: string, ttlSeconds: number, surrogateKeys: string[]) {\n    const cacheKey = `edge_cache:${url}`;\n    await this.redis.setex(cacheKey, ttlSeconds, body);\n\n    // Map each tag to this cache key in Redis sets\n    for (const tag of surrogateKeys) {\n      await this.redis.sadd(`surrogate_tag:${tag}`, cacheKey);\n      await this.redis.expire(`surrogate_tag:${tag}`, ttlSeconds);\n    }\n  }\n\n  // Purge all cached URLs tagged with a specific domain entity\n  async invalidateByTag(tag: string): Promise<number> {\n    const tagKey = `surrogate_tag:${tag}`;\n    const matchingUrls = await this.redis.smembers(tagKey);\n\n    if (matchingUrls.length > 0) {\n      // Invalidate all matched cache entries in a single atomic delete\n      await this.redis.del(...matchingUrls);\n      await this.redis.del(tagKey);\n      console.log(`[EdgeCache] Purged ${matchingUrls.length} cached pages tagged with '${tag}'`);\n    }\n\n    return matchingUrls.length;\n  }\n}\n\n// Verification:\nconst cache = new EdgeCacheManager(\"redis://localhost:6379\");\nawait cache.cacheResponse(\"/products/123\", JSON.stringify({ name: \"Camera\" }), 3600, [\"product:123\", \"brand:sony\"]);\nawait cache.cacheResponse(\"/catalog?brand=sony\", JSON.stringify([{ id: 123 }]), 3600, [\"brand:sony\"]);\n\n// Product is updated -> Purge all Sony pages instantly!\nconst purged = await cache.invalidateByTag(\"brand:sony\");\nconsole.log(\"Total entries invalidated:\", purged); // 2",
+    "breakdown": [
+      "Tags cached responses with multiple domain identifiers (Surrogate-Keys).",
+      "Maintains tag-to-URL mappings inside Redis sets.",
+      "Invalidates dozens of cached endpoints simultaneously when a single entity changes.",
+      "Avoids clearing entire cache stores unnecessarily during catalog updates."
+    ],
+    "expectedOutput": "Invalidates all cached endpoints linked to 'brand:sony' tag instantly."
+  },
+  {
+    "id": "ms-ex-35",
+    "title": "Envoy Proxy Ingress & Cluster Configuration",
+    "category": "Service Discovery & Mesh",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A production Envoy proxy YAML configuration defining an HTTP listener, route matches, timeout budgets, and an upstream cluster with health checking.",
+    "conceptsCovered": [
+      "Envoy Proxy",
+      "Listeners",
+      "Route Matching",
+      "Clusters",
+      "Health Checking"
+    ],
+    "code": "/*\nstatic_resources:\n  listeners:\n    - name: ingress_listener\n      address:\n        socket_address:\n          address: 0.0.0.0\n          port_value: 10000\n      filter_chains:\n        - filters:\n            - name: envoy.filters.network.http_connection_manager\n              typed_config:\n                \"@type\": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager\n                stat_prefix: ingress_http\n                route_config:\n                  name: local_route\n                  virtual_hosts:\n                    - name: backend_services\n                      domains: [\"*\"]\n                      routes:\n                        - match:\n                            prefix: \"/orders\"\n                          route:\n                            cluster: order_service_cluster\n                            timeout: 1.5s\n                            retry_policy:\n                              retry_on: \"5xx,connect-failure\"\n                              num_retries: 2\n                http_filters:\n                  - name: envoy.filters.http.router\n                    typed_config:\n                      \"@type\": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router\n  clusters:\n    - name: order_service_cluster\n      connect_timeout: 0.25s\n      type: STRICT_DNS\n      lb_policy: ROUND_ROBIN\n      load_assignment:\n        cluster_name: order_service_cluster\n        endpoints:\n          - lb_endpoints:\n              - endpoint:\n                  address:\n                    socket_address:\n                      address: order-service.prod.svc.cluster.local\n                      port_value: 8080\n      health_checks:\n        - timeout: 1s\n          interval: 5s\n          unhealthy_threshold: 3\n          healthy_threshold: 2\n          http_health_check:\n            path: \"/healthz\"\n*/",
+    "breakdown": [
+      "Configures L7 HTTP listener on port 10000.",
+      "Enforces a strict 1.5s timeout budget on /orders route with automatic 5xx retries.",
+      "Defines an upstream cluster utilizing Round-Robin load balancing over strict DNS.",
+      "Configures active HTTP health checking to evict degraded backend nodes."
+    ],
+    "expectedOutput": "Envoy listens on port 10000, routes /orders with 1.5s timeout, and balances over healthy pods."
+  },
+  {
+    "id": "ms-ex-36",
+    "title": "Istio Strict mTLS & AuthorizationPolicy Configuration",
+    "category": "Security & Identity",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Kubernetes Istio manifests enforcing Strict mutual TLS (mTLS) across a namespace and restricting endpoint access to specific cryptographic SPIFFE identities.",
+    "conceptsCovered": [
+      "Istio",
+      "mTLS",
+      "PeerAuthentication",
+      "AuthorizationPolicy",
+      "SPIFFE"
+    ],
+    "code": "/*\n# 1. Enforce STRICT mTLS across the entire payments namespace\napiVersion: security.istio.io/v1beta1\nkind: PeerAuthentication\nmetadata:\n  name: default\n  namespace: payments\nspec:\n  mtls:\n    mode: STRICT # Rejects all plaintext HTTP connections immediately!\n---\n# 2. Enforce Least-Privilege Authorization: Only Order Service can call Payment /v1/charges\napiVersion: security.istio.io/v1beta1\nkind: AuthorizationPolicy\nmetadata:\n  name: payment-access-control\n  namespace: payments\nspec:\n  selector:\n    matchLabels:\n      app: payment-service\n  action: ALLOW\n  rules:\n    - from:\n        - source:\n            principals:\n              # Cryptographic identity extracted from X.509 client certificate SAN\n              - \"cluster.local/ns/production/sa/order-service-account\"\n      to:\n        - operation:\n            methods: [\"POST\"]\n            paths: [\"/v1/charges\"]\n*/",
+    "breakdown": [
+      "Sets PeerAuthentication mode to STRICT to enforce 100% encrypted mTLS.",
+      "Rejects any pod connecting without a valid in-cluster mesh certificate.",
+      "Enforces fine-grained path and HTTP method authorization using SPIFFE principal names.",
+      "Prevents lateral movement if another pod in the cluster is compromised."
+    ],
+    "expectedOutput": "All traffic into payments is encrypted with mTLS; only order-service-account can POST /v1/charges."
+  },
+  {
+    "id": "ms-ex-37",
+    "title": "Istio Canary Traffic Shifting with VirtualService",
+    "category": "Deployment & Delivery",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Configuring an Istio VirtualService and DestinationRule to route 90% of production traffic to stable v1 and 10% to canary v2.",
+    "conceptsCovered": [
+      "Canary Deployment",
+      "VirtualService",
+      "DestinationRule",
+      "Traffic Shifting",
+      "Subsets"
+    ],
+    "code": "/*\napiVersion: networking.istio.io/v1alpha3\nkind: DestinationRule\nmetadata:\n  name: catalog-service-subsets\n  namespace: production\nspec:\n  host: catalog-service\n  subsets:\n    - name: v1\n      labels:\n        version: \"1.0.0\"\n    - name: v2\n      labels:\n        version: \"2.0.0\"\n---\napiVersion: networking.istio.io/v1alpha3\nkind: VirtualService\nmetadata:\n  name: catalog-service-canary\n  namespace: production\nspec:\n  hosts:\n    - catalog-service\n  http:\n    - route:\n        - destination:\n            host: catalog-service\n            subset: v1\n          weight: 90\n        - destination:\n            host: catalog-service\n            subset: v2\n          weight: 10\n*/",
+    "breakdown": [
+      "Defines deployment subsets in DestinationRule mapping to version labels.",
+      "Configures weighted routing inside VirtualService (90% v1, 10% v2).",
+      "Executes traffic shifting at L7 sidecar proxies with zero downtime.",
+      "Enables validation of the new release against real customer traffic before full rollout."
+    ],
+    "expectedOutput": "Istio routes 9 out of 10 requests to v1 and 1 out of 10 to canary v2."
+  },
+  {
+    "id": "ms-ex-38",
+    "title": "Istio Fault Injection for Chaos Testing",
+    "category": "Reliability Engineering",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Injecting artificial 5-second fixed latency and HTTP 503 aborts via Istio VirtualService to test calling service resilience.",
+    "conceptsCovered": [
+      "Fault Injection",
+      "Chaos Engineering",
+      "Latency Injection",
+      "HTTP Abort",
+      "VirtualService"
+    ],
+    "code": "/*\napiVersion: networking.istio.io/v1alpha3\nkind: VirtualService\nmetadata:\n  name: payment-fault-injection\n  namespace: production\nspec:\n  hosts:\n    - payment-service\n  http:\n    - match:\n        - headers:\n            x-chaos-drill:\n              exact: \"true\"\n      fault:\n        delay:\n          percentage:\n            value: 50.0\n          fixedDelay: 4s # Inject 4s delay into 50% of requests\n        abort:\n          percentage:\n            value: 20.0\n          httpStatus: 503 # Abort 20% of requests with 503 Service Unavailable\n      route:\n        - destination:\n            host: payment-service\n    # Normal production traffic passes untouched without fault injection\n    - route:\n        - destination:\n            host: payment-service\n*/",
+    "breakdown": [
+      "Scropes chaos experiment strictly to requests bearing x-chaos-drill: true header.",
+      "Injects 4-second latency to 50% of matching requests to test timeout behavior.",
+      "Aborts 20% of matching requests with HTTP 503 to verify circuit breaker tripping.",
+      "Protects regular production traffic while allowing synthetic verification drills."
+    ],
+    "expectedOutput": "Requests with x-chaos-drill header experience injected delays and 503 errors."
+  },
+  {
+    "id": "ms-ex-39",
+    "title": "Circuit Breaker State Machine with Half-Open Probe",
+    "category": "Reliability Engineering",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A standalone, production-ready Circuit Breaker class implementing CLOSED, OPEN, and HALF-OPEN states with statistical error thresholds and automated recovery probes.",
+    "conceptsCovered": [
+      "Circuit Breaker",
+      "Fail Fast",
+      "Half-Open",
+      "State Machine",
+      "Graceful Degradation"
+    ],
+    "code": "type CircuitState = \"CLOSED\" | \"OPEN\" | \"HALF_OPEN\";\n\nexport class ProductionCircuitBreaker {\n  private state: CircuitState = \"CLOSED\";\n  private failureCount = 0;\n  private successCount = 0;\n  private nextAttempt = Date.now();\n\n  constructor(\n    private readonly failureThreshold = 5,\n    private readonly resetTimeoutMs = 10000,\n    private readonly halfOpenSuccessTarget = 2\n  ) {}\n\n  async fire<T>(action: () => Promise<T>, fallback: () => T): Promise<T> {\n    if (this.state === \"OPEN\") {\n      if (Date.now() > this.nextAttempt) {\n        this.state = \"HALF_OPEN\";\n        console.log(\"[CircuitBreaker] Transitioned to HALF_OPEN. Permitting canary probe.\");\n      } else {\n        // Fast-fail: Bypass remote network call completely!\n        return fallback();\n      }\n    }\n\n    try {\n      const result = await action();\n      this.onSuccess();\n      return result;\n    } catch (err) {\n      this.onFailure();\n      return fallback();\n    }\n  }\n\n  private onSuccess() {\n    this.failureCount = 0;\n    if (this.state === \"HALF_OPEN\") {\n      this.successCount++;\n      if (this.successCount >= this.halfOpenSuccessTarget) {\n        this.state = \"CLOSED\";\n        this.successCount = 0;\n        console.log(\"[CircuitBreaker] Service healthy. Reset to CLOSED.\");\n      }\n    }\n  }\n\n  private onFailure() {\n    this.failureCount++;\n    if (this.failureCount >= this.failureThreshold || this.state === \"HALF_OPEN\") {\n      this.state = \"OPEN\";\n      this.nextAttempt = Date.now() + this.resetTimeoutMs;\n      this.successCount = 0;\n      console.warn(`[CircuitBreaker] Tripped to OPEN! Failing fast for ${this.resetTimeoutMs}ms`);\n    }\n  }\n\n  getState(): CircuitState {\n    return this.state;\n  }\n}",
+    "breakdown": [
+      "Implements finite state machine with CLOSED, OPEN, and HALF_OPEN states.",
+      "Trips to OPEN after 5 consecutive failures, fast-failing subsequent requests via fallback.",
+      "Probes downstream service in HALF_OPEN state after resetTimeoutMs expires.",
+      "Protects failing services from being overwhelmed during recovery."
+    ],
+    "expectedOutput": "Trips to OPEN on 5 failures; fails fast for 10s, probes in HALF_OPEN, and resets to CLOSED."
+  },
+  {
+    "id": "ms-ex-40",
+    "title": "Semaphore Bulkhead Concurrency Limiter",
+    "category": "Reliability Engineering",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A Semaphore Bulkhead isolating shared Node.js resources by limiting concurrent in-flight requests per microservice dependency.",
+    "conceptsCovered": [
+      "Bulkhead",
+      "Semaphore",
+      "Resource Isolation",
+      "Thread Starvation",
+      "Capacity Management"
+    ],
+    "code": "export class SemaphoreBulkhead {\n  private activeCount = 0;\n\n  constructor(\n    private readonly name: string,\n    private readonly maxConcurrency: number\n  ) {}\n\n  async execute<T>(fn: () => Promise<T>, fallback: () => T): Promise<T> {\n    if (this.activeCount >= this.maxConcurrency) {\n      console.warn(`[Bulkhead:${this.name}] Concurrency limit (${this.maxConcurrency}) reached. Shedding request.`);\n      return fallback();\n    }\n\n    this.activeCount++;\n    try {\n      return await fn();\n    } finally {\n      this.activeCount--;\n    }\n  }\n\n  getActiveCount(): number {\n    return this.activeCount;\n  }\n}\n\n// Applying isolated bulkheads to different dependencies:\nconst recommendationBulkhead = new SemaphoreBulkhead(\"Recommendations\", 5);\nconst paymentBulkhead = new SemaphoreBulkhead(\"Payments\", 50);\n\n// If recommendations lock up, max 5 slots are blocked.\n// 50 slots remain guaranteed for processing critical payments!",
+    "breakdown": [
+      "Restricts concurrent in-flight executions to maxConcurrency per dependency.",
+      "Rejects excess requests immediately without queuing, invoking fallback logic.",
+      "Decrements active counter in finally block to guarantee zero resource leaks.",
+      "Prevents a single degraded dependency from exhausting the application's connection pool."
+    ],
+    "expectedOutput": "Rejects requests exceeding concurrency ceiling of 5, preserving capacity for payments."
+  },
+  {
+    "id": "ms-ex-41",
+    "title": "Distributed Deadline Propagation Middleware",
+    "category": "Reliability Engineering",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Express middleware that extracts remaining timeout budgets from request headers, binds an AbortSignal, and propagates adjusted deadlines downstream.",
+    "conceptsCovered": [
+      "Deadline Propagation",
+      "Timeout Budget",
+      "AbortSignal",
+      "Fail Fast",
+      "Distributed Latency"
+    ],
+    "code": "import { Request, Response, NextFunction } from \"express\";\n\nexport function distributedDeadlineMiddleware(req: Request, res: Response, next: NextFunction) {\n  const incomingDeadlineHeader = req.headers[\"x-request-deadline\"]; // Unix timestamp ms\n  const defaultTimeoutMs = 2000;\n\n  const deadlineTimestamp = incomingDeadlineHeader\n    ? parseInt(incomingDeadlineHeader as string, 10)\n    : Date.now() + defaultTimeoutMs;\n\n  const remainingBudgetMs = deadlineTimestamp - Date.now();\n\n  // 1. Fail-Fast if upstream has already timed out\n  if (remainingBudgetMs <= 0) {\n    return res.status(504).json({\n      error: \"Gateway Timeout\",\n      message: \"Upstream deadline has already expired before processing could start\"\n    });\n  }\n\n  // 2. Create AbortController bound to remaining time budget\n  const controller = new AbortController();\n  const timer = setTimeout(() => {\n    controller.abort();\n  }, remainingBudgetMs);\n\n  (req as any).deadline = {\n    timestamp: deadlineTimestamp,\n    remainingMs: () => Math.max(0, deadlineTimestamp - Date.now()),\n    signal: controller.signal\n  };\n\n  res.on(\"finish\", () => clearTimeout(timer));\n  next();\n}\n\n// Downstream HTTP call forwarding adjusted deadline:\nexport async function callDownstreamService(url: string, req: any) {\n  return fetch(url, {\n    signal: req.deadline.signal,\n    headers: {\n      \"x-request-deadline\": req.deadline.timestamp.toString()\n    }\n  });\n}",
+    "breakdown": [
+      "Checks remaining time budget from x-request-deadline header.",
+      "Immediately aborts execution with HTTP 504 if upstream has already timed out.",
+      "Binds an AbortSignal to the remaining budget, auto-cancelling long queries on timeout.",
+      "Propagates the immutable deadline timestamp downstream to prevent wasted computation."
+    ],
+    "expectedOutput": "Aborts with 504 if deadline has expired; propagates remaining budget to downstream calls."
+  },
+  {
+    "id": "ms-ex-42",
+    "title": "Exponential Backoff with Full Jitter Engine",
+    "category": "Reliability Engineering",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A production retry function implementing the AWS Full Jitter exponential backoff algorithm to decorrelate retry spikes.",
+    "conceptsCovered": [
+      "Exponential Backoff",
+      "Full Jitter",
+      "Retry Storm",
+      "Idempotency",
+      "Thundering Herd"
+    ],
+    "code": "export async function executeWithFullJitter<T>(\n  operation: () => Promise<T>,\n  maxAttempts = 4,\n  baseDelayMs = 100,\n  maxDelayMs = 3000\n): Promise<T> {\n  let attempt = 0;\n\n  while (attempt < maxAttempts) {\n    try {\n      return await operation();\n    } catch (err: any) {\n      attempt++;\n      if (attempt >= maxAttempts) {\n        throw new Error(`Operation failed after ${maxAttempts} attempts. Final error: ${err.message}`);\n      }\n\n      // Calculate exponential ceiling: min(maxDelay, base * 2 ^ attempt)\n      const exponentialCeiling = Math.min(\n        maxDelayMs,\n        baseDelayMs * Math.pow(2, attempt)\n      );\n\n      // AWS Full Jitter: randomize uniformly between 0 and exponentialCeiling\n      const sleepMs = Math.floor(Math.random() * exponentialCeiling);\n\n      console.warn(`[Retry] Attempt ${attempt} failed. Sleeping for ${sleepMs}ms (ceiling: ${exponentialCeiling}ms)`);\n      await new Promise(resolve => setTimeout(resolve, sleepMs));\n    }\n  }\n\n  throw new Error(\"Retry loop exhausted\");\n}",
+    "breakdown": [
+      "Calculates exponential ceiling: baseDelay * 2^attempt, capped at maxDelayMs.",
+      "Draws a uniform random sleep duration between 0 and the ceiling (Full Jitter).",
+      "Decorrelates thousands of concurrent failing clients to eliminate synchronized retry waves.",
+      "Throws clean aggregated exception if all retry attempts are exhausted."
+    ],
+    "expectedOutput": "Retries with randomized delay intervals, successfully recovering or surfacing clean error."
+  },
+  {
+    "id": "ms-ex-43",
+    "title": "OpenTelemetry Manual Span & Metric Recording",
+    "category": "Observability & Telemetry",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Instrumenting business logic with the OpenTelemetry API, creating nested child spans, attaching custom attributes, and recording execution exceptions.",
+    "conceptsCovered": [
+      "OpenTelemetry",
+      "Spans",
+      "Child Spans",
+      "Attributes",
+      "Exception Recording"
+    ],
+    "code": "import { trace, SpanStatusCode } from \"@opentelemetry/api\";\n\nconst tracer = trace.getTracer(\"order-processing-service\", \"2.1.0\");\n\nexport async function processOrderWorkflow(orderId: string, items: string[]) {\n  // 1. Root Parent Span\n  return tracer.startActiveSpan(\"processOrderWorkflow\", async (parentSpan) => {\n    parentSpan.setAttribute(\"order.id\", orderId);\n    parentSpan.setAttribute(\"order.item_count\", items.length);\n\n    try {\n      // 2. Child Span: Database Inventory Reservation\n      await tracer.startActiveSpan(\"db.reserveInventory\", async (dbSpan) => {\n        dbSpan.setAttribute(\"db.system\", \"postgresql\");\n        dbSpan.setAttribute(\"db.statement\", \"UPDATE inventory SET stock = stock - 1 WHERE id = $1\");\n\n        // Simulate DB work\n        await new Promise(r => setTimeout(r, 45));\n        dbSpan.end();\n      });\n\n      // 3. Child Span: Payment Processing\n      await tracer.startActiveSpan(\"rpc.chargePayment\", async (rpcSpan) => {\n        rpcSpan.setAttribute(\"rpc.system\", \"grpc\");\n        rpcSpan.setAttribute(\"rpc.service\", \"PaymentService\");\n\n        // Simulate payment RPC\n        await new Promise(r => setTimeout(r, 80));\n        rpcSpan.end();\n      });\n\n      parentSpan.setStatus({ code: SpanStatusCode.OK });\n      return { success: true, orderId };\n    } catch (err: any) {\n      parentSpan.recordException(err);\n      parentSpan.setStatus({\n        code: SpanStatusCode.ERROR,\n        message: err.message\n      });\n      throw err;\n    } finally {\n      parentSpan.end(); // Always end span\n    }\n  });\n}",
+    "breakdown": [
+      "Initializes OpenTelemetry tracer for the microservice.",
+      "Creates nested active child spans to accurately trace discrete database and RPC sub-operations.",
+      "Attaches semantic attributes conforming to OpenTelemetry conventions.",
+      "Records exceptions directly on spans and sets error status before ending."
+    ],
+    "expectedOutput": "Generates hierarchical span DAG exported to Jaeger/Zipkin/OTel Collector."
+  },
+  {
+    "id": "ms-ex-44",
+    "title": "W3C TraceContext Wire Protocol Propagator",
+    "category": "Observability & Telemetry",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A standalone W3C TraceContext parser and serializer implementing traceparent regex extraction, span ID replacement, and HTTP header propagation.",
+    "conceptsCovered": [
+      "W3C TraceContext",
+      "traceparent",
+      "Context Propagation",
+      "Wire Protocol",
+      "Regex Parsing"
+    ],
+    "code": "export interface W3CTraceContext {\n  version: string;\n  traceId: string;\n  parentId: string;\n  traceFlags: string;\n}\n\nexport class W3CTraceContextPropagator {\n  private static readonly TRACEPARENT_REGEX =\n    /^([0-9a-f]{2})-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/;\n\n  // Extract context from incoming HTTP headers\n  static extract(headers: Record<string, string | string[] | undefined>): W3CTraceContext | null {\n    const rawHeader = headers[\"traceparent\"];\n    if (!rawHeader || typeof rawHeader !== \"string\") return null;\n\n    const match = rawHeader.trim().toLowerCase().match(this.TRACEPARENT_REGEX);\n    if (!match) return null;\n\n    // Filter out invalid trace IDs (all zeros)\n    if (match[2] === \"00000000000000000000000000000000\") return null;\n    if (match[3] === \"0000000000000000\") return null;\n\n    return {\n      version: match[1],\n      traceId: match[2],\n      parentId: match[3],\n      traceFlags: match[4]\n    };\n  }\n\n  // Inject context for downstream HTTP request with new currentSpanId\n  static inject(ctx: W3CTraceContext, currentSpanId: string): Record<string, string> {\n    const formattedHeader = `${ctx.version}-${ctx.traceId}-${currentSpanId}-${ctx.traceFlags}`;\n    return {\n      traceparent: formattedHeader\n    };\n  }\n}\n\n// Verification:\nconst incomingHeader = \"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\";\nconst parsed = W3CTraceContextPropagator.extract({ traceparent: incomingHeader })!;\nconsole.log(\"Parsed Trace ID:\", parsed.traceId);\nconsole.log(\"Parsed Parent ID:\", parsed.parentId);\n\nconst outboundHeaders = W3CTraceContextPropagator.inject(parsed, \"5a7b8c9d0e1f2a3b\");\nconsole.log(\"Outbound traceparent:\", outboundHeaders.traceparent);",
+    "breakdown": [
+      "Validates 4-part W3C traceparent string format using strict hex regex.",
+      "Rejects malformed and all-zero invalid IDs as mandated by W3C specification.",
+      "Extracts immutable trace ID and updates parent ID to current span ID for downstream calls.",
+      "Provides vendor-agnostic tracing interoperability across polyglot microservices."
+    ],
+    "expectedOutput": "Extracts trace ID 4bf92f35...; formats outbound header with new span ID 5a7b8c9d0e1f2a3b."
+  },
+  {
+    "id": "ms-ex-45",
+    "title": "OpenTelemetry Collector Tail-Based Sampling Pipeline",
+    "category": "Observability & Telemetry",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A production otel-collector.yaml configuration buffering spans in memory and executing tail-based sampling rules to retain 100% of errors and slow requests.",
+    "conceptsCovered": [
+      "OTel Collector",
+      "Tail-Based Sampling",
+      "Pipelines",
+      "Sampling Policies",
+      "Cost Optimization"
+    ],
+    "code": "/*\nreceivers:\n  otlp:\n    protocols:\n      grpc:\n        endpoint: 0.0.0.0:4317\n      http:\n        endpoint: 0.0.0.0:4318\n\nprocessors:\n  batch:\n    send_batch_size: 1000\n    timeout: 5s\n\n  # Tail-Based Sampling Processor: buffers traces and evaluates completion rules\n  tail_sampling:\n    decision_wait: 10s # Wait 10 seconds for all child spans to arrive\n    num_traces: 50000\n    expected_new_traces_per_sec: 3000\n    policies:\n      # Rule 1: Always retain traces with errors (100% capture of bugs)\n      - name: drop-errors-policy\n        type: status_code\n        status_code:\n          status_codes: [ERROR]\n\n      # Rule 2: Always retain traces that exceed 1200ms (p99 latency analysis)\n      - name: latency-outlier-policy\n        type: latency\n        latency:\n          threshold_ms: 1200\n\n      # Rule 3: Sample remaining healthy 200 OK traffic at 2%\n      - name: probabilistic-healthy-sample\n        type: probabilistic\n        probabilistic:\n          sampling_percentage: 2.0\n\nexporters:\n  otlp/tempo:\n    endpoint: tempo-distributor.monitoring:4317\n    tls:\n      insecure: true\n\nservice:\n  pipelines:\n    traces:\n      receivers: [otlp]\n      processors: [tail_sampling, batch]\n      exporters: [otlp/tempo]\n*/",
+    "breakdown": [
+      "Receives OTLP telemetry over gRPC (4317) and HTTP (4318).",
+      "Buffers traces for 10 seconds to inspect the completed trace DAG.",
+      "Guarantees that 100% of error traces and p99 latency spikes are retained.",
+      "Reduces overall telemetry storage costs by 95% via probabilistic sampling of healthy traffic."
+    ],
+    "expectedOutput": "Collector buffers spans; exports 100% of errors/slow spans and 2% of healthy spans to Tempo."
+  },
+  {
+    "id": "ms-ex-46",
+    "title": "Structured JSON Logging with Pino & AsyncLocalStorage",
+    "category": "Observability & Telemetry",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A production logging architecture utilizing Pino and Node.js AsyncLocalStorage to automatically inject correlation IDs and user metadata into every log statement.",
+    "conceptsCovered": [
+      "Pino",
+      "AsyncLocalStorage",
+      "Correlation ID",
+      "Structured Logging",
+      "Context Propagation"
+    ],
+    "code": "import pino from \"pino\";\nimport { AsyncLocalStorage } from \"node:async_hooks\";\nimport { Request, Response, NextFunction } from \"express\";\nimport crypto from \"node:crypto\";\n\nexport interface LogContext {\n  correlationId: string;\n  userId?: string;\n  tenantId?: string;\n}\n\nexport const logStorage = new AsyncLocalStorage<LogContext>();\n\nexport const logger = pino({\n  level: process.env.LOG_LEVEL || \"info\",\n  formatters: {\n    level: (label) => ({ level: label.toUpperCase() })\n  },\n  timestamp: pino.stdTimeFunctions.isoTime,\n  mixin() {\n    // Automatically merges active correlation context into every log event\n    const store = logStorage.getStore();\n    return {\n      correlation_id: store?.correlationId || \"SYSTEM\",\n      user_id: store?.userId,\n      tenant_id: store?.tenantId\n    };\n  }\n});\n\nexport function correlationMiddleware(req: Request, res: Response, next: NextFunction) {\n  const correlationId = (req.headers[\"x-correlation-id\"] as string) || crypto.randomUUID();\n  res.setHeader(\"X-Correlation-Id\", correlationId);\n\n  const context: LogContext = {\n    correlationId,\n    userId: req.headers[\"x-user-id\"] as string,\n    tenantId: req.headers[\"x-tenant-id\"] as string\n  };\n\n  logStorage.run(context, () => {\n    logger.info({ route: req.path, method: req.method }, \"Incoming HTTP Request\");\n    next();\n  });\n}",
+    "breakdown": [
+      "Uses Node.js AsyncLocalStorage to store correlation context across asynchronous task boundaries.",
+      "Configures Pino mixin to automatically append correlation_id without manual parameter passing.",
+      "Formats logs as single-line structured JSON printed directly to stdout.",
+      "Enables instant log filtering in Grafana Loki or Elasticsearch across microservices."
+    ],
+    "expectedOutput": "Emits JSON log with correlation_id, timestamp, level, and route context."
+  },
+  {
+    "id": "ms-ex-47",
+    "title": "Prometheus RED Metrics Instrumentation Middleware",
+    "category": "Observability & Telemetry",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Express middleware instrumenting the RED Method (Rate, Errors, Duration) using prom-client with low-cardinality route labels.",
+    "conceptsCovered": [
+      "RED Method",
+      "Prometheus",
+      "prom-client",
+      "Histogram",
+      "Counter"
+    ],
+    "code": "import client from \"prom-client\";\nimport { Request, Response, NextFunction } from \"express\";\n\n// Initialize default process metrics (CPU, RAM, Event Loop)\nclient.collectDefaultMetrics();\n\n// 1. Rate & Errors Metric: Counter\nexport const httpRequestsTotal = new client.Counter({\n  name: \"http_requests_total\",\n  help: \"Total count of HTTP requests handled\",\n  labelNames: [\"method\", \"route\", \"status_code\"]\n});\n\n// 2. Duration Metric: Histogram with defined latency buckets\nexport const httpRequestDurationSeconds = new client.Histogram({\n  name: \"http_request_duration_seconds\",\n  help: \"Duration of HTTP requests in seconds\",\n  labelNames: [\"method\", \"route\"],\n  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]\n});\n\nexport function prometheusRedMiddleware(req: Request, res: Response, next: NextFunction) {\n  const start = process.hrtime();\n\n  res.on(\"finish\", () => {\n    const diff = process.hrtime(start);\n    const durationSeconds = diff[0] + diff[1] / 1e9;\n    // Normalize parameterized route path to prevent high-cardinality explosions!\n    const route = req.route?.path || req.path;\n\n    httpRequestsTotal.inc({\n      method: req.method,\n      route,\n      status_code: res.statusCode.toString()\n    });\n\n    httpRequestDurationSeconds.observe(\n      { method: req.method, route },\n      durationSeconds\n    );\n  });\n\n  next();\n}\n\n// Scrape Endpoint: GET /metrics\nexport async function metricsEndpoint(req: Request, res: Response) {\n  res.set(\"Content-Type\", client.register.contentType);\n  res.end(await client.register.metrics());\n}",
+    "breakdown": [
+      "Tracks the three RED pillars: Rate and Errors via Counter, Duration via Histogram.",
+      "Normalizes route strings (req.route.path) to prevent URL ID high-cardinality memory leaks.",
+      "Exposes standard Prometheus scrape format on GET /metrics.",
+      "Enables PromQL alerting on 5xx error rate spikes and p99 latency degradation."
+    ],
+    "expectedOutput": "GET /metrics returns Prometheus exposition format with http_requests_total and latency buckets."
+  },
+  {
+    "id": "ms-ex-48",
+    "title": "Stateless JWT Verification with JWKS Remote Caching",
+    "category": "Security & Identity",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Stateless JWT verification using jose library with in-memory JWKS public key caching and automatic key rotation from Identity Provider.",
+    "conceptsCovered": [
+      "JWT",
+      "JWKS",
+      "jose",
+      "Asymmetric Cryptography",
+      "Key Rotation"
+    ],
+    "code": "import * as jose from \"jose\";\n\nexport class StatelessJwtAuthService {\n  private jwks: ReturnType<typeof jose.createRemoteJWKSet>;\n\n  constructor(private idpIssuerUrl: string) {\n    // createRemoteJWKSet caches public keys in memory and auto-refetches on unseen key ID (kid)\n    this.jwks = jose.createRemoteJWKSet(\n      new URL(`${idpIssuerUrl}/.well-known/jwks.json`),\n      {\n        cacheMaxAge: 15 * 60 * 1000, // 15-minute key cache\n        cooldownDuration: 30 * 1000  // Limit refetches to at most once per 30s\n      }\n    );\n  }\n\n  async verifyToken(bearerToken: string) {\n    try {\n      const { payload, protectedHeader } = await jose.jwtVerify(\n        bearerToken,\n        this.jwks,\n        {\n          issuer: this.idpIssuerUrl,\n          audience: \"https://api.enterprise.com\",\n          algorithms: [\"RS256\", \"ES256\"] // Strictly enforce asymmetric cryptographic algorithms!\n        }\n      );\n\n      return {\n        userId: payload.sub as string,\n        email: payload.email as string,\n        roles: (payload.roles as string[]) || [],\n        tenantId: payload.tenant_id as string\n      };\n    } catch (err: any) {\n      throw new Error(`Unauthorized: JWT signature verification failed - ${err.message}`);\n    }\n  }\n}",
+    "breakdown": [
+      "Fetches public keys from IdP's .well-known/jwks.json endpoint.",
+      "Caches keys in memory for 15 minutes, refreshing automatically when new kid headers appear.",
+      "Strictly enforces asymmetric RS256/ES256 algorithms to block algorithm confusion attacks.",
+      "Validates issuer and audience claims in addition to cryptographic signatures."
+    ],
+    "expectedOutput": "Verifies token signature in sub-millisecond time without querying the authentication DB."
+  },
+  {
+    "id": "ms-ex-49",
+    "title": "Open Policy Agent (OPA) Local Rego Policy Evaluator",
+    "category": "Security & Identity",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A policy evaluation guard checking incoming microservice actions against a local Open Policy Agent sidecar running compiled Rego rules.",
+    "conceptsCovered": [
+      "OPA",
+      "Rego",
+      "Policy-as-Code",
+      "ABAC",
+      "Sidecar Authorization"
+    ],
+    "code": "/*\n# Rego Policy File (policy.rego):\npackage microservices.authz\n\ndefault allow = false\n\n# Rule: Workload must be Order Service, action POST /charges, tenant IDs must match\nallow {\n    input.caller.service == \"order-service\"\n    input.action.method == \"POST\"\n    input.action.path == [\"v1\", \"charges\"]\n    input.user.tenant_id == input.resource.tenant_id\n}\n*/\n\n// Node.js Service Authorization Guard\nexport class OpaAuthorizationGuard {\n  constructor(private opaUrl = \"http://127.0.0.1:8181/v1/data/microservices/authz/allow\") {}\n\n  async evaluate(context: {\n    callerService: string;\n    method: string;\n    path: string;\n    userTenantId: string;\n    resourceTenantId: string;\n  }): Promise<boolean> {\n    const payload = {\n      input: {\n        caller: { service: context.callerService },\n        action: {\n          method: context.method,\n          path: context.path.split(\"/\").filter(Boolean)\n        },\n        user: { tenant_id: context.userTenantId },\n        resource: { tenant_id: context.resourceTenantId }\n      }\n    };\n\n    const res = await fetch(this.opaUrl, {\n      method: \"POST\",\n      headers: { \"Content-Type\": \"application/json\" },\n      body: JSON.stringify(payload)\n    });\n\n    if (!res.ok) throw new Error(\"OPA Policy evaluation failed\");\n    const data = await res.json();\n    return data.result === true;\n  }\n}",
+    "breakdown": [
+      "Formats incoming request metadata into standard OPA input JSON structure.",
+      "Calls local OPA sidecar over localhost (sub-millisecond evaluation latency).",
+      "Decouples complex tenant authorization rules from compiled application logic.",
+      "Allows security teams to update Rego rules dynamically without redeploying microservices."
+    ],
+    "expectedOutput": "Returns true if caller matches Rego policy rules; throws 403 Forbidden otherwise."
+  },
+  {
+    "id": "ms-ex-50",
+    "title": "SSRF-Hardened HTTP Client with DNS IP Pinning",
+    "category": "Security & Identity",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A secure HTTP fetch wrapper validating resolved DNS IP addresses against private subnets and cloud metadata endpoints to prevent Server-Side Request Forgery.",
+    "conceptsCovered": [
+      "SSRF Defense",
+      "DNS Resolution",
+      "Private IP Blocking",
+      "Cloud Metadata",
+      "IP Pinning"
+    ],
+    "code": "import dns from \"node:dns/promises\";\nimport ipaddr from \"ipaddr.js\";\n\nexport async function secureSsrfFetch(targetUrl: string, options: RequestInit = {}): Promise<Response> {\n  const url = new URL(targetUrl);\n\n  // 1. Only allow HTTP and HTTPS\n  if (![\"http:\", \"https:\"].includes(url.protocol)) {\n    throw new Error(`Forbidden protocol: ${url.protocol}`);\n  }\n\n  // 2. Resolve DNS hostname to raw IP addresses\n  const resolvedIps = await dns.resolve4(url.hostname);\n  if (resolvedIps.length === 0) throw new Error(\"DNS resolution returned no IPs\");\n\n  for (const ip of resolvedIps) {\n    const parsedIp = ipaddr.parse(ip);\n    const range = parsedIp.range();\n\n    // 3. Block private networks, loopbacks, link-local, and broadcast\n    if ([\"loopback\", \"private\", \"linkLocal\", \"carrierGradeNat\", \"broadcast\"].includes(range)) {\n      throw new Error(`SSRF Blocked: Destination IP ${ip} resides in forbidden range '${range}'`);\n    }\n\n    // Explicit check for AWS/GCP Metadata endpoint\n    if (ip === \"169.254.169.254\") {\n      throw new Error(\"SSRF Blocked: Attempted access to Cloud Metadata service\");\n    }\n  }\n\n  // 4. Safe to execute network call\n  return fetch(targetUrl, options);\n}",
+    "breakdown": [
+      "Validates protocol to prevent file:// or gopher:// URI exploits.",
+      "Resolves DNS before making HTTP call to prevent DNS Rebinding attacks.",
+      "Parses resolved IP addresses and rejects private ranges (10.x, 192.168.x, 127.x).",
+      "Blocks cloud metadata IP 169.254.169.254 to prevent IAM credential theft."
+    ],
+    "expectedOutput": "Rejects calls to localhost and internal subnets with clean SSRF Blocked error."
+  },
+  {
+    "id": "ms-ex-51",
+    "title": "ArgoCD Application Manifest with Automated Drift Healing",
+    "category": "Deployment & Delivery",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A declarative ArgoCD Application manifest establishing Git as the Single Source of Truth, enabling automated drift detection and self-healing.",
+    "conceptsCovered": [
+      "GitOps",
+      "ArgoCD",
+      "Self-Healing",
+      "Declarative Delivery",
+      "Drift Reconciliation"
+    ],
+    "code": "/*\napiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: order-service-prod\n  namespace: argocd\n  finalizers:\n    - resources-finalizer.argocd.argoproj.io\nspec:\n  project: default\n  source:\n    repoURL: \"https://github.com/enterprise/gitops-deployments.git\"\n    targetRevision: main\n    path: overlays/production/order-service\n  destination:\n    server: \"https://kubernetes.default.svc\"\n    namespace: production\n  syncPolicy:\n    automated:\n      prune: true     # Automatically deletes K8s resources removed from Git\n      selfHeal: true  # Automatically reverts manual ad-hoc 'kubectl edit' changes!\n    syncOptions:\n      - CreateNamespace=true\n      - PruneLast=true\n    retry:\n      limit: 5\n      backoff:\n        duration: 5s\n        factor: 2\n        maxDuration: 3m\n*/",
+    "breakdown": [
+      "Binds Kubernetes deployment directly to the Git repository path.",
+      "Enables selfHeal: true to overwrite unauthorized manual kubectl alterations.",
+      "Enables prune: true to clean up decommissioned pods and services automatically.",
+      "Configures sync retries with exponential backoff for transient cluster glitches."
+    ],
+    "expectedOutput": "ArgoCD reconciles cluster to Git state; reverts manual kubectl edits automatically."
+  },
+  {
+    "id": "ms-ex-52",
+    "title": "Expand-and-Contract Zero-Downtime Migration Script",
+    "category": "Deployment & Delivery",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A zero-downtime database migration sequence across 3 releases (Expand -> Backfill & Dual-Write -> Contract) to rename a column without service interruption.",
+    "conceptsCovered": [
+      "Expand-and-Contract",
+      "Zero-Downtime",
+      "Database Migration",
+      "Dual-Write",
+      "Backward Compatibility"
+    ],
+    "code": "// PHASE 1: EXPAND (Release 1.0.0)\n// Add new column as nullable, mirror writes with DB trigger\nexport const phase1Sql = `\n  ALTER TABLE users ADD COLUMN phone_e164 VARCHAR(30);\n\n  -- Temporary Trigger ensuring writes to either column mirror to both\n  CREATE OR REPLACE FUNCTION sync_phone_columns()\n  RETURNS TRIGGER AS $$\n  BEGIN\n    IF NEW.phone_e164 IS NULL AND NEW.phone_number IS NOT NULL THEN\n      NEW.phone_e164 := NEW.phone_number;\n    ELSIF NEW.phone_number IS NULL AND NEW.phone_e164 IS NOT NULL THEN\n      NEW.phone_number := NEW.phone_e164;\n    END IF;\n    RETURN NEW;\n  END;\n  $$ LANGUAGE plpgsql;\n\n  CREATE TRIGGER trg_sync_phone\n  BEFORE INSERT OR UPDATE ON users\n  FOR EACH ROW EXECUTE FUNCTION sync_phone_columns();\n`;\n\n// PHASE 2: ASYNC BACKFILL (Batch worker during low traffic)\nexport const phase2BackfillSql = `\n  UPDATE users\n  SET phone_e164 = phone_number\n  WHERE phone_e164 IS NULL AND phone_number IS NOT NULL;\n`;\n\n// PHASE 3: CONTRACT (Release 1.1.0 - Executed after application reads switch to phone_e164)\nexport const phase3ContractSql = `\n  DROP TRIGGER IF EXISTS trg_sync_phone ON users;\n  DROP FUNCTION IF EXISTS sync_phone_columns;\n  ALTER TABLE users DROP COLUMN phone_number;\n`;",
+    "breakdown": [
+      "Phase 1 adds the new column as nullable and creates a bi-directional synchronization trigger.",
+      "Application code safely deploys and dual-writes without breaking running instances.",
+      "Phase 2 backfills historical rows asynchronously in batches.",
+      "Phase 3 safely drops the trigger and deprecated column after full application migration."
+    ],
+    "expectedOutput": "Renames column across 3 releases with zero downtime and zero broken queries."
+  }
+]

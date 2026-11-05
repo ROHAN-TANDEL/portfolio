@@ -91,9 +91,9 @@ export function TopNav({
             {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
           </button>
 
-          {/* Avatar RT */}
+          {/* Avatar IndieMaster */}
           <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 flex items-center justify-center font-bold text-xs select-none shadow-xs border border-slate-300/60 dark:border-zinc-700">
-            RT
+            BB
           </div>
         </div>
 

@@ -1,0 +1,282 @@
+[
+  {
+    "id": "next-prod-01",
+    "topic": "Multi-Container Data Cache Desynchronization & Stale State Drift in Kubernetes",
+    "category": "Caching & State Consistency",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "After rolling out an e-commerce price update, users report inconsistent product pricing. Refreshing the same page alternates between $49.99 and $99.99 depending on which Kubernetes pod handles the request. Customers complete purchases at outdated discounted prices, causing revenue loss and customer support chaos.",
+    "howItWorksInternally": "By default, Next.js App Router stores its Data Cache (from tagged fetch requests and ISR) on the local filesystem (.next/cache/fetch-cache). When deployed across horizontally scaled Kubernetes pods or container tasks behind an AWS ALB round-robin load balancer, each pod maintains an isolated, independent cache file store. Calling revalidateTag() or revalidatePath() inside a Server Action only clears the local disk cache of the specific pod servicing that HTTP request. The remaining 9 pods continue serving stale cached responses until their TTL expires.",
+    "productionCode": "// cache-handler.mjs - Production Shared Redis Cache Handler\nimport { createClient } from 'redis';\n\nconst redis = createClient({\n  url: process.env.REDIS_URL || 'redis://redis-cluster:6379',\n  socket: {\n    reconnectStrategy: (retries) => Math.min(retries * 50, 1000),\n  },\n});\n\nredis.on('error', (err) => console.error('[CacheHandler] Redis Error:', err));\nawait redis.connect();\n\nexport default class ProductionCacheHandler {\n  constructor(options) {\n    this.options = options;\n  }\n\n  async get(key) {\n    try {\n      const data = await redis.get(`next:cache:${key}`);\n      if (!data) return null;\n      return JSON.parse(data);\n    } catch (err) {\n      console.warn('[CacheHandler] Failed to read from Redis, bypassing cache:', err);\n      return null;\n    }\n  }\n\n  async set(key, data, ctx) {\n    try {\n      const ttl = typeof ctx?.revalidate === 'number' && ctx.revalidate > 0 ? ctx.revalidate : 86400;\n      await redis.setEx(`next:cache:${key}`, ttl, JSON.stringify(data));\n\n      // Index tags to keys for fast cluster-wide invalidation\n      if (ctx?.tags?.length) {\n        for (const tag of ctx.tags) {\n          await redis.sAdd(`next:tags:${tag}`, key);\n          await redis.expire(`next:tags:${tag}`, 86400 * 7);\n        }\n      }\n    } catch (err) {\n      console.error('[CacheHandler] Failed to write cache entry:', err);\n    }\n  }\n\n  async revalidateTag(tag) {\n    try {\n      const tagKey = `next:tags:${tag}`;\n      const keys = await redis.sMembers(tagKey);\n      if (keys.length > 0) {\n        const cacheKeys = keys.map((k) => `next:cache:${k}`);\n        await redis.del(cacheKeys);\n        await redis.del(tagKey);\n      }\n      console.log(`[CacheHandler] Purged ${keys.length} keys for tag '${tag}' across cluster.`);\n    } catch (err) {\n      console.error(`[CacheHandler] Failed to revalidate tag ${tag}:`, err);\n    }\n  }\n}\n\n// next.config.mjs\n/** @type {import('next').NextConfig} */\nconst nextConfig = {\n  cacheHandler: process.env.NODE_ENV === 'production'\n    ? require.resolve('./cache-handler.mjs')\n    : undefined,\n};\n\nexport default nextConfig;",
+    "monitoringMetrics": [
+      "sum(rate(redis_commands_total{cmd=~'get|set|del'}[1m])) by (cmd)",
+      "histogram_quantile(0.99, rate(nextjs_cache_handler_latency_seconds_bucket[5m]))",
+      "count(distinct(http_response_content_etag)) by (url_path) > 1"
+    ],
+    "productionChecklist": [
+      "Configure next.config.mjs to hook a centralized Redis cluster via custom cacheHandler.",
+      "Ensure all tag mappings (sAdd) maintain a safety TTL to avoid unbounded Redis memory growth.",
+      "Verify that revalidateTag() purges Redis keys synchronously across all Kubernetes pods.",
+      "Add health check fallback in cache-handler.mjs so that Redis failures gracefully degrade to direct database queries rather than crashing 500."
+    ]
+  },
+  {
+    "id": "next-prod-02",
+    "topic": "Accidental Database Credentials & Private Secret Leakage into Client RSC Bundles",
+    "category": "Security & Compliance",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "A security researcher reports that the entire AWS_SECRET_ACCESS_KEY and MASTER_DATABASE_URL were exposed in cleartext inside the browser window.__next_f hydration chunks on the public marketing page. Automated scanners immediately scrape the keys and attempt unauthorized IAM assume-role operations.",
+    "howItWorksInternally": "React Server Components serialize props passed into Client Components into the RSC Flight stream JSON payload. If a developer accidentally imports a server utility or passes a wide user/organization object containing encrypted keys, password hashes, or internal database client handles across the Server/Client boundary (e.g., <UserProfile user={userWithCredentials} />), Next.js serializes all enumerable properties into the client HTML and RSC flight payload. Because 'use server' components execute in Node, developers mistakenly assume all child component arguments remain hidden on the server.",
+    "productionCode": "// 1. Enforce strict isolation at module boundary using 'server-only'\n// lib/db.ts\nimport 'server-only'; // THROWS BUILD ERROR if imported in any 'use client' file\nimport { PrismaClient } from '@prisma/client';\n\nexport const db = new PrismaClient();\n\n// 2. Leverage React 19 / Next.js 15 Experimental Taint API to block secret serialization\n// lib/auth/security.ts\nimport 'server-only';\nimport { experimental_taintObjectReference, experimental_taintUniqueValue } from 'react';\n\nexport function secureUserSession(user: any) {\n  // If this object or its database connection token is EVER passed to a Client Component,\n  // React immediately throws an unhandled server serialization exception at build/request time!\n  experimental_taintObjectReference(\n    'Forbidden: Entire User Security Principal object must never be passed to Client Components',\n    user\n  );\n\n  experimental_taintUniqueValue(\n    'Forbidden: User password hash or secret key cannot be sent to the browser',\n    user,\n    user.passwordHash\n  );\n\n  return user;\n}\n\n// 3. Proper prop projection DTO pattern\n// app/users/[id]/page.tsx\nimport { db } from '@/lib/db';\nimport { secureUserSession } from '@/lib/auth/security';\nimport { ClientAvatar } from './ClientAvatar';\n\nexport default async function UserPage({ params }: { params: Promise<{ id: string }> }) {\n  const { id } = await params;\n  const rawUser = await db.user.findUniqueOrThrow({ where: { id } });\n  secureUserSession(rawUser);\n\n  // SANITIZE: Explicitly pick ONLY public display attributes for the Client Component\n  const safeProfile = {\n    displayName: rawUser.displayName,\n    avatarUrl: rawUser.avatarUrl,\n  };\n\n  return <ClientAvatar profile={safeProfile} />;\n}",
+    "monitoringMetrics": [
+      "sum(rate(waf_blocked_requests{rule='credential_scraping'}[1m]))",
+      "count(nextjs_taint_serialization_violations_total)",
+      "git_secrets_pre_commit_scan_failures"
+    ],
+    "productionChecklist": [
+      "Immediately rotate leaked AWS IAM keys and database master passwords in AWS Secrets Manager.",
+      "Add 'import server-only' to all database, crypto, and backend API helper modules.",
+      "Implement experimental_taintObjectReference() and experimental_taintUniqueValue() on all auth records.",
+      "Verify RSC Flight stream output in production builds via curl -H 'Accept: text/x-component' to audit payload."
+    ]
+  },
+  {
+    "id": "next-prod-03",
+    "topic": "Server Action CSRF & Unauthenticated Remote Execution Vulnerability",
+    "category": "Security & Compliance",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "An attacker creates a malicious third-party website that triggers Next.js Server Actions via forged POST requests. Users visiting the attacker's site have their email addresses changed, API keys regenerated, and subscription plans cancelled without their knowledge or authorization.",
+    "howItWorksInternally": "Every function marked with 'use server' exports an opaque cryptographic action ID that is exposed as an accessible public HTTP POST endpoint (e.g. POST / with header 'Next-Action: 7b819c4...'). If the developer writes a Server Action without verifying user session tokens, permissions, or tenant ID inside the action body, anyone can invoke the action directly via curl or CSRF payloads. While Next.js 14/15 includes origin-checking protections for form submissions, automated API clients or cross-origin fetch requests without credentials can still abuse unauthenticated actions.",
+    "productionCode": "// lib/safeAction.ts - Production Higher-Order Server Action Guard\n'use server';\n\nimport { headers } from 'next/headers';\nimport { auth } from '@/lib/auth';\nimport { z } from 'zod';\n\nexport type ActionContext = {\n  userId: string;\n  role: string;\n  tenantId: string;\n};\n\nexport function createProtectedAction<TInput, TOutput>(\n  schema: z.ZodSchema<TInput>,\n  handler: (input: TInput, ctx: ActionContext) => Promise<TOutput>\n) {\n  return async (rawInput: unknown): Promise<{ success: boolean; data?: TOutput; error?: string }> => {\n    // 1. Verify Origin and Host header alignment against CSRF attacks\n    const headerList = await headers();\n    const origin = headerList.get('origin');\n    const host = headerList.get('host');\n\n    if (origin && !origin.includes(host || '')) {\n      return { success: false, error: 'CSRF Violation: Origin header does not match host.' };\n    }\n\n    // 2. Validate active authentication session and tenant context\n    const session = await auth();\n    if (!session || !session.user) {\n      return { success: false, error: 'Unauthorized: Valid session required.' };\n    }\n\n    // 3. Validate input payload strictly with Zod\n    const parsed = schema.safeParse(rawInput);\n    if (!parsed.success) {\n      return { success: false, error: 'Bad Request: ' + parsed.error.issues[0].message };\n    }\n\n    // 4. Execute business logic with verified context\n    try {\n      const result = await handler(parsed.data, {\n        userId: session.user.id,\n        role: session.user.role,\n        tenantId: session.user.tenantId,\n      });\n      return { success: true, data: result };\n    } catch (err: any) {\n      console.error('[Action Execution Error]:', err);\n      return { success: false, error: 'Internal Server Error' };\n    }\n  };\n}\n\n// app/actions/account.ts (Usage)\nconst changeEmailSchema = z.object({ newEmail: z.string().email() });\n\nexport const changeEmailAction = createProtectedAction(changeEmailSchema, async ({ newEmail }, ctx) => {\n  // Safe: ctx.userId is cryptographically guaranteed from session, impossible to spoof!\n  await db.user.update({\n    where: { id: ctx.userId, tenantId: ctx.tenantId },\n    data: { email: newEmail },\n  });\n  return { updated: true };\n});",
+    "monitoringMetrics": [
+      "sum(rate(http_requests_total{status='403',route=~'.*Next-Action.*'}[1m]))",
+      "count(server_action_unauthorized_attempts_total)",
+      "waf_csrf_token_mismatch_rate"
+    ],
+    "productionChecklist": [
+      "Wrap all Server Actions in a centralized authentication and authorization middleware wrapper.",
+      "Always validate input payloads with Zod; never cast incoming parameters as 'any'.",
+      "Ensure origin and host headers match on all state-mutating Server Action POST requests.",
+      "Never pass client-supplied IDs (e.g. userId from client form) directly into database mutation WHERE clauses."
+    ]
+  },
+  {
+    "id": "next-prod-04",
+    "topic": "Edge Middleware Execution Timeout & Event Loop Lockup on High Traffic",
+    "category": "Edge & Middleware",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "During a flash-sale event, the entire website begins throwing HTTP 500 and 504 Gateway Timeout errors. Vercel / Cloudflare edge logs indicate Edge Middleware timed out exceeding the 50ms subrequest execution budget on 80% of incoming requests.",
+    "howItWorksInternally": "Next.js Edge Middleware runs in lightweight V8 isolates on edge nodes (Cloudflare Workers, Vercel Edge). Unlike Node.js servers, edge workers have strict CPU execution limits (typically 50ms CPU time and 128MB memory). When developers make multiple blocking network calls (e.g. contacting legacy SQL databases via TCP, querying remote un-cached session stores, or running heavy JSON parsing/regexes) on every single asset and page request, the edge isolate's execution queue starves, causing catastrophic timeout termination.",
+    "productionCode": "// middleware.ts - Production Edge Middleware with Strict Sub-millisecond Execution\nimport { NextResponse, type NextRequest } from 'next/server';\nimport { jwtVerify } from 'jose';\n\nconst JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || '32-char-min-secret-key-prod');\n\n// 1. In-memory LRU cache inside Edge Isolate to avoid repeated JWT verification overhead\nconst sessionVerificationCache = new Map<string, { payload: any; exp: number }>();\n\nexport async function middleware(request: NextRequest) {\n  const token = request.cookies.get('auth_token')?.value;\n\n  if (!token) {\n    // Instant redirect without blocking async compute\n    const loginUrl = new URL('/login', request.url);\n    loginUrl.searchParams.set('from', request.nextUrl.pathname);\n    return NextResponse.redirect(loginUrl);\n  }\n\n  // 2. Check local isolate memory cache first (0.01ms latency)\n  const cached = sessionVerificationCache.get(token);\n  const now = Math.floor(Date.now() / 1000);\n\n  if (cached && cached.exp > now) {\n    const requestHeaders = new Headers(request.headers);\n    requestHeaders.set('x-user-id', cached.payload.sub);\n    return NextResponse.next({ request: { headers: requestHeaders } });\n  }\n\n  try {\n    // 3. Fast cryptographic signature verification using Edge-optimized 'jose'\n    const { payload } = await jwtVerify(token, JWT_SECRET, { algorithms: ['HS256'] });\n\n    // Store in isolate cache with TTL\n    sessionVerificationCache.set(token, {\n      payload,\n      exp: payload.exp || now + 300,\n    });\n\n    const requestHeaders = new Headers(request.headers);\n    requestHeaders.set('x-user-id', String(payload.sub));\n\n    return NextResponse.next({ request: { headers: requestHeaders } });\n  } catch (err) {\n    const response = NextResponse.redirect(new URL('/login', request.url));\n    response.cookies.delete('auth_token');\n    return response;\n  }\n}\n\n// 4. CRITICAL: Restrict matcher to strictly match only protected dynamic pages\nexport const config = {\n  matcher: [\n    '/dashboard/:path*',\n    '/account/:path*',\n    '/api/protected/:path*',\n  ],\n};",
+    "monitoringMetrics": [
+      "histogram_quantile(0.99, rate(edge_middleware_execution_duration_ms_bucket[1m]))",
+      "sum(rate(edge_middleware_cpu_limit_exceeded_total[1m]))",
+      "edge_worker_memory_utilization_ratio"
+    ],
+    "productionChecklist": [
+      "Restrict middleware.ts config.matcher to strictly required path prefixes, completely bypassing static assets and public marketing pages.",
+      "Never open direct TCP database connections (Prisma, pg) inside Edge Middleware; use edge HTTP endpoints or JWTs.",
+      "Implement local LRU memory caching within the isolate to cache token verification passes.",
+      "Set aggressive subrequest timeout budgets (AbortSignal.timeout(1500)) for any external fetch in middleware."
+    ]
+  },
+  {
+    "id": "next-prod-05",
+    "topic": "Hydration Mismatch Death Spiral & Client-Side DOM Replacement Crash",
+    "category": "Client Hydration & Rendering",
+    "severity": "P1 - High Severity",
+    "theProblem": "Users on mobile web report UI flicker where buttons fail to respond to taps, forms reset unexpectedly while typing, and the browser console explodes with 'Hydration failed because the initial UI does not match what was rendered on the server' and 'There was an error while hydrating. Because the error was caught by the nearest error boundary, React rendered the entire root from scratch'.",
+    "howItWorksInternally": "React SSR renders HTML into strings on the server. When the browser receives the HTML, React executes hydration to attach event listeners to existing DOM nodes. If there is any divergence between server HTML and initial client DOM (e.g. using typeof window !== 'undefined', referencing localStorage, using Date.now() or new Date().toLocaleTimeString(), or invalid HTML nesting like <div> inside <p>), React detects a tree mismatch. In React 18/19, severe mismatches cause React to abandon hydration, scrap the server DOM, and re-render the entire component tree on the client, discarding user focus, in-flight inputs, and causing huge layout shifts.",
+    "productionCode": "// components/SafeTimestamp.tsx - Bulletproof Hydration Solution\n'use client';\n\nimport { useSyncExternalStore } from 'react';\n\n// Hydration-safe client-only store subscription\nfunction subscribe(callback: () => void) {\n  return () => {}; // No-op subscription\n}\n\nexport function useIsHydrated() {\n  return useSyncExternalStore(\n    subscribe,\n    () => true,  // Client snapshot: true after hydration\n    () => false // Server snapshot: always false during SSR\n  );\n}\n\ninterface SafeDateDisplayProps {\n  timestamp: string | number | Date;\n}\n\nexport function SafeDateDisplay({ timestamp }: SafeDateDisplayProps) {\n  const isHydrated = useIsHydrated();\n  const dateObj = new Date(timestamp);\n\n  // Server: renders deterministic UTC ISO string\n  // Client: once hydrated, smoothly updates to user's localized time zone\n  if (!isHydrated) {\n    return (\n      <time dateTime={dateObj.toISOString()} suppressHydrationWarning>\n        {dateObj.toISOString().slice(0, 10)}\n      </time>\n    );\n  }\n\n  return (\n    <time dateTime={dateObj.toISOString()} suppressHydrationWarning>\n      {dateObj.toLocaleString()}\n    </time>\n  );\n}\n\n// Validation Guide: Check for invalid HTML nesting in ESLint\n// .eslintrc.json\n/*\n{\n  \"rules\": {\n    \"react/no-unescaped-entities\": \"error\",\n    \"@next/next/no-html-link-for-pages\": \"error\"\n  }\n}\n*/",
+    "monitoringMetrics": [
+      "sum(rate(client_telemetry_errors_total{error_type='hydration_mismatch'}[5m]))",
+      "histogram_quantile(0.95, rate(web_vitals_cls_bucket[5m]))",
+      "count(react_hydration_error_boundary_trips)"
+    ],
+    "productionChecklist": [
+      "Never read window, document, or localStorage directly in component rendering phase.",
+      "Use useSyncExternalStore to detect client hydration without causing dual-render cascades.",
+      "Audit HTML nesting for strict compliance (never nest <div> or <p> inside <p>, never nest <a> inside <a>).",
+      "Apply suppressHydrationWarning strictly on individual leaf nodes (e.g. timestamps) where differences are intentional."
+    ]
+  },
+  {
+    "id": "next-prod-06",
+    "topic": "Client Router Cache Stale View Trap After External Background Database Mutations",
+    "category": "Caching & Navigation",
+    "severity": "P1 - High Severity",
+    "theProblem": "A support agent marks a customer ticket as 'Resolved' in an administrative portal. When navigating back to the ticket inbox via the left sidebar (<Link href='/inbox'>), the ticket still shows as 'Open'. Only a hard browser refresh (Cmd+Shift+R) updates the status. Customers complain that changes are not saving.",
+    "howItWorksInternally": "Next.js App Router includes an aggressive in-memory Client-Side Router Cache that stores visited RSC payloads in browser memory for 30 seconds (dynamic routes) or 5 minutes (static routes). When the user clicks a <Link>, Next.js instantly renders the cached RSC payload from memory without issuing a network request. If a database mutation occurred externally (via webhook, background worker, or direct REST API call rather than a Next.js Server Action), the client router cache has no knowledge of the change and serves the stale in-memory snapshot indefinitely.",
+    "productionCode": "// 1. Solution A: Force Server Action revalidation when mutating\n// app/actions/ticket.ts\n'use server';\n\nimport { revalidatePath } from 'next/cache';\nimport { db } from '@/lib/db';\n\nexport async function resolveTicketAction(ticketId: string) {\n  await db.ticket.update({\n    where: { id: ticketId },\n    data: { status: 'RESOLVED' },\n  });\n\n  // Purge server route cache AND signal client router cache to bust\n  revalidatePath('/inbox');\n  return { ok: true };\n}\n\n// 2. Solution B: Client-side Navigation with explicit cache refresh\n// components/SidebarNavigation.tsx\n'use client';\n\nimport Link from 'next/link';\nimport { useRouter } from 'next/navigation';\n\nexport function InboxLink() {\n  const router = useRouter();\n\n  const handleFreshNavigation = (e: React.MouseEvent<HTMLAnchorElement>) => {\n    e.preventDefault();\n    // router.refresh() invalidates the Client Router Cache and fetches the fresh RSC tree\n    router.refresh();\n    router.push('/inbox');\n  };\n\n  return (\n    <a\n      href=\"/inbox\"\n      onClick={handleFreshNavigation}\n      className=\"flex items-center px-4 py-2 text-sm font-medium hover:bg-neutral-100\"\n    >\n      Inbox\n    </a>\n  );\n}\n\n// 3. Solution C: Opt page out of Client Router Caching via headers\n// app/inbox/page.tsx\nexport const dynamic = 'force-dynamic';\nexport const revalidate = 0; // Ensures server never serves cached response",
+    "monitoringMetrics": [
+      "sum(rate(client_stale_data_reports_total[1h]))",
+      "count(nextjs_router_cache_hits_total) by (route)",
+      "ratio(client_hard_refreshes / client_soft_navigations)"
+    ],
+    "productionChecklist": [
+      "Ensure all internal state mutations invoke revalidatePath() or revalidateTag() in a Server Action.",
+      "Call router.refresh() before or after programmatic router.push() when external systems mutate state.",
+      "Configure 'export const dynamic = force-dynamic' and 'export const revalidate = 0' on sensitive realtime dashboards.",
+      "In Next.js 15, verify staleTimes configuration in next.config.ts (dynamic: 0, static: 180)."
+    ]
+  },
+  {
+    "id": "next-prod-07",
+    "topic": "Memory Leaks in Node.js Standalone SSR Containers Under Sustained Load",
+    "category": "Deployment & Runtime",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "Next.js Node.js server pods in production steadily climb in memory usage over 24 hours, going from 300MB to 2.8GB until Kubernetes triggers an OOMKilled (Exit Code 137). Restarting pods creates brief availability dips and connection drops during peak business hours.",
+    "howItWorksInternally": "In SSR/Node environments, modules execute in a persistent Node process. Common causes of memory leaks in Next.js include: 1) Module-level global caches (e.g. const cache = new Map() declared outside component scope) that accumulate request objects; 2) Unclosed database connection pools or Redis event listeners created inside Server Components or Route Handlers; 3) Closures capturing huge request headers or request bodies in long-lived background promises; and 4) Memory buildup from React server-side streaming contexts when client disconnects are not handled.",
+    "productionCode": "// 1. BAD: Module-level cache grows infinitely across all user requests\n// const memoryCache = new Map(); // MEMORY LEAK! Never store request data here.\n\n// 2. GOOD: Use React.cache() for request-scoped deduplication (Garbage Collected after request ends!)\nimport { cache } from 'react';\nimport { db } from '@/lib/db';\n\nexport const getCachedTenant = cache(async (tenantId: string) => {\n  // Exists strictly during the lifecycle of the single HTTP request\n  return db.tenant.findUnique({ where: { id: tenantId } });\n});\n\n// 3. Ensure Single Connection Pool Instance via Global Singleton pattern\n// lib/prisma.ts\nimport { PrismaClient } from '@prisma/client';\n\nconst globalForPrisma = globalThis as unknown as { prisma: PrismaClient };\n\nexport const prisma =\n  globalForPrisma.prisma ||\n  new PrismaClient({\n    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],\n  });\n\nif (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;\n\n// 4. Memory Profiling Diagnostic Hook in Node server\n// server.js (Standalone runner monitoring)\nif (process.env.NODE_ENV === 'production') {\n  setInterval(() => {\n    const memory = process.memoryUsage();\n    const heapUsedMB = Math.round(memory.heapUsed / 1024 / 1024);\n    const rssMB = Math.round(memory.rss / 1024 / 1024);\n\n    if (heapUsedMB > 1500) {\n      console.warn(`[CRITICAL MEMORY ALERT] Node Heap: ${heapUsedMB}MB | RSS: ${rssMB}MB`);\n    }\n  }, 30000).unref();\n}",
+    "monitoringMetrics": [
+      "container_memory_working_set_bytes{container='nextjs-app'}",
+      "sum(increase(kube_pod_container_status_restarts_total{reason='OOMKilled'}[1h]))",
+      "nodejs_heap_size_used_bytes / nodejs_heap_size_total_bytes"
+    ],
+    "productionChecklist": [
+      "Audit codebase to eliminate module-level Map/Set/Array variables accumulating request state.",
+      "Verify Prisma / TypeORM / Mongoose clients use global singleton pattern to avoid creating pools per render.",
+      "Replace custom global caches with React.cache() for request-scoped caching.",
+      "Configure Kubernetes livenessProbe and set memory limits with at least 50% headroom above baseline RSS."
+    ]
+  },
+  {
+    "id": "next-prod-08",
+    "topic": "Infinite Data Fetching Loops in React Server Components during Route Transitions",
+    "category": "App Router & RSC",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "A newly deployed product category page triggers millions of database queries per minute. The PostgreSQL RDS database spikes to 100% CPU, locks connection pools, and takes down the entire application. Logs show a Server Component repeatedly calling fetch() in an uncontrolled recursion.",
+    "howItWorksInternally": "Unlike Client Components where useEffect dependencies cause infinite loops, RSC infinite loops occur when a Server Component triggers a server action, cookies().set(), or revalidatePath() conditionally during render. Because setting a cookie or calling revalidatePath() marks the route segment as dirty, Next.js triggers an immediate re-render of the route tree, which in turn calls the component again, firing the revalidation again in an unstoppable synchronous loop.",
+    "productionCode": "// INCORRECT (Causes Infinite Server Loop):\n/*\nexport default async function BrokenPage() {\n  const data = await fetch('https://api.store.internal/data');\n  if (shouldUpdate) {\n    revalidatePath('/broken'); // CRASH! Revalidating during render triggers infinite loop!\n  }\n  return <div>{data.title}</div>;\n}\n*/\n\n// CORRECT ARCHITECTURAL IMPLEMENTATION:\n// app/products/page.tsx\nimport { db } from '@/lib/db';\nimport { updateCatalogStatus } from '@/app/actions/catalog';\nimport { TriggerUpdateButton } from './TriggerUpdateButton';\n\nexport default async function SafeProductPage() {\n  // 1. Pure Data Fetching: Render phase is strictly read-only and idempotent\n  const products = await db.product.findMany({\n    where: { active: true },\n    take: 20,\n  });\n\n  return (\n    <div className=\"p-8\">\n      <h1 className=\"text-2xl font-bold\">Catalog Management</h1>\n      <ul className=\"mt-4 space-y-2\">\n        {products.map((p) => (\n          <li key={p.id} className=\"border p-4 rounded flex justify-between\">\n            <span>{p.name}</span>\n            {/* 2. Mutations strictly delegated to user interactions / Server Actions */}\n            <TriggerUpdateButton productId={p.id} />\n          </li>\n        ))}\n      </ul>\n    </div>\n  );\n}\n\n// app/products/TriggerUpdateButton.tsx\n'use client';\n\nimport { useTransition } from 'react';\nimport { updateCatalogStatus } from '@/app/actions/catalog';\n\nexport function TriggerUpdateButton({ productId }: { productId: string }) {\n  const [isPending, startTransition] = useTransition();\n\n  const handleClick = () => {\n    startTransition(async () => {\n      // Mutation happens strictly in response to an explicit user event\n      await updateCatalogStatus(productId);\n    });\n  };\n\n  return (\n    <button\n      onClick={handleClick}\n      disabled={isPending}\n      className=\"px-3 py-1 bg-blue-600 text-white rounded disabled:opacity-50\"\n    >\n      {isPending ? 'Syncing...' : 'Sync Catalog'}\n    </button>\n  );\n}",
+    "monitoringMetrics": [
+      "sum(rate(pg_stat_activity_count{state='active'}[1m]))",
+      "rate(http_requests_total{route='/products'}[1m]) > 500",
+      "nextjs_server_component_render_depth_gauge > 50"
+    ],
+    "productionChecklist": [
+      "Never call revalidatePath, revalidateTag, or cookies().set() inside the body of a Server Component.",
+      "Mutations and cache invalidations must strictly execute inside Server Actions or Route Handlers (POST/PUT/DELETE).",
+      "Ensure all Server Component render functions are strictly pure and idempotent.",
+      "Configure database statement timeouts (e.g. statement_timeout = 3000) to kill rogue recursive queries."
+    ]
+  },
+  {
+    "id": "next-prod-09",
+    "topic": "next/image Optimization CPU Saturation & Disk Space Exhaustion Outage",
+    "category": "Assets & Performance",
+    "severity": "P1 - High Severity",
+    "theProblem": "During marketing campaigns with high user traffic, Next.js container pods lock up with 100% CPU utilization and node crashes due to 'ENOSPC: no space left on device'. Inspection reveals the .next/cache/images directory ballooned to over 80GB in 3 hours.",
+    "howItWorksInternally": "When using next/image without external CDN offloading, every image request to /_next/image?url=...&w=...&q=... spawns the Sharp C-binding image processor inside the Node.js server. If attackers or crawlers query arbitrary width parameters (w=640, w=641, w=642) or request unconstrained remote source URLs, Next.js resizes, re-encodes, and caches every unique permutation onto the container disk. Under 5,000 req/sec, Sharp saturates libuv worker threads and exhausts ephemeral container disk space.",
+    "productionCode": "// next.config.ts - Production Hardened Image Optimization\nimport type { NextConfig } from 'next';\n\nconst nextConfig: NextConfig = {\n  images: {\n    // 1. Restrict allowed widths to a strict fixed whitelist (stops combinatorial attacks)\n    deviceSizes: [640, 750, 1080, 1920],\n    imageSizes: [32, 64, 128, 256],\n\n    // 2. Only serve modern compressed WebP and AVIF formats\n    formats: ['image/avif', 'image/webp'],\n\n    // 3. Cache TTL: Keep optimized images cached for 30 days\n    minimumCacheTTL: 60 * 60 * 24 * 30,\n\n    // 4. Strict remote pattern whitelist (never use wildcard domains!)\n    remotePatterns: [\n      {\n        protocol: 'https',\n        hostname: 'assets.enterprise.com',\n        port: '',\n        pathname: '/products/**',\n      },\n      {\n        protocol: 'https',\n        hostname: 's3.us-east-1.amazonaws.com',\n        pathname: '/my-company-bucket/**',\n      },\n    ],\n\n    // 5. Disable animated SVG / GIF resizing if not needed to reduce CPU load\n    dangerouslyAllowSVG: false,\n  },\n};\n\nexport default nextConfig;",
+    "monitoringMetrics": [
+      "sum(rate(node_cpu_seconds_total{mode='system'}[1m])) by (container)",
+      "node_filesystem_free_bytes{mountpoint='/app'} / node_filesystem_size_bytes",
+      "sum(rate(http_requests_total{path=~'/_next/image.*'}[1m]))"
+    ],
+    "productionChecklist": [
+      "Strictly configure remotePatterns in next.config.ts; never allow wildcard '*' hosts.",
+      "Offload image optimization to Cloudflare Images, Fastly, or Cloudinary via custom loader if traffic exceeds 10M views/month.",
+      "Mount ephemeral volume storage for .next/cache/images or use tmpfs in Docker containers.",
+      "Set aggressive minimumCacheTTL (30 days) to prevent Sharp from re-processing the same image."
+    ]
+  },
+  {
+    "id": "next-prod-10",
+    "topic": "Next.js 15 Async Request Context Migration Crash (cookies, headers, params)",
+    "category": "Next.js 15 Migration",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "Immediately after upgrading to Next.js 15, production builds succeed but all dynamic pages crash at runtime with 'Error: Route /dashboard/[id] used `params.id`. `params` should be awaited in Next.js 15' and 'Error: `cookies()` should be awaited before using its properties'. All authenticated user pages return HTTP 500.",
+    "howItWorksInternally": "In Next.js 14 and earlier, request-bound APIs such as cookies(), headers(), draftMode(), and page/layout params were synchronous objects. In Next.js 15, to prepare for Partial Prerendering (PPR) and streaming execution models, all request contexts are asynchronous Promises. Accessing params.id synchronously causes a runtime exception in production when Next.js attempts to resolve the underlying request context Promise.",
+    "productionCode": "// MIGRATION COMPARISON:\n\n// ❌ OLD (Next.js 14 - Synchronous - Crashes in Next.js 15):\n/*\ninterface PageProps {\n  params: { id: string };\n  searchParams: { q?: string };\n}\n\nexport default function OldPage({ params, searchParams }: PageProps) {\n  const cookieStore = cookies();\n  const token = cookieStore.get('token');\n  return <div>Product: {params.id}</div>;\n}\n*/\n\n// ✅ NEW (Next.js 15 Production Architecture - Fully Async):\n// app/dashboard/[id]/page.tsx\nimport { cookies, headers } from 'next/headers';\nimport { notFound } from 'next/navigation';\nimport { db } from '@/lib/db';\n\ninterface Next15PageProps {\n  params: Promise<{ id: string }>;\n  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;\n}\n\nexport default async function SafeNext15Page({ params, searchParams }: Next15PageProps) {\n  // 1. Await params and searchParams Promises in parallel\n  const [{ id }, query] = await Promise.all([params, searchParams]);\n\n  // 2. Await dynamic request headers and cookies\n  const [cookieStore, headerList] = await Promise.all([cookies(), headers()]);\n  const token = cookieStore.get('auth_session')?.value;\n  const userAgent = headerList.get('user-agent') || 'unknown';\n\n  if (!id) notFound();\n\n  const record = await db.dashboard.findUnique({ where: { id } });\n\n  return (\n    <div className=\"p-6\">\n      <h1 className=\"text-xl font-bold\">Dashboard: {record?.title}</h1>\n      <p className=\"text-sm text-gray-500\">Query Filter: {String(query.q || 'none')}</p>\n      <p className=\"text-xs text-gray-400\">Client: {userAgent}</p>\n    </div>\n  );\n}",
+    "monitoringMetrics": [
+      "sum(rate(http_requests_total{status='500'}[1m])) after_deployment_window",
+      "count(nextjs_sync_dynamic_api_warnings_total)",
+      "error_logs_matching 'params should be awaited'"
+    ],
+    "productionChecklist": [
+      "Run Next.js official codemod: npx @next/codemod@canary next-async-request-api .",
+      "Audit all page.tsx and layout.tsx files to ensure params and searchParams are typed as Promise<T> and awaited.",
+      "Audit all instances of cookies() and headers() and prepend with await.",
+      "Run full end-to-end synthetic tests across all dynamic routes prior to promoting build to 100% canary."
+    ]
+  },
+  {
+    "id": "next-prod-11",
+    "topic": "ISR On-Demand Revalidation Storm & Downstream Database Thundering Herd",
+    "category": "Caching & Resiliency",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "A bulk product sync script invokes the revalidation webhook endpoint for 20,000 product pages simultaneously. 20,000 concurrent render jobs launch across the server fleet, overwhelming the backend GraphQL API and database with 40,000 simultaneous queries, causing total downstream service failure.",
+    "howItWorksInternally": "When revalidatePath() or revalidateTag() is called, Next.js purges the cached entries immediately. On the very next incoming request (or during background revalidation), Next.js invokes the page render function. When thousands of requests hit simultaneously without a concurrency governor, all worker threads trigger cold database fetches at once (Thundering Herd / Cache Stampede), instantly consuming all available DB connection pool slots.",
+    "productionCode": "// app/api/bulk-revalidate/route.ts - Rate-Limited Concurrency-Governed Revalidation\nimport { NextRequest, NextResponse } from 'next/server';\nimport { revalidateTag } from 'next/cache';\nimport pLimit from 'p-limit';\n\n// Limit concurrent background invalidation operations to 10 at a time\nconst concurrencyLimit = pLimit(10);\n\nexport async function POST(req: NextRequest) {\n  const secret = req.headers.get('x-admin-secret');\n  if (secret !== process.env.ADMIN_REVALIDATION_SECRET) {\n    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });\n  }\n\n  const { tags }: { tags: string[] } = await req.json();\n\n  if (!Array.isArray(tags) || tags.length === 0) {\n    return NextResponse.json({ error: 'Tags array required' }, { status: 400 });\n  }\n\n  console.log(`[Bulk Revalidate] Queuing ${tags.length} tags with concurrency=10...`);\n\n  // Process invalidations in controlled batches to protect downstream DB\n  const tasks = tags.map((tag) =>\n    concurrencyLimit(async () => {\n      try {\n        revalidateTag(tag);\n        // Small 5ms pause between queue dispatches to prevent thread-pool starvation\n        await new Promise((r) => setTimeout(r, 5));\n      } catch (err) {\n        console.error(`Failed to revalidate tag ${tag}:`, err);\n      }\n    })\n  );\n\n  await Promise.all(tasks);\n\n  return NextResponse.json({\n    success: true,\n    revalidatedTagsCount: tags.length,\n    timestamp: new Date().toISOString(),\n  });\n}",
+    "monitoringMetrics": [
+      "sum(rate(revalidate_tag_invocations_total[1m]))",
+      "pg_stat_database_numbackends / pg_settings_max_connections",
+      "histogram_quantile(0.99, rate(backend_api_response_time_seconds[1m]))"
+    ],
+    "productionChecklist": [
+      "Throttle on-demand revalidation webhooks with p-limit or worker queues (BullMQ/Redis).",
+      "Use tag hierarchy (e.g. 'catalog' invalidates entire section rather than 50,000 individual SKU tags).",
+      "Verify database connection pool uses pg-bouncer or AWS RDS Proxy to absorb connection surges.",
+      "Set upstream CDN stale-while-revalidate headers to allow CDN to serve slightly stale pages while revalidation computes."
+    ]
+  },
+  {
+    "id": "next-prod-12",
+    "topic": "Turbopack vs Webpack Native Addon Module Resolution Failures in Monorepos",
+    "category": "Build & Tooling",
+    "severity": "P1 - High Severity",
+    "theProblem": "Engineers using Next.js 15 with --turbo experience seamless local development, but CI/CD release builds fail during 'next build' with 'Module not found: Can't resolve native-addon.node' or produce broken bundles missing crypto/canvas bindings in production.",
+    "howItWorksInternally": "Turbopack is a Rust-based bundler with native ESM resolution. It resolves modules differently than Webpack. Webpack relies on custom plugins and loaders (e.g. node-loader, file-loader) to handle native C++ binaries (.node bindings, canvas, sharp, bcrypt). When a project uses Turbopack in dev ('next dev --turbo') and Webpack in build ('next build'), inconsistencies emerge: Webpack may bundle modules that Turbopack cannot parse, or native Node modules may fail to externalize properly.",
+    "productionCode": "// next.config.ts - Production Universal Monorepo Module Resolution\nimport type { NextConfig } from 'next';\n\nconst nextConfig: NextConfig = {\n  // 1. Explicitly declare server-only packages with native C++ bindings\n  // Tells Next.js bundler (both Webpack & Turbopack) to NOT attempt bundling these into JS!\n  serverExternalPackages: [\n    'sharp',\n    'canvas',\n    'bcrypt',\n    '@prisma/client',\n    'pg-native',\n    'isolated-vm',\n  ],\n\n  // 2. Transpile specific monorepo workspace packages\n  transpilePackages: ['@enterprise/ui', '@enterprise/shared-utils'],\n\n  // 3. Webpack fallback configuration for CI production build compatibility\n  webpack: (config, { isServer }) => {\n    if (isServer) {\n      config.externals = [...(config.externals || []), 'canvas', 'utf-8-validate'];\n    }\n    return config;\n  },\n\n  // 4. Turbopack options\n  experimental: {\n    turbo: {\n      resolveAlias: {\n        underscore: 'lodash',\n      },\n    },\n  },\n};\n\nexport default nextConfig;",
+    "monitoringMetrics": [
+      "count(ci_cd_build_failures{step='next_build'})",
+      "rate(webpack_bundle_compilation_errors_total[1h])",
+      "monorepo_dependency_graph_drift_count"
+    ],
+    "productionChecklist": [
+      "Add all native C++ bindings and binary packages to serverExternalPackages in next.config.ts.",
+      "List internal monorepo packages in transpilePackages so Next.js handles TS/JSX compilation.",
+      "Verify CI/CD pipeline runs test builds with the exact flags used in production before merging PRs.",
+      "Standardize lockfile across all monorepo packages with pnpm-lock.yaml or package-lock.json."
+    ]
+  },
+  {
+    "id": "next-prod-13",
+    "topic": "Docker Standalone Build 404s for Static Assets and Chunk Hashes",
+    "category": "Docker & Kubernetes Deployment",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "After deploying a new Next.js Docker image to production, users receive blank white screens. The HTML loads, but all JavaScript and CSS files return HTTP 404 Not Found (/ _next/static/chunks/main-app.js 404).",
+    "howItWorksInternally": "When output: 'standalone' is enabled, Next.js generates a minimal Node server inside .next/standalone/server.js. However, by architectural design, Next.js DOES NOT copy the public/ folder or the .next/static/ folder into the standalone output folder! Next.js assumes static assets will be served directly by a CDN or reverse proxy (Nginx). If the Dockerfile only copies .next/standalone without explicitly copying public/ and .next/static/ into their corresponding relative directories, the standalone server cannot locate or serve client JS bundles.",
+    "productionCode": "# Dockerfile - Production Fixed Standalone Configuration\nFROM node:20-alpine AS base\n\n# Install dependencies\nFROM base AS deps\nRUN apk add --no-cache libc6-compat\nWORKDIR /app\nCOPY package.json package-lock.json ./\nRUN npm ci\n\n# Build Next.js application\nFROM base AS builder\nWORKDIR /app\nCOPY --from=deps /app/node_modules ./node_modules\nCOPY . .\nENV NEXT_TELEMETRY_DISABLED=1\nENV NODE_ENV=production\nRUN npm run build\n\n# Production Runner\nFROM base AS runner\nWORKDIR /app\n\nENV NODE_ENV=production\nENV PORT=3000\nENV HOSTNAME=\"0.0.0.0\"\n\nRUN addgroup --system --gid 1001 nodejs\nRUN adduser --system --uid 1001 nextjs\n\n# CRITICAL STEP: Copy standalone server PLUS static assets in correct locations\nCOPY --from=builder /app/public ./public\n\n# 1. Copy standalone server directory\nCOPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./\n\n# 2. MUST explicitly copy .next/static into .next/static! (Standalone does not include this)\nCOPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static\n\nUSER nextjs\nEXPOSE 3000\n\nCMD [\"node\", \"server.js\"]",
+    "monitoringMetrics": [
+      "sum(rate(http_requests_total{status='404',path=~'/_next/static/.*'}[1m]))",
+      "count(client_script_load_error_reports)",
+      "container_startup_verification_probe_status"
+    ],
+    "productionChecklist": [
+      "Verify Dockerfile includes 'COPY --from=builder /app/.next/static ./.next/static'.",
+      "Verify Dockerfile includes 'COPY --from=builder /app/public ./public'.",
+      "Run container locally with 'docker run -p 3000:3000 <image>' and inspect /_next/static/chunks network calls.",
+      "Configure Nginx or CDN to cache /_next/static/ with 'Cache-Control: public, max-age=31536000, immutable'."
+    ]
+  },
+  {
+    "id": "next-prod-14",
+    "topic": "Route Handler Cold Start Latency Spikes & Database Connection Pool Exhaustion on Edge/Serverless",
+    "category": "Serverless & Database Scaling",
+    "severity": "P0 - Critical Outage",
+    "theProblem": "Under traffic spikes on Vercel / AWS Lambda, Next.js Serverless Route Handlers take 4,000ms to respond to simple API requests. Simultaneously, the PostgreSQL database hits its max_connections limit (500 connections) and starts rejecting connections with 'FATAL: remaining connection slots are reserved for non-replication superuser connections'.",
+    "howItWorksInternally": "Serverless functions scale horizontally by spinning up isolated container instances on demand. If a Route Handler opens a new database connection pool (e.g. new Pool() or new PrismaClient()) without connection pooling infrastructure, 200 concurrent Lambda instances create 200 separate pools. If each pool allocates 10 connections, they attempt 2,000 open connections to PostgreSQL, instantly exhausting database limits. Furthermore, SSL handshakes and pool initialization add 1,500ms cold-start latency to every newly spawned serverless instance.",
+    "productionCode": "// 1. Database Connection Management via Prisma with Accelerated Connection Pooling\n// lib/prisma.ts\nimport { PrismaClient } from '@prisma/client';\nimport { PrismaPg } from '@prisma/adapter-pg';\nimport { Pool } from 'pg';\n\n// For serverless deployments, target AWS RDS Proxy or PgBouncer URL\nconst connectionString = process.env.DATABASE_URL_PGBOUNCER || process.env.DATABASE_URL!;\n\n// Configure low connection pool size per serverless container (max 1-2 connections!)\nconst pool = new Pool({\n  connectionString,\n  max: 1, // Crucial for serverless: 1 connection per lambda isolate prevents DB exhaustion\n  connectionTimeoutMillis: 2000,\n  idleTimeoutMillis: 10000,\n});\n\nconst adapter = new PrismaPg(pool);\n\nexport const db = new PrismaClient({ adapter });\n\n// 2. Route Handler with Serverless Cold-Start Optimization\n// app/api/orders/route.ts\nimport { NextRequest, NextResponse } from 'next/server';\nimport { db } from '@/lib/db';\n\n// Keep Route Handler on Node.js serverless runtime\nexport const runtime = 'nodejs';\nexport const dynamic = 'force-dynamic';\n\nexport async function GET(request: NextRequest) {\n  try {\n    const orders = await db.order.findMany({\n      take: 25,\n      select: { id: true, amount: true, status: true, createdAt: true },\n    });\n\n    return NextResponse.json(orders, {\n      headers: {\n        // Micro-cache at CDN edge for 5 seconds to absorb thundering herds\n        'Cache-Control': 'public, s-maxage=5, stale-while-revalidate=10',\n      },\n    });\n  } catch (err: any) {\n    console.error('[Database Error]:', err);\n    return NextResponse.json({ error: 'Database service unavailable' }, { status: 503 });\n  }\n}",
+    "monitoringMetrics": [
+      "aws_lambda_duration_p99_milliseconds",
+      "pg_stat_database_numbackends / pg_settings_max_connections",
+      "aws_rds_proxy_database_connections_currently_borrowed"
+    ],
+    "productionChecklist": [
+      "Always route serverless Next.js database connections through PgBouncer or AWS RDS Proxy.",
+      "Set serverless pool size to max: 1 per instance to prevent multiplied connection allocations.",
+      "Add s-maxage CDN caching headers to read-heavy Route Handlers to absorb short traffic spikes.",
+      "Enable Provisioned Concurrency or configure warming scripts if sub-100ms latency is strictly required."
+    ]
+  }
+]

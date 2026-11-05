@@ -178,5 +178,53 @@
     "deepFile": "hld.deep.json",
     "examplesFile": "hld.examples.json",
     "productionFile": "hld.production.json"
+  },
+  {
+    "id": "microservices",
+    "name": "Microservices Architecture",
+    "icon": "MS",
+    "iconColor": "bg-teal-600 text-white",
+    "description": "Domain-driven design, service mesh, event choreography, sagas, API gateways, resilience & distributed observability",
+    "dataFile": "microservices.json",
+    "qaFile": "microservices.qa.json",
+    "deepFile": "microservices.deep.json",
+    "examplesFile": "microservices.examples.json",
+    "productionFile": "microservices.production.json"
+  },
+  {
+    "id": "nextjs",
+    "name": "Next.js 15 & App Router",
+    "icon": "NXT",
+    "iconColor": "bg-neutral-900 text-white border border-neutral-700",
+    "description": "React Server Components, App Router, Server Actions, 4-tier caching, Partial Prerendering (PPR), Edge runtime, streaming & self-hosting",
+    "dataFile": "nextjs.json",
+    "qaFile": "nextjs.qa.json",
+    "deepFile": "nextjs.deep.json",
+    "examplesFile": "nextjs.examples.json",
+    "productionFile": "nextjs.production.json"
+  },
+  {
+    "id": "security",
+    "name": "Security & Cryptography",
+    "icon": "SEC",
+    "iconColor": "bg-red-700 text-white border border-red-500",
+    "description": "Zero Trust architecture, OAuth 2.1/OIDC, applied cryptography, OWASP Top 10, API security, mTLS, cloud & container hardening, DevSecOps and incident response",
+    "dataFile": "security.json",
+    "qaFile": "security.qa.json",
+    "deepFile": "security.deep.json",
+    "examplesFile": "security.examples.json",
+    "productionFile": "security.production.json"
+  },
+  {
+    "id": "kubernetes",
+    "name": "Kubernetes & Cloud-Native",
+    "icon": "K8S",
+    "iconColor": "bg-blue-700 text-white border border-blue-500",
+    "description": "Container orchestration, Control Plane architecture, Pod lifecycle, Services, Ingress, CNI, CSI, GitOps (ArgoCD), Helm, CRDs, Operators, autoscaling & multi-cluster management",
+    "dataFile": "kubernetes.json",
+    "qaFile": "kubernetes.qa.json",
+    "deepFile": "kubernetes.deep.json",
+    "examplesFile": "kubernetes.examples.json",
+    "productionFile": "kubernetes.production.json"
   }
 ]

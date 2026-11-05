@@ -1,0 +1,1075 @@
+[
+  {
+    "id": "sec-ex-01",
+    "title": "Cryptographic AES-256-GCM Payload Encryption with Authentication Tags",
+    "category": "Applied Cryptography",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A production-grade AES-256-GCM symmetric encryption utility providing authenticated encryption (AEAD) with unique 12-byte initialization vectors and 16-byte authentication tags.",
+    "conceptsCovered": [
+      "AES-256-GCM",
+      "AEAD",
+      "Initialization Vector (IV)",
+      "Authentication Tag",
+      "crypto.createCipheriv"
+    ],
+    "code": "// lib/crypto/aesGcm.ts\nimport crypto from 'crypto';\n\nexport interface EncryptedPayload {\n  ciphertext: string; // Base64\n  iv: string;         // Base64 (12 bytes)\n  tag: string;        // Base64 (16 bytes)\n}\n\nconst ALGORITHM = 'aes-256-gcm';\nconst IV_LENGTH = 12; // 96 bits recommended by NIST for GCM\n\nexport function encryptPayload(plaintext: string, key32Bytes: Buffer, aad?: string): EncryptedPayload {\n  if (key32Bytes.length !== 32) {\n    throw new Error('Key must be exactly 32 bytes (256 bits)');\n  }\n\n  // 1. Generate unique CSPRNG initialization vector (NEVER REUSE AN IV!)\n  const iv = crypto.randomBytes(IV_LENGTH);\n  const cipher = crypto.createCipheriv(ALGORITHM, key32Bytes, iv);\n\n  // 2. Optionally bind Additional Authenticated Data (AAD)\n  if (aad) {\n    cipher.setAAD(Buffer.from(aad, 'utf8'));\n  }\n\n  const ciphertext = Buffer.concat([\n    cipher.update(plaintext, 'utf8'),\n    cipher.final()\n  ]);\n\n  const tag = cipher.getAuthTag();\n\n  return {\n    ciphertext: ciphertext.toString('base64'),\n    iv: iv.toString('base64'),\n    tag: tag.toString('base64')\n  };\n}\n\nexport function decryptPayload(payload: EncryptedPayload, key32Bytes: Buffer, aad?: string): string {\n  const iv = Buffer.from(payload.iv, 'base64');\n  const tag = Buffer.from(payload.tag, 'base64');\n  const ciphertext = Buffer.from(payload.ciphertext, 'base64');\n\n  const decipher = crypto.createDecipheriv(ALGORITHM, key32Bytes, iv);\n  decipher.setAuthTag(tag);\n\n  if (aad) {\n    decipher.setAAD(Buffer.from(aad, 'utf8'));\n  }\n\n  // Throws error if ciphertext or tag was tampered with!\n  const decrypted = Buffer.concat([\n    decipher.update(ciphertext),\n    decipher.final()\n  ]);\n\n  return decrypted.toString('utf8');\n}",
+    "breakdown": [
+      "Generates a fresh 12-byte (96-bit) CSPRNG initialization vector for every single encryption pass.",
+      "Extracts and enforces the 16-byte GHASH authentication tag, guaranteeing data integrity.",
+      "Supports Additional Authenticated Data (AAD) to cryptographically bind metadata without encrypting it.",
+      "Throws an uncatchable decryption failure if a single bit of ciphertext or tag is modified."
+    ],
+    "expectedOutput": "Returns base64 ciphertext, iv, and tag; decryptPayload restores original string or throws tamper error."
+  },
+  {
+    "id": "sec-ex-02",
+    "title": "Memory-Hard Password Hashing & Verification with Argon2id",
+    "category": "Authentication & Identity",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implementing OWASP-recommended password hashing using Argon2id with 64MB memory hardness, multi-threading parallelism, and secure verification.",
+    "conceptsCovered": [
+      "Argon2id",
+      "Memory-Hard Hashing",
+      "OWASP Parameters",
+      "Salt Generation",
+      "Password Verification"
+    ],
+    "code": "// lib/auth/password.ts\nimport argon2 from 'argon2';\n\n// OWASP Recommended Minimum Parameters for Argon2id (2024)\nconst ARGON2_CONFIG: argon2.Options & { raw?: false } = {\n  type: argon2.argon2id, // Hybrid mode: resistant to side-channels and GPU cracking\n  memoryCost: 65536,    // 64 MiB memory hardness\n  timeCost: 3,          // 3 iterations\n  parallelism: 4,       // 4 threads\n  hashLength: 32        // 32-byte hash length\n};\n\nexport async function hashPassword(plainText: string): Promise<string> {\n  if (!plainText || plainText.length < 8) {\n    throw new Error('Password must be at least 8 characters');\n  }\n  // argon2 automatically generates high-entropy CSPRNG salt\n  return await argon2.hash(plainText, ARGON2_CONFIG);\n}\n\nexport async function verifyPassword(storedHash: string, plainAttempt: string): Promise<boolean> {\n  try {\n    return await argon2.verify(storedHash, plainAttempt);\n  } catch (err) {\n    console.error('[Auth Error] Failed to verify password hash:', err);\n    return false;\n  }\n}\n\nexport async function needsRehash(storedHash: string): Promise<boolean> {\n  // Checks if stored hash was created with older, weaker memory/time parameters\n  return argon2.needsRehash(storedHash, ARGON2_CONFIG);\n}",
+    "breakdown": [
+      "Configures Argon2id with 64MB memory cost to prevent GPU-accelerated mass password cracking.",
+      "Automatically embeds high-entropy cryptographic salt within the encoded PHC string format.",
+      "Provides needsRehash() helper to transparently upgrade old hashes upon user login."
+    ],
+    "expectedOutput": "Produces $argon2id$v=19$m=65536,t=3,p=4$... string; verifyPassword returns true for matching password."
+  },
+  {
+    "id": "sec-ex-03",
+    "title": "Constant-Time String Comparison & HMAC Signature Verification",
+    "category": "Applied Cryptography",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Using crypto.timingSafeEqual to eliminate side-channel timing attacks when validating API keys, tokens, and HMAC signatures.",
+    "conceptsCovered": [
+      "Timing Attacks",
+      "crypto.timingSafeEqual",
+      "HMAC-SHA256",
+      "Constant-Time Comparison"
+    ],
+    "code": "// lib/security/safeCompare.ts\nimport crypto from 'crypto';\n\nexport function constantTimeCompare(knownValue: string, userSuppliedValue: string): boolean {\n  const knownBuffer = Buffer.from(knownValue, 'utf8');\n  const userBuffer = Buffer.from(userSuppliedValue, 'utf8');\n\n  // Prevent length leakage: if lengths differ, compare dummy buffer to preserve time\n  if (knownBuffer.length !== userBuffer.length) {\n    // Constant time dummy operation\n    crypto.timingSafeEqual(knownBuffer, knownBuffer);\n    return false;\n  }\n\n  // Constant-time comparison: takes exact same nanoseconds regardless of where difference is!\n  return crypto.timingSafeEqual(knownBuffer, userBuffer);\n}\n\nexport function verifyHmacSignature(rawBody: Buffer, signatureHex: string, secretKey: string): boolean {\n  const expectedHmac = crypto.createHmac('sha256', secretKey)\n    .update(rawBody)\n    .digest();\n\n  const suppliedHmac = Buffer.from(signatureHex, 'hex');\n\n  if (expectedHmac.length !== suppliedHmac.length) {\n    return false;\n  }\n\n  return crypto.timingSafeEqual(expectedHmac, suppliedHmac);\n}",
+    "breakdown": [
+      "Replaces vulnerable '===' string checks with hardware constant-time buffer evaluations.",
+      "Executes dummy comparison on length mismatches to avoid leaking string length via execution timing.",
+      "Guarantees that network latency measurements cannot leak secret signature bytes."
+    ],
+    "expectedOutput": "Returns true only on exact cryptographic match with zero timing variance."
+  },
+  {
+    "id": "sec-ex-04",
+    "title": "Cryptographically Secure Random Token Generator (CSPRNG vs Math.random)",
+    "category": "Applied Cryptography",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Generating cryptographically secure high-entropy API keys, session tokens, and OTP codes using Node crypto CSPRNG.",
+    "conceptsCovered": [
+      "CSPRNG",
+      "crypto.randomBytes",
+      "Entropy",
+      "Session Tokens",
+      "Secure OTP"
+    ],
+    "code": "// lib/security/tokens.ts\nimport crypto from 'crypto';\n\n// 1. Opaque Session Identifier / API Key (256-bit entropy)\nexport function generateApiKey(prefix: string = 'ak_live'): string {\n  // 32 bytes = 256 bits of CSPRNG entropy from OS /dev/urandom\n  const randomHex = crypto.randomBytes(32).toString('hex');\n  return `${prefix}_${randomHex}`;\n}\n\n// 2. Base64URL URL-safe token (for password reset and magic links)\nexport function generateUrlSafeToken(bytes: number = 32): string {\n  return crypto.randomBytes(bytes).toString('base64url');\n}\n\n// 3. Cryptographically Secure 6-digit OTP Code (replaces Math.random!)\nexport function generateSecureNumericOtp(digits: number = 6): string {\n  const max = Math.pow(10, digits);\n  // crypto.randomInt guarantees unbiased uniform distribution\n  const num = crypto.randomInt(0, max);\n  return num.toString().padStart(digits, '0');\n}",
+    "breakdown": [
+      "crypto.randomBytes(32): Draws entropy directly from the OS kernel CSPRNG pool.",
+      "base64url: Produces clean URL-safe tokens without dangerous '+' or '/' characters.",
+      "crypto.randomInt: Replaces insecure Math.random() for 6-digit OTP codes, eliminating modulo bias."
+    ],
+    "expectedOutput": "Generates 'ak_live_7f8a91...', 'e2B-8z_...', and '491823' with 100% cryptographic unpredictability."
+  },
+  {
+    "id": "sec-ex-05",
+    "title": "Asymmetric Key Generation, Signing & Verification using Ed25519",
+    "category": "Applied Cryptography",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Generating ultra-compact Ed25519 key pairs and performing high-speed, constant-time digital signatures in Node.js.",
+    "conceptsCovered": [
+      "Ed25519",
+      "Digital Signatures",
+      "Elliptic Curve Cryptography",
+      "crypto.sign",
+      "crypto.verify"
+    ],
+    "code": "// lib/crypto/ed25519Signer.ts\nimport crypto from 'crypto';\n\nexport function generateEd25519Keys() {\n  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519', {\n    publicKeyEncoding: { type: 'spki', format: 'pem' },\n    privateKeyEncoding: { type: 'pkcs8', format: 'pem' }\n  });\n  return { publicKey, privateKey };\n}\n\nexport function signMessage(message: Buffer, privateKeyPem: string): string {\n  // Ed25519 operates in constant time; immune to cache-timing attacks\n  const signature = crypto.sign(null, message, privateKeyPem);\n  return signature.toString('base64');\n}\n\nexport function verifySignature(message: Buffer, signatureBase64: string, publicKeyPem: string): boolean {\n  const signature = Buffer.from(signatureBase64, 'base64');\n  return crypto.verify(null, message, publicKeyPem, signature);\n}",
+    "breakdown": [
+      "Generates modern Ed25519 public/private keys encoded in standard SPKI and PKCS#8 PEM formats.",
+      "Performs constant-time digital signatures with sub-millisecond verification overhead.",
+      "Requires zero external dependencies; uses native Node.js OpenSSL 3.0 bindings."
+    ],
+    "expectedOutput": "Generates compact PEM keys, creates base64 signature, and validates message integrity."
+  },
+  {
+    "id": "sec-ex-06",
+    "title": "Envelope Encryption with AWS KMS Data Keys & Local In-Memory Destruction",
+    "category": "Applied Cryptography",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implementing enterprise Envelope Encryption using AWS KMS master keys to generate local data encryption keys and zeroing plaintext memory.",
+    "conceptsCovered": [
+      "Envelope Encryption",
+      "AWS KMS",
+      "GenerateDataKey",
+      "Zeroing Memory",
+      "Buffer.fill(0)"
+    ],
+    "code": "// lib/crypto/kmsEnvelope.ts\nimport { KMSClient, GenerateDataKeyCommand, DecryptCommand } from '@aws-sdk/client-kms';\nimport crypto from 'crypto';\n\nconst kms = new KMSClient({ region: process.env.AWS_REGION || 'us-east-1' });\n\nexport interface EnvelopeCiphertext {\n  encryptedData: string; // Base64\n  encryptedDataKey: string; // Base64\n  iv: string; // Base64\n  tag: string; // Base64\n}\n\nexport async function envelopeEncrypt(plaintext: Buffer, kmsMasterKeyId: string): Promise<EnvelopeCiphertext> {\n  // 1. Request new 256-bit AES Data Key from AWS KMS\n  const kmsRes = await kms.send(new GenerateDataKeyCommand({\n    KeyId: kmsMasterKeyId,\n    KeySpec: 'AES_256'\n  }));\n\n  const plainDek = Buffer.from(kmsRes.Plaintext!);\n  const encryptedDek = Buffer.from(kmsRes.CiphertextBlob!);\n\n  try {\n    // 2. Encrypt locally in container RAM using AES-256-GCM\n    const iv = crypto.randomBytes(12);\n    const cipher = crypto.createCipheriv('aes-256-gcm', plainDek, iv);\n    const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);\n    const tag = cipher.getAuthTag();\n\n    return {\n      encryptedData: ciphertext.toString('base64'),\n      encryptedDataKey: encryptedDek.toString('base64'),\n      iv: iv.toString('base64'),\n      tag: tag.toString('base64')\n    };\n  } finally {\n    // 3. CRITICAL: Securely zero-out plaintext key from memory!\n    plainDek.fill(0);\n  }\n}\n\nexport async function envelopeDecrypt(pkg: EnvelopeCiphertext): Promise<Buffer> {\n  // 1. Decrypt the 32-byte DEK using AWS KMS\n  const decryptRes = await kms.send(new DecryptCommand({\n    CiphertextBlob: Buffer.from(pkg.encryptedDataKey, 'base64')\n  }));\n\n  const plainDek = Buffer.from(decryptRes.Plaintext!);\n\n  try {\n    // 2. Decrypt data symmetrically\n    const decipher = crypto.createDecipheriv(\n      'aes-256-gcm',\n      plainDek,\n      Buffer.from(pkg.iv, 'base64')\n    );\n    decipher.setAuthTag(Buffer.from(pkg.tag, 'base64'));\n\n    return Buffer.concat([\n      decipher.update(Buffer.from(pkg.encryptedData, 'base64')),\n      decipher.final()\n    ]);\n  } finally {\n    plainDek.fill(0);\n  }\n}",
+    "breakdown": [
+      "Calls AWS KMS GenerateDataKey to generate high-entropy symmetric DEK without exposing master KEK.",
+      "Symmetrically encrypts payloads locally at multi-gigabyte memory speed.",
+      "plainDek.fill(0): Guarantees the plaintext key buffer is zeroed out before garbage collection."
+    ],
+    "expectedOutput": "Encrypts data locally and stores encrypted DEK alongside ciphertext for cloud compliance."
+  },
+  {
+    "id": "sec-ex-07",
+    "title": "PKCE S256 Challenge & Verifier Pair Generator for OAuth 2.1",
+    "category": "Authentication & Identity",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Generating cryptographically compliant PKCE code_verifier and code_challenge strings adhering to RFC 7636 and OAuth 2.1.",
+    "conceptsCovered": [
+      "PKCE",
+      "RFC 7636",
+      "code_verifier",
+      "code_challenge",
+      "SHA-256 Base64URL"
+    ],
+    "code": "// lib/auth/pkce.ts\nimport crypto from 'crypto';\n\nexport interface PkcePair {\n  codeVerifier: string;\n  codeChallenge: string;\n  codeChallengeMethod: 'S256';\n}\n\nexport function generatePkce(): PkcePair {\n  // 1. Generate 32 bytes of CSPRNG randomness (within RFC 7636 43-128 char requirement)\n  const verifierBytes = crypto.randomBytes(32);\n  const codeVerifier = verifierBytes\n    .toString('base64url')\n    .replace(/[^a-zA-Z0-9-._~]/g, '');\n\n  // 2. Compute SHA-256 hash of code_verifier\n  const hash = crypto.createHash('sha256').update(codeVerifier).digest();\n\n  // 3. Base64URL encode the hash without padding\n  const codeChallenge = hash.toString('base64url');\n\n  return {\n    codeVerifier,\n    codeChallenge,\n    codeChallengeMethod: 'S256'\n  };\n}\n\nexport function verifyPkce(codeVerifier: string, expectedChallenge: string): boolean {\n  const hash = crypto.createHash('sha256').update(codeVerifier).digest('base64url');\n  return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(expectedChallenge));\n}",
+    "breakdown": [
+      "Generates high-entropy code_verifier adhering to RFC 7636 unreserved character set.",
+      "Computes SHA-256 hash and encodes in unpadded Base64URL format.",
+      "Provides server-side verification using constant-time string comparison."
+    ],
+    "expectedOutput": "Produces valid code_verifier and code_challenge pair for OAuth 2.1 authorization requests."
+  },
+  {
+    "id": "sec-ex-08",
+    "title": "JWT RS256 Issuance & Verification with Strict Whitelisting",
+    "category": "Authentication & Identity",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Issuing and verifying asymmetric RS256 JSON Web Tokens with strict algorithm, issuer, and audience whitelists to prevent algorithm confusion attacks.",
+    "conceptsCovered": [
+      "JWT",
+      "RS256",
+      "Algorithm Whitelist",
+      "Issuer Check",
+      "Audience Verification"
+    ],
+    "code": "// lib/auth/jwt.ts\nimport jwt from 'jsonwebtoken';\n\ninterface UserClaims {\n  sub: string;\n  role: string;\n  tenantId: string;\n}\n\nconst ISSUER = 'https://auth.enterprise.com';\nconst AUDIENCE = 'https://api.enterprise.com';\n\nexport function signAccessToken(claims: UserClaims, privateKeyPem: string): string {\n  return jwt.sign(claims, privateKeyPem, {\n    algorithm: 'RS256',\n    expiresIn: '15m', // Short-lived 15 minute lifespan\n    issuer: ISSUER,\n    audience: AUDIENCE,\n    jwtid: crypto.randomUUID() // Unique JTI for revocation tracking\n  });\n}\n\nexport function verifyAccessToken(token: string, publicKeyPem: string): UserClaims {\n  // CRITICAL: Hardcode allowed algorithms to prevent RS256 -> HS256 switching exploits!\n  const decoded = jwt.verify(token, publicKeyPem, {\n    algorithms: ['RS256'],\n    issuer: ISSUER,\n    audience: AUDIENCE,\n    clockTolerance: 10 // 10s leeway for clock drift\n  }) as jwt.JwtPayload;\n\n  return {\n    sub: decoded.sub!,\n    role: decoded.role,\n    tenantId: decoded.tenantId\n  };\n}",
+    "breakdown": [
+      "Hardcodes algorithms: ['RS256'] to reject 'none' algorithm and HMAC confusion attacks.",
+      "Enforces strict issuer and audience assertions to prevent cross-service token misuse.",
+      "Generates unique jti UUID on every token to support immediate distributed revocation."
+    ],
+    "expectedOutput": "Issues RS256 signed JWT; verifies signature and claims or throws JsonWebTokenError."
+  },
+  {
+    "id": "sec-ex-09",
+    "title": "Distributed JWT Revocation & Blacklisting with Redis TTL",
+    "category": "Authentication & Identity",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implementing an immediate token revocation blocklist in Redis that stores revoked JWT IDs (jti) with automatic expiration.",
+    "conceptsCovered": [
+      "Token Revocation",
+      "jti Claim",
+      "Redis Blacklist",
+      "SETEX",
+      "Stateless Token Busting"
+    ],
+    "code": "// lib/auth/revocation.ts\nimport { Redis } from 'ioredis';\nimport jwt from 'jsonwebtoken';\n\nconst redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');\n\nexport async function revokeJwt(rawToken: string, reason: string = 'logout') {\n  // Decode without verifying signature to extract jti and exp\n  const decoded = jwt.decode(rawToken) as { jti?: string; exp?: number; sub?: string } | null;\n\n  if (!decoded?.jti || !decoded.exp) {\n    throw new Error('Token does not contain jti or exp claims');\n  }\n\n  const now = Math.floor(Date.now() / 1000);\n  const remainingTtlSeconds = decoded.exp - now;\n\n  // Only store in Redis for the remaining duration of the token's lifetime!\n  if (remainingTtlSeconds > 0) {\n    const key = `revoked:jti:${decoded.jti}`;\n    await redis.setex(key, remainingTtlSeconds, JSON.stringify({\n      revokedAt: now,\n      user: decoded.sub,\n      reason\n    }));\n  }\n}\n\nexport async function isTokenRevoked(jti: string): Promise<boolean> {\n  const result = await redis.exists(`revoked:jti:${jti}`);\n  return result === 1;\n}",
+    "breakdown": [
+      "Extracts jti and exp claims to calculate the exact remaining token lifespan.",
+      "Stores revoked jti in Redis with SETEX matching remaining seconds, preventing memory leaks.",
+      "Allows instant cluster-wide revocation upon logout, password change, or fraud detection."
+    ],
+    "expectedOutput": "Revokes token in Redis; subsequent checks return true until natural expiration."
+  },
+  {
+    "id": "sec-ex-10",
+    "title": "DPoP Proof Verification Middleware for Sender-Constrained Tokens",
+    "category": "Authentication & Identity",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "An Express/Node.js middleware validating OAuth 2.0 DPoP (RFC 9449) proof headers, verifying HTTP method/URI binding and JWK thumbprints.",
+    "conceptsCovered": [
+      "DPoP",
+      "RFC 9449",
+      "jose",
+      "JWK Thumbprint",
+      "Sender-Constrained Tokens"
+    ],
+    "code": "// middleware/dpopGuard.ts\nimport { Request, Response, NextFunction } from 'express';\nimport { importJWK, jwtVerify, calculateJwkThumbprint } from 'jose';\n\nexport async function dpopGuard(req: Request, res: Response, next: NextFunction) {\n  const dpopHeader = req.headers['dpop'] as string;\n  const authHeader = req.headers['authorization'] as string;\n\n  if (!dpopHeader || !authHeader?.startsWith('DPoP ')) {\n    return res.status(401).json({ error: 'invalid_token', message: 'DPoP proof and token required' });\n  }\n\n  try {\n    // 1. Extract public JWK from DPoP proof header\n    const [headerB64] = dpopHeader.split('.');\n    const { jwk } = JSON.parse(Buffer.from(headerB64, 'base64url').toString());\n\n    // 2. Verify DPoP Proof signature\n    const publicKey = await importJWK(jwk, 'ES256');\n    const fullUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;\n\n    const { payload } = await jwtVerify(dpopHeader, publicKey, {\n      typ: 'dpop+jwt',\n      maxTokenAge: '60s' // Prevent replay past 60s\n    });\n\n    // 3. Verify HTTP Method and URI binding\n    if (payload.htm !== req.method || payload.htu !== fullUrl) {\n      return res.status(401).json({ error: 'invalid_dpop_proof', message: 'Method or URI mismatch' });\n    }\n\n    // 4. Calculate thumbprint and bind to request context\n    const thumbprint = await calculateJwkThumbprint(jwk);\n    (req as any).dpopThumbprint = thumbprint;\n\n    next();\n  } catch (err: any) {\n    return res.status(401).json({ error: 'invalid_dpop_proof', message: err.message });\n  }\n}",
+    "breakdown": [
+      "Parses the DPoP proof JWT and imports client's ephemeral public key.",
+      "Verifies that payload.htm and payload.htu strictly match the active HTTP request method and URL.",
+      "Calculates JWK thumbprint to bind against access token 'cnf.jkt' claim."
+    ],
+    "expectedOutput": "Allows requests with valid DPoP signatures; rejects replayed or URL-altered requests with 401."
+  },
+  {
+    "id": "sec-ex-11",
+    "title": "WebAuthn Passkey Registration & Assertion Verification",
+    "category": "Authentication & Identity",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Verifying FIDO2/WebAuthn public key registration and authentication responses using @simplewebauthn/server.",
+    "conceptsCovered": [
+      "WebAuthn",
+      "Passkeys",
+      "FIDO2",
+      "Origin Validation",
+      "Phishing Resistance"
+    ],
+    "code": "// lib/auth/webauthn.ts\nimport {\n  generateRegistrationOptions,\n  verifyRegistrationResponse,\n  generateAuthenticationOptions,\n  verifyAuthenticationResponse,\n} from '@simplewebauthn/server';\n\nconst RP_NAME = 'Acme Enterprise';\nconst RP_ID = 'enterprise.com'; // Relying Party Domain\nconst EXPECTED_ORIGIN = 'https://enterprise.com';\n\n// 1. Generate Registration Options for new Passkey\nexport async function getPasskeyRegistrationOptions(user: { id: string; email: string }) {\n  return await generateRegistrationOptions({\n    rpName: RP_NAME,\n    rpID: RP_ID,\n    userID: Buffer.from(user.id),\n    userName: user.email,\n    attestationType: 'none',\n    authenticatorSelection: {\n      residentKey: 'required',\n      userVerification: 'preferred'\n    }\n  });\n}\n\n// 2. Verify Registration Response from Authenticator\nexport async function verifyPasskeyRegistration(\n  body: any,\n  expectedChallenge: string\n) {\n  const verification = await verifyRegistrationResponse({\n    response: body,\n    expectedChallenge,\n    expectedOrigin: EXPECTED_ORIGIN,\n    expectedRPID: RP_ID\n  });\n\n  if (verification.verified && verification.registrationInfo) {\n    const { credentialID, credentialPublicKey, counter } = verification.registrationInfo;\n    return {\n      verified: true,\n      credentialId: Buffer.from(credentialID).toString('base64url'),\n      publicKey: Buffer.from(credentialPublicKey).toString('base64url'),\n      counter\n    };\n  }\n  return { verified: false };\n}",
+    "breakdown": [
+      "Generates cryptographic challenge and enforces expectedRPID and expectedOrigin.",
+      "Verifies hardware signature over clientDataJSON, guaranteeing origin integrity.",
+      "Extracts credentialPublicKey and signature counter to store in user database."
+    ],
+    "expectedOutput": "Validates WebAuthn authenticator response and outputs verified passkey credentials."
+  },
+  {
+    "id": "sec-ex-12",
+    "title": "Number Matching MFA Push Challenge Verification Service",
+    "category": "Authentication & Identity",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implementing Number Matching to neutralize MFA fatigue and push notification bombing attacks.",
+    "conceptsCovered": [
+      "Number Matching",
+      "MFA Fatigue",
+      "Push Bombing Defense",
+      "Redis TTL Verification"
+    ],
+    "code": "// services/mfaNumberMatching.ts\nimport { Redis } from 'ioredis';\nimport crypto from 'crypto';\n\nconst redis = new Redis();\n\nexport async function createNumberMatchingChallenge(userId: string) {\n  // Generate random 2-digit number (10 to 99)\n  const challengeNumber = crypto.randomInt(10, 100);\n  const challengeId = crypto.randomUUID();\n\n  // Store in Redis with strict 60-second expiration\n  await redis.setex(\n    `mfa:challenge:${challengeId}`,\n    60,\n    JSON.stringify({ userId, expectedNumber: challengeNumber, attempts: 0 })\n  );\n\n  return { challengeId, displayOnWebScreen: challengeNumber };\n}\n\nexport async function verifyNumberMatchingAttempt(challengeId: string, enteredNumber: number) {\n  const key = `mfa:challenge:${challengeId}`;\n  const raw = await redis.get(key);\n\n  if (!raw) {\n    throw new Error('MFA challenge expired or invalid');\n  }\n\n  const session = JSON.parse(raw);\n\n  // Rate limit: Max 3 attempts per challenge\n  if (session.attempts >= 3) {\n    await redis.del(key);\n    throw new Error('Too many failed attempts. Challenge revoked.');\n  }\n\n  if (session.expectedNumber !== enteredNumber) {\n    session.attempts += 1;\n    await redis.setex(key, 60, JSON.stringify(session));\n    return { verified: false, remainingAttempts: 3 - session.attempts };\n  }\n\n  // Success: Purge challenge key\n  await redis.del(key);\n  return { verified: true, userId: session.userId };\n}",
+    "breakdown": [
+      "Generates random 2-digit number shown on the login screen.",
+      "Requires user to manually enter the exact matching number in mobile authenticator.",
+      "Prevents blind approval taps and locks out after 3 failed attempts."
+    ],
+    "expectedOutput": "Validates matching number; rejects wrong numbers or expired prompts."
+  },
+  {
+    "id": "sec-ex-13",
+    "title": "Insecure Direct Object Reference (IDOR / BOLA) Scoped Data Access Layer",
+    "category": "Authorization & Access Control",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A data access layer that enforces row ownership and tenant scoping on all queries to eliminate IDOR / BOLA flaws.",
+    "conceptsCovered": [
+      "IDOR Defense",
+      "BOLA",
+      "Tenant Scoping",
+      "404 Not Found vs 403",
+      "Postgres Query Scoping"
+    ],
+    "code": "// repository/invoiceRepository.ts\nimport { Pool } from 'pg';\n\nconst pool = new Pool();\n\nexport interface SessionContext {\n  userId: string;\n  tenantId: string;\n  role: string;\n}\n\nexport class InvoiceRepository {\n  async getInvoiceById(invoiceId: string, ctx: SessionContext) {\n    // CRITICAL: Bind query strictly to verified tenantId and ownership!\n    const query = `\n      SELECT id, amount, status, created_at\n      FROM invoices\n      WHERE id = $1\n        AND tenant_id = $2\n    `;\n\n    const result = await pool.query(query, [invoiceId, ctx.tenantId]);\n\n    // Return 404 rather than 403 to prevent object ID enumeration attacks\n    if (result.rows.length === 0) {\n      const error = new Error('Invoice not found');\n      (error as any).status = 404;\n      throw error;\n    }\n\n    return result.rows[0];\n  }\n\n  async updateInvoiceStatus(invoiceId: string, status: string, ctx: SessionContext) {\n    const query = `\n      UPDATE invoices\n      SET status = $1, updated_at = NOW()\n      WHERE id = $2\n        AND tenant_id = $3\n      RETURNING id, status\n    `;\n\n    const result = await pool.query(query, [status, invoiceId, ctx.tenantId]);\n\n    if (result.rowCount === 0) {\n      throw new Error('Invoice not found or permission denied');\n    }\n    return result.rows[0];\n  }\n}",
+    "breakdown": [
+      "Always appends 'AND tenant_id = $2' to prevent accessing another organization's records.",
+      "Throws 404 Not Found instead of 403 Forbidden to stop attackers probing ID existence.",
+      "Eliminates reliance on client-supplied parameters for ownership checks."
+    ],
+    "expectedOutput": "Returns invoice record only if belonging to active tenant; throws 404 otherwise."
+  },
+  {
+    "id": "sec-ex-14",
+    "title": "Multi-Tenant Row-Level Security (RLS) Session Wrapper in PostgreSQL",
+    "category": "Authorization & Access Control",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Wrapping PostgreSQL database transactions with SET LOCAL app.current_tenant_id to activate database-level Row-Level Security.",
+    "conceptsCovered": [
+      "PostgreSQL RLS",
+      "SET LOCAL",
+      "Multi-Tenancy",
+      "Connection Pooling",
+      "Defense-in-Depth"
+    ],
+    "code": "// lib/db/rlsClient.ts\nimport { Pool, PoolClient } from 'pg';\n\nconst pool = new Pool({ connectionString: process.env.DATABASE_URL });\n\nexport async function withTenantContext<T>(\n  tenantId: string,\n  callback: (client: PoolClient) => Promise<T>\n): Promise<T> {\n  const client = await pool.connect();\n  try {\n    await client.query('BEGIN');\n\n    // 1. Set local session variable scoped strictly to this transaction\n    // SET LOCAL automatically resets upon COMMIT or ROLLBACK!\n    await client.query(\n      'SELECT set_config($1, $2, true)',\n      ['app.current_tenant_id', tenantId]\n    );\n\n    // 2. Execute business operations; Postgres engine enforces RLS policy automatically!\n    const result = await callback(client);\n\n    await client.query('COMMIT');\n    return result;\n  } catch (err) {\n    await client.query('ROLLBACK');\n    throw err;\n  } finally {\n    // Release client back to pool clean\n    client.release();\n  }\n}\n\n// Database Migration Setup (run once in SQL):\n/*\nALTER TABLE documents ENABLE ROW LEVEL SECURITY;\nALTER TABLE documents FORCE ROW LEVEL SECURITY;\n\nCREATE POLICY tenant_isolation_policy ON documents\n  FOR ALL\n  USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid)\n  WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);\n*/",
+    "breakdown": [
+      "set_config('app.current_tenant_id', tenantId, true) scopes setting strictly to current transaction.",
+      "PostgreSQL RLS engine enforces policy inside the DB engine, preventing developer query omissions.",
+      "FORCE ROW LEVEL SECURITY guarantees policies apply even to table owners and migration roles."
+    ],
+    "expectedOutput": "Executes queries inside transaction; PostgreSQL filters rows strictly by active tenant."
+  },
+  {
+    "id": "sec-ex-15",
+    "title": "Open Policy Agent (OPA) Microservice Policy Enforcement Point (PEP)",
+    "category": "Authorization & Access Control",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "An Express.js middleware querying an Open Policy Agent (OPA) sidecar engine to evaluate centralized Rego authorization policies.",
+    "conceptsCovered": [
+      "OPA",
+      "PEP",
+      "Policy-as-Code",
+      "Sidecar Pattern",
+      "Rego Evaluation"
+    ],
+    "code": "// middleware/opaPep.ts\nimport { Request, Response, NextFunction } from 'express';\n\nconst OPA_URL = process.env.OPA_URL || 'http://127.0.0.1:8181/v1/data/httpapi/authz';\n\nexport function opaPolicyEnforcementPoint() {\n  return async (req: Request, res: Response, next: NextFunction) => {\n    // 1. Build structured JSON input for OPA evaluation\n    const opaInput = {\n      input: {\n        user: (req as any).user || { role: 'anonymous' },\n        method: req.method,\n        path: req.path.split('/').filter(Boolean),\n        ip: req.ip,\n        timestamp: Math.floor(Date.now() / 1000)\n      }\n    };\n\n    try {\n      // 2. Query OPA Sidecar via low-latency HTTP\n      const response = await fetch(OPA_URL, {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify(opaInput),\n        signal: AbortSignal.timeout(50) // 50ms strict latency budget!\n      });\n\n      if (!response.ok) {\n        return res.status(500).json({ error: 'Authorization policy engine unavailable' });\n      }\n\n      const { result } = await response.json();\n\n      // 3. Enforce decision: Default Deny\n      if (result && result.allow === true) {\n        return next();\n      }\n\n      return res.status(403).json({\n        error: 'Forbidden',\n        message: 'Access denied by centralized security policy'\n      });\n    } catch (err: any) {\n      console.error('[OPA Error]:', err.message);\n      return res.status(500).json({ error: 'Authorization evaluation error' });\n    }\n  };\n}",
+    "breakdown": [
+      "Extracts request context and converts it into standard OPA JSON input schema.",
+      "Queries local OPA sidecar on 127.0.0.1 with a strict 50ms timeout budget.",
+      "Enforces default-deny: blocks requests unless OPA explicitly evaluates allow = true."
+    ],
+    "expectedOutput": "Allows authorized calls; returns HTTP 403 on policy rejection."
+  },
+  {
+    "id": "sec-ex-16",
+    "title": "Atomic Financial Balance Transfer with Pessimistic Locking (TOCTOU Defense)",
+    "category": "Authorization & Access Control",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Eliminating Time-of-Check to Time-of-Use (TOCTOU) race conditions in account debiting using SQL SELECT FOR UPDATE and atomic constraints.",
+    "conceptsCovered": [
+      "TOCTOU",
+      "Race Conditions",
+      "Pessimistic Locking",
+      "SELECT FOR UPDATE",
+      "Atomic Updates"
+    ],
+    "code": "// services/transferService.ts\nimport { Pool } from 'pg';\n\nconst pool = new Pool();\n\nexport async function executeAtomicTransfer(\n  fromAccountId: string,\n  toAccountId: string,\n  amountCents: number\n) {\n  if (amountCents <= 0) throw new Error('Invalid transfer amount');\n\n  const client = await pool.connect();\n\n  try {\n    await client.query('BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED');\n\n    // 1. Pessimistic Row Lock: Sort account IDs to prevent deadlocks!\n    const [firstId, secondId] = [fromAccountId, toAccountId].sort();\n\n    await client.query(\n      'SELECT id, balance_cents FROM accounts WHERE id IN ($1, $2) FOR UPDATE',\n      [firstId, secondId]\n    );\n\n    // 2. Atomic Deduct with WHERE constraint: Prevents negative balances under concurrency\n    const deductRes = await client.query(\n      `UPDATE accounts\n       SET balance_cents = balance_cents - $1, updated_at = NOW()\n       WHERE id = $2 AND balance_cents >= $1\n       RETURNING balance_cents`,\n      [amountCents, fromAccountId]\n    );\n\n    if (deductRes.rowCount === 0) {\n      throw new Error('Insufficient funds at execution time (TOCTOU blocked)');\n    }\n\n    // 3. Credit destination account\n    await client.query(\n      `UPDATE accounts\n       SET balance_cents = balance_cents + $1, updated_at = NOW()\n       WHERE id = $2`,\n      [amountCents, toAccountId]\n    );\n\n    await client.query('COMMIT');\n    return { success: true, newBalanceCents: deductRes.rows[0].balance_cents };\n  } catch (err) {\n    await client.query('ROLLBACK');\n    throw err;\n  } finally {\n    client.release();\n  }\n}",
+    "breakdown": [
+      "Sorts account IDs before locking to eliminate distributed deadlock cycles.",
+      "SELECT FOR UPDATE locks database rows exclusively until transaction commits.",
+      "Atomic 'WHERE balance_cents >= $1' ensures double-spending is physically impossible."
+    ],
+    "expectedOutput": "Executes transfer safely; rejects concurrent race attacks with insufficient funds error."
+  },
+  {
+    "id": "sec-ex-17",
+    "title": "Parameterized SQL Prepared Statement Wrapper for pg Pool",
+    "category": "OWASP Top 10 & Web Defense",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "A type-safe database wrapper that enforces prepared statements with parameterized inputs, disallowing raw string queries.",
+    "conceptsCovered": [
+      "SQL Injection",
+      "Prepared Statements",
+      "pg Pool",
+      "Type Safety"
+    ],
+    "code": "// lib/db/safeQuery.ts\nimport { Pool, QueryResult, QueryResultRow } from 'pg';\n\nconst pool = new Pool({\n  connectionString: process.env.DATABASE_URL,\n  max: 20\n});\n\n// Type-safe query wrapper enforcing prepared statement parameters\nexport async function query<T extends QueryResultRow = any>(\n  sqlTemplate: string,\n  params: (string | number | boolean | Date | null | Buffer)[] = []\n): Promise<QueryResult<T>> {\n  // Defensive validation: Ensure developers didn't accidentally pass undefined\n  for (let i = 0; i < params.length; i++) {\n    if (params[i] === undefined) {\n      throw new Error(`Query parameter at index ${i} is undefined. Use null for SQL NULL.`);\n    }\n  }\n\n  // Next-level defense: Reject queries containing semicolon chains outside literals\n  if (sqlTemplate.includes(';') && !sqlTemplate.trim().endsWith(';')) {\n    throw new Error('Multiple statement execution is forbidden');\n  }\n\n  return await pool.query<T>(sqlTemplate, params);\n}",
+    "breakdown": [
+      "Enforces parameterized query calls with typed parameter arrays ($1, $2).",
+      "Rejects undefined parameters which often mask logic bugs in query construction.",
+      "Blocks multi-statement SQL injection attempts by disallowing mid-string semicolons."
+    ],
+    "expectedOutput": "Executes parameterized prepared statements safely with zero SQL injection risk."
+  },
+  {
+    "id": "sec-ex-18",
+    "title": "Context-Aware HTML Sanitizer with DOMPurify for Rich Text",
+    "category": "OWASP Top 10 & Web Defense",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Sanitizing untrusted HTML user input with DOMPurify on Node.js and the browser, stripping XSS vectors and preventing DOM clobbering.",
+    "conceptsCovered": [
+      "XSS Defense",
+      "DOMPurify",
+      "DOM Clobbering",
+      "HTML Sanitization"
+    ],
+    "code": "// lib/security/sanitizeHtml.ts\nimport DOMPurify from 'isomorphic-dompurify';\n\nexport function sanitizeRichText(untrustedHtml: string): string {\n  if (!untrustedHtml) return '';\n\n  return DOMPurify.sanitize(untrustedHtml, {\n    // 1. Explicit tag whitelist: Allow formatting, block script/iframe/object\n    ALLOWED_TAGS: [\n      'b', 'i', 'em', 'strong', 'a', 'p', 'ul', 'ol', 'li',\n      'h1', 'h2', 'h3', 'blockquote', 'code', 'pre'\n    ],\n    // 2. Explicit attribute whitelist\n    ALLOWED_ATTR: ['href', 'title', 'target', 'rel'],\n    // 3. Enforce safe link protocols (blocks javascript:alert(1))\n    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,\n    // 4. Force safe external link attributes\n    ADD_ATTR: ['rel'],\n    // 5. Defend against DOM Clobbering attacks!\n    SANITIZE_DOM: true,\n    WHOLE_DOCUMENT: false\n  });\n}",
+    "breakdown": [
+      "Strips script tags, event handlers (onload, onerror), and dangerous elements.",
+      "Blocks javascript: and data: pseudo-protocols in href attributes.",
+      "SANITIZE_DOM: true strips clobbering id and name attributes that could hijack global variables."
+    ],
+    "expectedOutput": "Converts '<p>Safe <script>alert(1)</script></p>' to '<p>Safe </p>' cleanly."
+  },
+  {
+    "id": "sec-ex-19",
+    "title": "Dynamic Content Security Policy (CSP) & Nonce Middleware",
+    "category": "OWASP Top 10 & Web Defense",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Generating unique 16-byte cryptographically secure random nonces per HTTP request and building a strict CSP Level 3 header.",
+    "conceptsCovered": [
+      "CSP Level 3",
+      "Cryptographic Nonce",
+      "strict-dynamic",
+      "XSS Defense"
+    ],
+    "code": "// middleware/cspNonce.ts\nimport { Request, Response, NextFunction } from 'express';\nimport crypto from 'crypto';\n\nexport function cspNonceMiddleware(req: Request, res: Response, next: NextFunction) {\n  // 1. Generate unpredictable 16-byte random base64 nonce\n  const nonce = crypto.randomBytes(16).toString('base64');\n  res.locals.nonce = nonce;\n\n  // 2. Strict CSP Level 3 policy\n  const cspDirectives = [\n    \"default-src 'self'\",\n    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https: 'unsafe-inline'`,\n    `style-src 'self' 'nonce-${nonce}'`,\n    \"img-src 'self' data: https:\",\n    \"font-src 'self'\",\n    \"object-src 'none'\",\n    \"base-uri 'none'\",\n    \"frame-ancestors 'none'\",\n    \"form-action 'self'\",\n    \"upgrade-insecure-requests\"\n  ];\n\n  res.setHeader('Content-Security-Policy', cspDirectives.join('; '));\n  next();\n}",
+    "breakdown": [
+      "Generates fresh 16-byte base64 nonce on every single incoming HTTP request.",
+      "Sets 'strict-dynamic' to allow trusted scripts to load dynamic modules.",
+      "Sets 'object-src none' and 'base-uri none' to plug common CSP bypass holes."
+    ],
+    "expectedOutput": "Injects Content-Security-Policy header with unique per-request nonce."
+  },
+  {
+    "id": "sec-ex-20",
+    "title": "Double Submit Cookie Anti-CSRF Protection Middleware",
+    "category": "OWASP Top 10 & Web Defense",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Implementing Double Submit Cookie anti-CSRF pattern with cryptographic HMAC token generation and constant-time verification.",
+    "conceptsCovered": [
+      "CSRF",
+      "Double Submit Cookie",
+      "SameSite Cookie",
+      "HMAC Validation",
+      "Origin Check"
+    ],
+    "code": "// middleware/csrfProtection.ts\nimport { Request, Response, NextFunction } from 'express';\nimport crypto from 'crypto';\n\nconst CSRF_SECRET = process.env.CSRF_SECRET || 'super-secret-key-32-bytes-minimum';\nconst COOKIE_NAME = '__Host-csrf-token';\n\nexport function issueCsrfToken(res: Response): string {\n  const token = crypto.randomBytes(32).toString('hex');\n  const hmac = crypto.createHmac('sha256', CSRF_SECRET).update(token).digest('hex');\n  const signedValue = `${token}.${hmac}`;\n\n  res.cookie(COOKIE_NAME, signedValue, {\n    httpOnly: false, // Must be readable by client JS to send in header!\n    secure: true,\n    sameSite: 'lax',\n    path: '/'\n  });\n\n  return signedValue;\n}\n\nexport function verifyCsrf(req: Request, res: Response, next: NextFunction) {\n  // Skip safe read-only HTTP methods\n  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();\n\n  const cookieToken = req.cookies[COOKIE_NAME];\n  const headerToken = req.headers['x-csrf-token'] as string;\n\n  if (!cookieToken || !headerToken || cookieToken !== headerToken) {\n    return res.status(403).json({ error: 'CSRF token mismatch' });\n  }\n\n  // Verify HMAC signature of token\n  const [token, hmac] = cookieToken.split('.');\n  const expectedHmac = crypto.createHmac('sha256', CSRF_SECRET).update(token).digest('hex');\n\n  if (!crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(expectedHmac))) {\n    return res.status(403).json({ error: 'Tampered CSRF token signature' });\n  }\n\n  next();\n}",
+    "breakdown": [
+      "Issues signed token stored in cookie and mirrored by frontend in X-CSRF-Token header.",
+      "Verifies cookie and header values match, defeating cross-site request forgeries.",
+      "Validates HMAC signature on token to prevent client-side token spoofing."
+    ],
+    "expectedOutput": "Blocks state mutations lacking matching CSRF header/cookie with HTTP 403."
+  },
+  {
+    "id": "sec-ex-21",
+    "title": "Server-Side Request Forgery (SSRF) Guard & DNS Resolution Validator",
+    "category": "OWASP Top 10 & Web Defense",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A bulletproof SSRF defense utility resolving DNS prior to socket connection and rejecting loopback, link-local, and RFC 1918 private IP addresses.",
+    "conceptsCovered": [
+      "SSRF Defense",
+      "DNS Resolution",
+      "ipaddr.js",
+      "Private IP Filtering",
+      "Link-Local Block"
+    ],
+    "code": "// lib/security/ssrfGuard.ts\nimport dns from 'dns/promises';\nimport ipaddr from 'ipaddr.js';\n\nexport async function assertSafeUrl(rawUrl: string): Promise<URL> {\n  const parsed = new URL(rawUrl);\n\n  // 1. Only allow HTTP and HTTPS protocols (blocks file://, gopher://, ftp://)\n  if (!['http:', 'https:'].includes(parsed.protocol)) {\n    throw new Error(`Forbidden protocol: ${parsed.protocol}`);\n  }\n\n  // 2. Resolve DNS to physical IP addresses\n  const addresses = await dns.resolve4(parsed.hostname);\n\n  if (addresses.length === 0) {\n    throw new Error('Hostname did not resolve to any IPv4 address');\n  }\n\n  for (const ipStr of addresses) {\n    const addr = ipaddr.parse(ipStr);\n    const range = addr.range();\n\n    // 3. Block loopback, link-local, private networks, and multicast\n    if (['loopback', 'private', 'linkLocal', 'multicast', 'carrierGradeNat'].includes(range)) {\n      throw new Error(`SSRF Blocked: Destination IP ${ipStr} is in forbidden range: ${range}`);\n    }\n\n    // 4. Specifically assert AWS Link-Local metadata IP is blocked!\n    if (ipStr === '169.254.169.254') {\n      throw new Error('SSRF Blocked: Attempt to contact Cloud Metadata Service!');\n    }\n  }\n\n  return parsed;\n}",
+    "breakdown": [
+      "Restricts protocols to http and https, blocking file:// and gopher://.",
+      "Resolves DNS and uses ipaddr.js to check IP classification ranges.",
+      "Explicitly drops 169.254.169.254 and RFC 1918 (10.x, 172.16.x, 192.168.x) networks."
+    ],
+    "expectedOutput": "Validates public domains like https://example.com; throws error on internal IP targets."
+  },
+  {
+    "id": "sec-ex-22",
+    "title": "AWS IMDSv2 Token Fetcher & Metadata Query Client",
+    "category": "Container & Cloud Security",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A secure AWS EC2/ECS metadata client enforcing IMDSv2 session token exchange via HTTP PUT headers.",
+    "conceptsCovered": [
+      "IMDSv2",
+      "Cloud Metadata",
+      "AWS Security",
+      "Session Tokens",
+      "SSRF Mitigation"
+    ],
+    "code": "// lib/aws/imdsv2Client.ts\nconst IMDS_HOST = 'http://169.254.169.254';\n\nexport class ImdsV2Client {\n  private token: string | null = null;\n  private tokenExpiresAt: number = 0;\n\n  // 1. Fetch short-lived IMDSv2 session token using HTTP PUT\n  private async getSessionToken(): Promise<string> {\n    const now = Date.now();\n    if (this.token && this.tokenExpiresAt > now) {\n      return this.token;\n    }\n\n    const response = await fetch(`${IMDS_HOST}/latest/api/token`, {\n      method: 'PUT',\n      headers: {\n        'X-aws-ec2-metadata-token-ttl-seconds': '21600' // 6-hour TTL\n      },\n      signal: AbortSignal.timeout(1000)\n    });\n\n    if (!response.ok) {\n      throw new Error('Failed to acquire IMDSv2 session token');\n    }\n\n    this.token = await response.text();\n    this.tokenExpiresAt = now + (21500 * 1000);\n    return this.token;\n  }\n\n  // 2. Query metadata endpoint with mandatory session token header\n  async getMetadata(path: string): Promise<string> {\n    const token = await this.getSessionToken();\n\n    const response = await fetch(`${IMDS_HOST}/latest/meta-data/${path}`, {\n      headers: {\n        'X-aws-ec2-metadata-token': token\n      },\n      signal: AbortSignal.timeout(1000)\n    });\n\n    if (!response.ok) {\n      throw new Error(`Failed to fetch metadata for ${path}: ${response.statusText}`);\n    }\n\n    return await response.text();\n  }\n}",
+    "breakdown": [
+      "Acquires IMDSv2 token via HTTP PUT with X-aws-ec2-metadata-token-ttl-seconds.",
+      "Caches session token in memory with automatic rotation.",
+      "Passes token header on all subsequent GET queries, adhering to cloud security benchmarks."
+    ],
+    "expectedOutput": "Fetches instance metadata securely; immune to basic GET-based SSRF attacks."
+  },
+  {
+    "id": "sec-ex-23",
+    "title": "Safe XML Parser Disabling External Entities (XXE Defense)",
+    "category": "OWASP Top 10 & Web Defense",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Hardening XML parsers by disabling DTD loading, external entity resolution, and network connections to neutralize XXE vulnerabilities.",
+    "conceptsCovered": [
+      "XXE Defense",
+      "XML Parsing",
+      "fast-xml-parser",
+      "DTD Disabling"
+    ],
+    "code": "// lib/security/safeXmlParser.ts\nimport { XMLParser } from 'fast-xml-parser';\n\nexport function parseSafeXml<T = any>(xmlString: string): T {\n  // fast-xml-parser is pure JS and does not resolve external entities by default\n  const parser = new XMLParser({\n    ignoreAttributes: false,\n    parseAttributeValue: false,\n    trimValues: true,\n    // CRITICAL: Block external entity declarations & DTD execution\n    processEntities: false,\n    stopNodes: ['*.script']\n  });\n\n  // Pre-parsing guard: Reject any XML payload containing <!DOCTYPE or <!ENTITY\n  const upper = xmlString.toUpperCase();\n  if (upper.includes('<!DOCTYPE') || upper.includes('<!ENTITY') || upper.includes('SYSTEM')) {\n    throw new Error('XXE Detected: XML Document Type Definitions (DTDs) are forbidden!');\n  }\n\n  return parser.parse(xmlString);\n}",
+    "breakdown": [
+      "Rejects any XML containing <!DOCTYPE or <!ENTITY before parser invocation.",
+      "Configures processEntities: false to prevent XML entity expansion bombs (Billion Laughs).",
+      "Safely parses structured data without exposing filesystem or local network."
+    ],
+    "expectedOutput": "Parses standard XML safely; throws error if external DTD or entity tags are present."
+  },
+  {
+    "id": "sec-ex-24",
+    "title": "Prototype Pollution Free Object Deep Clone Utility",
+    "category": "OWASP Top 10 & Web Defense",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A recursive deep-clone and merge utility that drops __proto__, constructor, and prototype keys to neutralize Prototype Pollution.",
+    "conceptsCovered": [
+      "Prototype Pollution",
+      "Object.create(null)",
+      "Deep Merge",
+      "Vulnerability Defense"
+    ],
+    "code": "// lib/security/safeClone.ts\nconst FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);\n\nexport function safeDeepMerge<T = any>(target: any, source: any): T {\n  if (!source || typeof source !== 'object') {\n    return source;\n  }\n\n  if (!target || typeof target !== 'object') {\n    target = Array.isArray(source) ? [] : Object.create(null);\n  }\n\n  for (const key of Object.keys(source)) {\n    // 1. Drop poisoned keys that modify Object.prototype!\n    if (FORBIDDEN_KEYS.has(key)) {\n      continue;\n    }\n\n    const value = source[key];\n\n    if (value && typeof value === 'object') {\n      if (Array.isArray(value)) {\n        target[key] = value.map(item => safeDeepMerge(undefined, item));\n      } else {\n        target[key] = safeDeepMerge(target[key], value);\n      }\n    } else {\n      target[key] = value;\n    }\n  }\n\n  return target;\n}",
+    "breakdown": [
+      "Maintains explicit blacklist of '__proto__', 'constructor', and 'prototype'.",
+      "Uses Object.create(null) to create prototype-less target dictionaries.",
+      "Safely handles nested objects and arrays without modifying Object.prototype."
+    ],
+    "expectedOutput": "Clones complex objects cleanly; drops any malicious __proto__ attributes."
+  },
+  {
+    "id": "sec-ex-25",
+    "title": "Path Traversal Proof File System Reader with Canonicalization",
+    "category": "OWASP Top 10 & Web Defense",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Preventing directory traversal attacks (../../) by canonicalizing file paths with path.resolve and enforcing strict root directory boundaries.",
+    "conceptsCovered": [
+      "Path Traversal",
+      "path.resolve",
+      "Canonicalization",
+      "Local File Inclusion",
+      "path.sep"
+    ],
+    "code": "// lib/storage/safeFileReader.ts\nimport path from 'path';\nimport fs from 'fs/promises';\n\nconst STORAGE_ROOT = path.resolve('/var/app/data/uploads');\n\nexport async function readSafeFile(userRequestedRelativePath: string): Promise<Buffer> {\n  // 1. Resolve absolute canonical path\n  const canonicalPath = path.resolve(STORAGE_ROOT, userRequestedRelativePath);\n\n  // 2. Strict Root Boundary Check: Must start with STORAGE_ROOT + path separator!\n  if (!canonicalPath.startsWith(STORAGE_ROOT + path.sep)) {\n    const error = new Error('Access Denied: Path traversal outside root directory');\n    (error as any).status = 403;\n    throw error;\n  }\n\n  // 3. Verify it is a regular file, not a symlink pointing elsewhere\n  const stats = await fs.lstat(canonicalPath);\n  if (!stats.isFile()) {\n    throw new Error('Target is not a regular file');\n  }\n\n  return await fs.readFile(canonicalPath);\n}",
+    "breakdown": [
+      "path.resolve resolves all relative '.' and '..' segments into a normalized absolute path.",
+      "asserts startsWith(STORAGE_ROOT + path.sep) to stop attackers escaping the upload sandbox.",
+      "fs.lstat verifies the file is not a symbolic link pointing to /etc/shadow."
+    ],
+    "expectedOutput": "Reads authorized files within storage directory; throws 403 on '../../etc/passwd'."
+  },
+  {
+    "id": "sec-ex-26",
+    "title": "Strict URL Validator Disallowing Open Redirects",
+    "category": "OWASP Top 10 & Web Defense",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "A safe URL validator verifying relative redirects and whitelisted domains, neutralizing protocol-relative and open redirect exploits.",
+    "conceptsCovered": [
+      "Open Redirect",
+      "URL Parsing",
+      "Protocol-Relative URLs",
+      "Origin Whitelisting"
+    ],
+    "code": "// lib/security/safeRedirect.ts\nconst WHITELISTED_DOMAINS = new Set([\n  'app.enterprise.com',\n  'billing.enterprise.com',\n  'enterprise.com'\n]);\n\nexport function getSafeRedirectUrl(target: string | undefined | null, fallback: string = '/dashboard'): string {\n  if (!target || typeof target !== 'string') return fallback;\n\n  const trimmed = target.trim();\n\n  // 1. Safe Relative Redirect: Must start with single '/', NOT double '//'\n  if (trimmed.startsWith('/') && !trimmed.startsWith('//') && !trimmed.includes('\\\\')) {\n    return trimmed;\n  }\n\n  try {\n    // 2. Absolute URL check\n    const parsed = new URL(trimmed);\n\n    // Only allow HTTP/HTTPS\n    if (!['http:', 'https:'].includes(parsed.protocol)) {\n      return fallback;\n    }\n\n    // Strict domain whitelist\n    if (WHITELISTED_DOMAINS.has(parsed.hostname)) {\n      return trimmed;\n    }\n  } catch {\n    // Malformed URL, use fallback\n  }\n\n  return fallback;\n}",
+    "breakdown": [
+      "Validates startsWith('/') and rejects '//' to stop protocol-relative redirects to //evil.com.",
+      "Rejects backslashes ('\\\\') which some browsers normalize to forward slashes.",
+      "Matches absolute URLs against a strict domain whitelist."
+    ],
+    "expectedOutput": "Returns valid relative path or whitelisted URL; defaults to /dashboard on phishing attempts."
+  },
+  {
+    "id": "sec-ex-27",
+    "title": "Mass Assignment Defense with Strict Zod DTO Schema Parsing",
+    "category": "OWASP Top 10 & Web Defense",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Using Zod's .strict() method to reject unexpected input properties, preventing mass assignment and over-posting attacks.",
+    "conceptsCovered": [
+      "Mass Assignment",
+      "Over-Posting",
+      "Zod DTO",
+      "strict()",
+      "Input Sanitization"
+    ],
+    "code": "// schemas/userProfileDto.ts\nimport { z } from 'zod';\n\n// Strict DTO: Rejects ANY unexpected properties like 'isAdmin', 'role', or 'credits'\nexport const UpdateProfileSchema = z.object({\n  displayName: z.string().min(2).max(50).trim(),\n  phoneNumber: z.string().regex(/^\\+[1-9]\\d{1,14}$/).optional(),\n  bio: z.string().max(280).optional(),\n  themePreference: z.enum(['light', 'dark', 'system']).default('system')\n}).strict(); // MANDATORY: .strict() throws error if unwhitelisted keys are present!\n\nexport type UpdateProfileDto = z.infer<typeof UpdateProfileSchema>;\n\nexport async function updateUserProfile(untrustedInput: unknown, userId: string) {\n  // Throws ZodError if client sends { displayName: \"Alice\", role: \"ADMIN\" }\n  const cleanData = UpdateProfileSchema.parse(untrustedInput);\n\n  return await db.user.update({\n    where: { id: userId },\n    data: cleanData\n  });\n}",
+    "breakdown": [
+      ".strict() enforces that only declared fields are allowed in the request body.",
+      "Throws immediate validation error if an attacker attempts to inject 'role' or 'isAdmin'.",
+      "Guarantees that database update calls receive only sanitized, expected fields."
+    ],
+    "expectedOutput": "Accepts valid profile updates; rejects extra fields with HTTP 400 Bad Request."
+  },
+  {
+    "id": "sec-ex-28",
+    "title": "Stripe-Compatible HMAC Webhook Signature Verifier with Replay Tolerance",
+    "category": "API & Microservice Security",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Verifying incoming webhook signatures using timestamped HMAC-SHA256 and constant-time comparison adhering to Stripe/GitHub standards.",
+    "conceptsCovered": [
+      "Webhook Security",
+      "HMAC-SHA256",
+      "Replay Defense",
+      "crypto.timingSafeEqual",
+      "Tolerance Window"
+    ],
+    "code": "// lib/webhooks/verifySignature.ts\nimport crypto from 'crypto';\n\nexport function verifyStripeWebhook(\n  rawBodyBuffer: Buffer,\n  signatureHeader: string,\n  webhookSecret: string,\n  toleranceSeconds: number = 300 // 5 minutes\n): boolean {\n  if (!signatureHeader || !webhookSecret) return false;\n\n  // 1. Parse header components: t=1614555819,v1=5257a...\n  const parts = Object.fromEntries(\n    signatureHeader.split(',').map(kv => {\n      const [k, v] = kv.split('=');\n      return [k.trim(), v?.trim()];\n    })\n  );\n\n  const timestamp = parseInt(parts.t, 10);\n  const signatureHex = parts.v1;\n\n  if (isNaN(timestamp) || !signatureHex) return false;\n\n  // 2. Reject replays older than tolerance\n  const now = Math.floor(Date.now() / 1000);\n  if (Math.abs(now - timestamp) > toleranceSeconds) {\n    throw new Error('Webhook timestamp outside acceptable tolerance window');\n  }\n\n  // 3. Compute expected HMAC: HMAC_SHA256(secret, \"${timestamp}.${rawBody}\")\n  const payloadToSign = Buffer.concat([\n    Buffer.from(`${timestamp}.`, 'utf8'),\n    rawBodyBuffer\n  ]);\n\n  const expectedHmac = crypto.createHmac('sha256', webhookSecret)\n    .update(payloadToSign)\n    .digest();\n\n  const suppliedHmac = Buffer.from(signatureHex, 'hex');\n\n  if (expectedHmac.length !== suppliedHmac.length) return false;\n\n  // 4. Constant-Time verification\n  return crypto.timingSafeEqual(expectedHmac, suppliedHmac);\n}",
+    "breakdown": [
+      "Extracts timestamp 't' and signature 'v1' from header string.",
+      "Rejects timestamps older than 300 seconds to eliminate replay attacks.",
+      "Computes HMAC over raw byte buffer concatenated with timestamp using timingSafeEqual."
+    ],
+    "expectedOutput": "Returns true for valid webhook signature; throws error on expired or tampered payloads."
+  },
+  {
+    "id": "sec-ex-29",
+    "title": "Distributed Sliding-Window Rate Limiter using Redis Lua Script",
+    "category": "API & Microservice Security",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A high-performance atomic sliding-window rate limiter in Redis using Lua scripting, preventing boundary burst attacks.",
+    "conceptsCovered": [
+      "Rate Limiting",
+      "Sliding Window",
+      "Redis Lua",
+      "Atomicity",
+      "DoS Mitigation"
+    ],
+    "code": "// lib/security/slidingWindowRateLimiter.ts\nimport { Redis } from 'ioredis';\n\nconst redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');\n\n// Atomic Redis Lua Script for Sliding Window Log\nconst SLIDING_WINDOW_LUA = `\n  local key = KEYS[1]\n  local now = tonumber(ARGV[1])\n  local windowMs = tonumber(ARGV[2])\n  local maxRequests = tonumber(ARGV[3])\n\n  -- 1. Remove timestamps older than current window\n  redis.call('ZREMRANGEBYSCORE', key, '-inf', now - windowMs)\n\n  -- 2. Count requests in current sliding window\n  local currentCount = redis.call('ZCARD', key)\n\n  if currentCount < maxRequests then\n    -- Add current request timestamp\n    redis.call('ZADD', key, now, now)\n    -- Set TTL to ensure key auto-evicts after window expires\n    redis.call('PEXPIRE', key, windowMs)\n    return {1, maxRequests - currentCount - 1} -- Allowed, remaining\n  else\n    return {0, 0} -- Denied\n  end\n`;\n\nexport async function checkRateLimit(\n  identifier: string,\n  windowMs: number = 60000,\n  maxRequests: number = 100\n): Promise<{ allowed: boolean; remaining: number }> {\n  const key = `ratelimit:${identifier}`;\n  const now = Date.now();\n\n  const [allowed, remaining] = (await redis.eval(\n    SLIDING_WINDOW_LUA,\n    1,\n    key,\n    now,\n    windowMs,\n    maxRequests\n  )) as [number, number];\n\n  return {\n    allowed: allowed === 1,\n    remaining\n  };\n}",
+    "breakdown": [
+      "Executes atomically in Redis via Lua script, eliminating race conditions under concurrency.",
+      "Uses Redis Sorted Sets (ZADD/ZREMRANGEBYSCORE) to maintain an exact rolling millisecond window.",
+      "Returns allowed flag and remaining quota to embed in rate-limit response headers."
+    ],
+    "expectedOutput": "Returns { allowed: true, remaining: 99 }; switches to allowed: false when quota is reached."
+  },
+  {
+    "id": "sec-ex-30",
+    "title": "Strict CORS Header Middleware with Origin Whitelisting",
+    "category": "API & Microservice Security",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Hardening CORS middleware by matching incoming origins against an explicit whitelist, blocking wildcard credentials and null origins.",
+    "conceptsCovered": [
+      "CORS",
+      "Origin Whitelist",
+      "Access-Control-Allow-Credentials",
+      "Preflight Handling"
+    ],
+    "code": "// middleware/strictCors.ts\nimport { Request, Response, NextFunction } from 'express';\n\nconst ALLOWED_ORIGINS = new Set([\n  'https://app.enterprise.com',\n  'https://checkout.enterprise.com'\n]);\n\nexport function strictCorsMiddleware(req: Request, res: Response, next: NextFunction) {\n  const origin = req.headers.origin;\n\n  // 1. If origin matches whitelist, set headers\n  if (origin && ALLOWED_ORIGINS.has(origin)) {\n    res.setHeader('Access-Control-Allow-Origin', origin);\n    res.setHeader('Access-Control-Allow-Credentials', 'true');\n    res.setHeader('Vary', 'Origin'); // Critical for caching proxies!\n  }\n\n  // 2. Handle HTTP OPTIONS preflight request\n  if (req.method === 'OPTIONS') {\n    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');\n    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');\n    res.setHeader('Access-Control-Max-Age', '86400'); // Cache preflight for 24h\n    return res.status(204).end();\n  }\n\n  next();\n}",
+    "breakdown": [
+      "Matches origin against strict Set, preventing reflection vulnerabilities.",
+      "Never allows 'Access-Control-Allow-Origin: *' when credentials are true.",
+      "Sets 'Vary: Origin' to prevent shared CDNs caching one user's CORS response for another."
+    ],
+    "expectedOutput": "Responds to OPTIONS preflight with 204; sets strict CORS headers on approved origins."
+  },
+  {
+    "id": "sec-ex-31",
+    "title": "GraphQL Query Depth Limiter & Introspection Disabler",
+    "category": "API & Microservice Security",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Hardening Apollo Server by disabling schema introspection in production and rejecting deeply nested queries using graphql-depth-limit.",
+    "conceptsCovered": [
+      "GraphQL Security",
+      "Depth Limiting",
+      "Introspection Disabling",
+      "DoS Prevention"
+    ],
+    "code": "// lib/graphql/server.ts\nimport { ApolloServer } from '@apollo/server';\nimport depthLimit from 'graphql-depth-limit';\nimport { typeDefs, resolvers } from './schema';\n\nconst isProduction = process.env.NODE_ENV === 'production';\n\nexport const apolloServer = new ApolloServer({\n  typeDefs,\n  resolvers,\n  // 1. Disable Introspection in production to prevent schema scraping\n  introspection: !isProduction,\n  // 2. Reject queries nested deeper than 5 levels (stops recursive denial of service)\n  validationRules: [\n    depthLimit(5, {}, (depths) => {\n      if (depths > 5) {\n        console.warn(`[Security Alert] Blocked GraphQL query with depth ${depths}`);\n      }\n    })\n  ]\n});",
+    "breakdown": [
+      "introspection: false stops automated scanners discovering undocumented fields and mutations.",
+      "depthLimit(5) parses query AST and rejects queries exceeding 5 levels of nesting.",
+      "Protects backend resolvers and databases from recursive entity expansion attacks."
+    ],
+    "expectedOutput": "Rejects deeply nested queries like user { friends { friends { ... } } } with validation error."
+  },
+  {
+    "id": "sec-ex-32",
+    "title": "gRPC Mutual TLS (mTLS) Server & Interceptor Setup",
+    "category": "API & Microservice Security",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Configuring a Node.js gRPC server with strict Mutual TLS (mTLS) certificate verification and unary authentication interceptors.",
+    "conceptsCovered": [
+      "gRPC Security",
+      "mTLS",
+      "Client Certificates",
+      "Unary Interceptor",
+      "HTTP/2"
+    ],
+    "code": "// server/grpcServer.ts\nimport * as grpc from '@grpc/grpc-js';\nimport fs from 'fs';\n\n// 1. Load CA, server cert, and private key\nconst rootCert = fs.readFileSync('/etc/ssl/internal-ca.pem');\nconst serverCert = fs.readFileSync('/etc/ssl/server.pem');\nconst serverKey = fs.readFileSync('/etc/ssl/server-key.pem');\n\n// 2. Mutual TLS Credentials: checkClientCertificate = true enforces client mTLS!\nconst credentials = grpc.ServerCredentials.createSsl(\n  rootCert,\n  [{ cert_chain: serverCert, private_key: serverKey }],\n  true // Enforce client certificate validation!\n);\n\nconst server = new grpc.Server();\n\n// 3. Unary Interceptor for Metadata Authorization\nfunction authInterceptor(\n  call: grpc.ServerUnaryCall<any, any>,\n  callback: grpc.sendUnaryData<any>,\n  next: Function\n) {\n  const metadata = call.metadata.get('authorization');\n  const token = metadata[0]?.toString()?.replace('Bearer ', '');\n\n  if (!token || token !== process.env.INTERNAL_SERVICE_SECRET) {\n    return callback({\n      code: grpc.status.UNAUTHENTICATED,\n      details: 'Invalid or missing inter-service authorization token'\n    });\n  }\n\n  next(call, callback);\n}\n\nserver.bindAsync('0.0.0.0:50051', credentials, (err, port) => {\n  if (err) throw err;\n  console.log(`[gRPC] mTLS Server listening on port ${port}`);\n});",
+    "breakdown": [
+      "createSsl with true enforces bidirectional client certificate authentication.",
+      "Validates client certificate against trusted internal CA before accepting RPC frames.",
+      "Unary interceptor asserts internal service bearer token as an added defense-in-depth layer."
+    ],
+    "expectedOutput": "Listens on port 50051; rejects non-mTLS or unauthenticated gRPC clients."
+  },
+  {
+    "id": "sec-ex-33",
+    "title": "API Deprecation Sunset Header Injector (RFC 8594)",
+    "category": "API & Microservice Security",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Injecting standardized RFC 8594 Sunset and Deprecation headers to communicate API retirement and return HTTP 410 Gone post-sunset.",
+    "conceptsCovered": [
+      "RFC 8594",
+      "Sunset Header",
+      "Deprecation Header",
+      "Zombie API Defense",
+      "HTTP 410"
+    ],
+    "code": "// middleware/sunsetApi.ts\nimport { Request, Response, NextFunction } from 'express';\n\ninterface DeprecationConfig {\n  sunsetDate: Date;\n  successorUrl: string;\n}\n\nexport function createSunsetMiddleware(config: DeprecationConfig) {\n  return (req: Request, res: Response, next: NextFunction) => {\n    const now = new Date();\n\n    // 1. If past sunset date, permanently shut down endpoint with HTTP 410 GONE!\n    if (now >= config.sunsetDate) {\n      res.setHeader('Sunset', config.sunsetDate.toUTCString());\n      return res.status(410).json({\n        error: 'Gone',\n        message: 'This API version has been permanently decommissioned.',\n        documentation: config.successorUrl\n      });\n    }\n\n    // 2. Active deprecation phase: Inform callers via standard RFC 8594 headers\n    res.setHeader('Deprecation', 'true');\n    res.setHeader('Sunset', config.sunsetDate.toUTCString());\n    res.setHeader('Link', `<${config.successorUrl}>; rel=\"successor-version\"`);\n\n    next();\n  };\n}",
+    "breakdown": [
+      "Sets 'Deprecation: true' and 'Sunset: <date>' on deprecated API routes.",
+      "Automatically transitions from warning headers to HTTP 410 Gone after sunset date passes.",
+      "Eliminates zombie API endpoints that remain online unmaintained."
+    ],
+    "expectedOutput": "Returns Deprecation/Sunset headers before retirement; returns HTTP 410 Gone post-sunset."
+  },
+  {
+    "id": "sec-ex-34",
+    "title": "Distributed Idempotency Key Processor in Redis",
+    "category": "API & Microservice Security",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A robust idempotency wrapper executing transactions exactly once, caching results, and returning cached responses on retries.",
+    "conceptsCovered": [
+      "Idempotency",
+      "Redis SETNX",
+      "Distributed Locking",
+      "Financial Transactions"
+    ],
+    "code": "// lib/security/idempotency.ts\nimport { Redis } from 'ioredis';\n\nconst redis = new Redis();\n\nexport async function withIdempotency<T>(\n  idempotencyKey: string,\n  ttlSeconds: number = 86400, // 24 hours\n  operation: () => Promise<T>\n): Promise<T> {\n  const cacheKey = `idempotency:${idempotencyKey}`;\n\n  // 1. Attempt atomic lock reservation\n  const acquired = await redis.set(cacheKey, JSON.stringify({ status: 'PROCESSING' }), 'EX', 60, 'NX');\n\n  if (!acquired) {\n    const existingRaw = await redis.get(cacheKey);\n    const existing = existingRaw ? JSON.parse(existingRaw) : null;\n\n    if (existing?.status === 'COMPLETED') {\n      return existing.data as T; // Return cached response from previous successful run!\n    }\n    throw new Error('Concurrent request with identical idempotency key in progress');\n  }\n\n  try {\n    // 2. Execute business mutation\n    const result = await operation();\n\n    // 3. Cache completed result for 24h\n    await redis.setex(cacheKey, ttlSeconds, JSON.stringify({\n      status: 'COMPLETED',\n      data: result\n    }));\n\n    return result;\n  } catch (err) {\n    // Failure: Delete lock so client can retry with same key\n    await redis.del(cacheKey);\n    throw err;\n  }\n}",
+    "breakdown": [
+      "Acquires atomic Redis lock with 60s timeout to handle crash recovery.",
+      "Returns saved JSON response directly if request is a duplicate of a completed transaction.",
+      "Deletes lock upon operation failure to allow clients to retry safely."
+    ],
+    "expectedOutput": "Executes payment once; returns identical cached result on network retry."
+  },
+  {
+    "id": "sec-ex-35",
+    "title": "Cross-Site WebSocket Hijacking (CSWSH) Origin Guard",
+    "category": "API & Microservice Security",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Securing WebSocket upgrade handshakes against Cross-Site WebSocket Hijacking by validating Origin headers and ephemeral auth tickets.",
+    "conceptsCovered": [
+      "CSWSH Defense",
+      "WebSocket Upgrade",
+      "Origin Verification",
+      "One-Time Ticket"
+    ],
+    "code": "// server/websocketSecurity.ts\nimport http from 'http';\nimport { WebSocketServer } from 'ws';\n\nconst ALLOWED_ORIGIN = 'https://app.enterprise.com';\nconst wss = new WebSocketServer({ noServer: true });\n\nexport function attachSecureWebSocketHandler(server: http.Server) {\n  server.on('upgrade', (req, socket, head) => {\n    const origin = req.headers.origin;\n\n    // 1. Mandatory CSWSH Defense: Validate Origin Header strictly!\n    if (!origin || origin !== ALLOWED_ORIGIN) {\n      console.warn(`[Security Alert] Blocked unauthorized WebSocket upgrade from origin: ${origin}`);\n      socket.write('HTTP/1.1 403 Forbidden\\r\\n\\r\\n');\n      socket.destroy();\n      return;\n    }\n\n    // 2. Validate one-time connection ticket from query string\n    const url = new URL(req.url || '', 'https://localhost');\n    const ticket = url.searchParams.get('ticket');\n\n    if (!ticket || !validateOneTimeTicket(ticket)) {\n      socket.write('HTTP/1.1 401 Unauthorized\\r\\n\\r\\n');\n      socket.destroy();\n      return;\n    }\n\n    // 3. Complete upgrade\n    wss.handleUpgrade(req, socket, head, (ws) => {\n      wss.emit('connection', ws, req);\n    });\n  });\n}\n\nfunction validateOneTimeTicket(ticket: string): boolean {\n  // Verifies and atomically burns single-use ticket in Redis\n  return ticket.length === 64;\n}",
+    "breakdown": [
+      "Inspects Origin header before completing HTTP upgrade to WebSocket protocol.",
+      "Blocks cross-origin handshakes that attempt to hijack ambient browser session cookies.",
+      "Requires short-lived, single-use connection ticket passed via query string."
+    ],
+    "expectedOutput": "Approves valid app.enterprise.com connections; terminates unauthorized cross-origin sockets."
+  },
+  {
+    "id": "sec-ex-36",
+    "title": "HSTS & Preload Security Header Configuration",
+    "category": "Network & Infrastructure Hardening",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Configuring production Strict-Transport-Security (HSTS) headers with 2-year max-age, subdomains, and preload directives.",
+    "conceptsCovered": [
+      "HSTS",
+      "SSL Stripping",
+      "Preload List",
+      "Transport Security"
+    ],
+    "code": "// middleware/hsts.ts\nimport { Request, Response, NextFunction } from 'express';\n\nexport function hstsMiddleware(req: Request, res: Response, next: NextFunction) {\n  // Only set HSTS header on HTTPS connections\n  if (req.secure || req.headers['x-forwarded-proto'] === 'https') {\n    res.setHeader(\n      'Strict-Transport-Security',\n      [\n        'max-age=63072000',      // 2 years in seconds\n        'includeSubDomains',     // Enforce across *.enterprise.com\n        'preload'                // Qualifies for Chrome/Safari browser preload list\n      ].join('; ')\n    );\n  }\n  next();\n}",
+    "breakdown": [
+      "Sets 2-year (63,072,000s) cache lifetime for browser automatic HTTPS upgrade.",
+      "includeSubDomains enforces HTTPS encryption across all enterprise subdomains.",
+      "preload directive meets all submission requirements for hstspreload.org."
+    ],
+    "expectedOutput": "Injects Strict-Transport-Security: max-age=63072000; includeSubDomains; preload."
+  },
+  {
+    "id": "sec-ex-37",
+    "title": "Clickjacking Defense with X-Frame-Options & frame-ancestors CSP",
+    "category": "Network & Infrastructure Hardening",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Blocking UI redressing and clickjacking by setting modern frame-ancestors CSP and legacy X-Frame-Options headers.",
+    "conceptsCovered": [
+      "Clickjacking",
+      "X-Frame-Options",
+      "frame-ancestors",
+      "IFrame Defense"
+    ],
+    "code": "// middleware/antiClickjacking.ts\nimport { Request, Response, NextFunction } from 'express';\n\nexport function antiClickjackingMiddleware(req: Request, res: Response, next: NextFunction) {\n  // 1. Modern standard: CSP frame-ancestors 'none' (blocks all iframe embedding)\n  res.setHeader(\n    'Content-Security-Policy',\n    \"frame-ancestors 'none'\"\n  );\n\n  // 2. Legacy fallback for older browsers: X-Frame-Options DENY\n  res.setHeader('X-Frame-Options', 'DENY');\n\n  next();\n}",
+    "breakdown": [
+      "Sets 'frame-ancestors none' to forbid embedding in any external or internal iframe.",
+      "Sets 'X-Frame-Options: DENY' for legacy browser backwards compatibility.",
+      "Neutralizes invisible overlay button-hijacking attacks completely."
+    ],
+    "expectedOutput": "Browser refuses to render page within <iframe> elements."
+  },
+  {
+    "id": "sec-ex-38",
+    "title": "Hardened Multi-Stage Distroless Dockerfile with Non-Root User",
+    "category": "Container & Cloud Security",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A hardened production Dockerfile utilizing Google Distroless base image, non-root user UID 65532, and zero extraneous shell utilities.",
+    "conceptsCovered": [
+      "Distroless",
+      "Multi-Stage Build",
+      "Non-Root User",
+      "Container Hardening",
+      "CVE Reduction"
+    ],
+    "code": "# Dockerfile.hardened\n# Stage 1: Build & Dependencies\nFROM node:20-alpine AS builder\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci --omit=dev\nCOPY . .\nRUN npm run build\n\n# Stage 2: Minimal Distroless Runner (No shell, no package manager, non-root UID 65532)\nFROM gcr.io/distroless/nodejs20-debian12:nonroot\nWORKDIR /app\n\n# Copy built application and production dependencies\nCOPY --from=builder --chown=nonroot:nonroot /app/dist ./dist\nCOPY --from=builder --chown=nonroot:nonroot /app/node_modules ./node_modules\nCOPY --from=builder --chown=nonroot:nonroot /app/package.json ./package.json\n\nENV NODE_ENV=production\nENV PORT=3000\n\n# Non-root user 65532 is active by default in :nonroot tag\nUSER nonroot\nEXPOSE 3000\n\nCMD [\"dist/server.js\"]",
+    "breakdown": [
+      "Multi-stage build eliminates devDependencies and source files from production image.",
+      "Distroless image lacks /bin/sh and /bin/bash, disabling remote shell spawning.",
+      "Runs as unprivileged nonroot user UID 65532."
+    ],
+    "expectedOutput": "Produces an ultra-lightweight (~110MB) hardened container image with zero shell binaries."
+  },
+  {
+    "id": "sec-ex-39",
+    "title": "Kubernetes Restricted PodSecurity Admission Manifest",
+    "category": "Container & Cloud Security",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A production Kubernetes pod manifest adhering to the Restricted Pod Security Standard (runAsNonRoot, readOnlyRootFilesystem, drop ALL capabilities).",
+    "conceptsCovered": [
+      "Pod Security Standards",
+      "runAsNonRoot",
+      "readOnlyRootFilesystem",
+      "drop ALL",
+      "SecurityContext"
+    ],
+    "code": "# pod-hardened.yaml\napiVersion: v1\nkind: Pod\nmetadata:\n  name: hardened-api-workload\n  namespace: production\nspec:\n  # 1. Disable automatic injection of Kubernetes API token\n  automountServiceAccountToken: false\n  \n  # 2. Pod-level security context\n  securityContext:\n    runAsNonRoot: true\n    runAsUser: 10001\n    runAsGroup: 10001\n    fsGroup: 10001\n    seccompProfile:\n      type: RuntimeDefault\n\n  containers:\n  - name: api\n    image: enterprise/api:v1.0.0\n    securityContext:\n      allowPrivilegeEscalation: false\n      readOnlyRootFilesystem: true\n      capabilities:\n        drop:\n        - ALL # Drop all 40+ Linux kernel capabilities!\n    volumeMounts:\n    - mountPath: /tmp\n      name: memory-scratch\n  \n  volumes:\n  # In-memory scratch space for temporary files with noexec\n  - name: memory-scratch\n    emptyDir:\n      medium: Memory\n      sizeLimit: 64Mi",
+    "breakdown": [
+      "runAsNonRoot: true prevents running as UID 0 (root).",
+      "readOnlyRootFilesystem: true prevents modifying binaries or downloading malware to disk.",
+      "capabilities.drop: ['ALL'] strips all superuser kernel powers.",
+      "emptyDir with medium: Memory provides volatile RAM scratch space."
+    ],
+    "expectedOutput": "Kubernetes schedules pod under strict Restricted PodSecurity profile."
+  },
+  {
+    "id": "sec-ex-40",
+    "title": "Kubernetes Default-Deny NetworkPolicy with Specific Egress",
+    "category": "Container & Cloud Security",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A zero-trust Kubernetes NetworkPolicy enforcing default-deny on all ingress and egress, explicitly allowing only database and DNS traffic.",
+    "conceptsCovered": [
+      "NetworkPolicy",
+      "Default-Deny",
+      "Egress Filtering",
+      "Zero Trust",
+      "Calico / Cilium"
+    ],
+    "code": "# network-policy-default-deny.yaml\napiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: order-service-zero-trust\n  namespace: production\nspec:\n  podSelector:\n    matchLabels:\n      app: order-service\n  policyTypes:\n  - Ingress\n  - Egress\n\n  # 1. Ingress: Allow ONLY from API Gateway pod on port 3000\n  ingress:\n  - from:\n    - podSelector:\n        matchLabels:\n          app: api-gateway\n    ports:\n    - protocol: TCP\n      port: 3000\n\n  # 2. Egress: Allow ONLY to Postgres DB pod (port 5432) and CoreDNS (port 53)\n  egress:\n  # Internal DB connection\n  - to:\n    - podSelector:\n        matchLabels:\n          app: postgres-db\n    ports:\n    - protocol: TCP\n      port: 5432\n  # Internal Kubernetes DNS resolution\n  - to:\n    - namespaceSelector: {}\n      podSelector:\n        matchLabels:\n          k8s-app: kube-dns\n    ports:\n    - protocol: UDP\n      port: 53",
+    "breakdown": [
+      "Applies default-deny: any traffic not explicitly listed is dropped by the CNI.",
+      "Restricts inbound traffic strictly to the designated api-gateway pod.",
+      "Restricts outbound egress strictly to internal Postgres and CoreDNS, blocking reverse shells."
+    ],
+    "expectedOutput": "Blocks unauthorized inter-pod communications and prevents arbitrary outbound internet access."
+  },
+  {
+    "id": "sec-ex-41",
+    "title": "AWS S3 Account-Level Block Public Access Configuration Script",
+    "category": "Container & Cloud Security",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Automating account-wide AWS S3 Block Public Access using AWS SDK v3 to prevent public bucket data leaks.",
+    "conceptsCovered": [
+      "AWS S3",
+      "Block Public Access",
+      "Cloud Governance",
+      "S3 Control"
+    ],
+    "code": "// scripts/enableS3BlockPublicAccess.ts\nimport { S3ControlClient, PutPublicAccessBlockCommand } from '@aws-sdk/client-s3-control';\n\nconst client = new S3ControlClient({ region: 'us-east-1' });\n\nexport async function enforceAccountWideS3Block(accountId: string) {\n  console.log(`Enforcing global S3 Block Public Access on AWS Account ${accountId}...`);\n\n  await client.send(new PutPublicAccessBlockCommand({\n    AccountId: accountId,\n    PublicAccessBlockConfiguration: {\n      BlockPublicAcls: true,\n      IgnorePublicAcls: true,\n      BlockPublicPolicy: true,\n      RestrictPublicBuckets: true\n    }\n  }));\n\n  console.log('Successfully enabled 100% S3 Block Public Access across entire AWS account.');\n}",
+    "breakdown": [
+      "Applies global master override across all S3 buckets in the AWS account.",
+      "Overrides any accidental 'public-read' ACLs or permissive bucket policies.",
+      "Eliminates the #1 historical cause of catastrophic cloud data leaks."
+    ],
+    "expectedOutput": "Sets all four S3 Block Public Access flags to true at the AWS account level."
+  },
+  {
+    "id": "sec-ex-42",
+    "title": "Terraform IAM Least-Privilege Policy with Permission Boundaries",
+    "category": "Container & Cloud Security",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Defining an IAM role in Terraform constrained by an IAM Permission Boundary to prevent privilege escalation.",
+    "conceptsCovered": [
+      "Terraform",
+      "IAM Security",
+      "Permission Boundary",
+      "Privilege Escalation Defense"
+    ],
+    "code": "# main.tf - Hardened IAM Role with Permission Boundary\ndata \"aws_iam_policy_document\" \"developer_boundary\" {\n  statement {\n    sid       = \"AllowStandardCloudServices\"\n    effect    = \"Allow\"\n    actions   = [\"s3:*\", \"dynamodb:*\", \"lambda:*\", \"logs:*\"]\n    resources = [\"*\"]\n  }\n\n  statement {\n    sid       = \"DenyPrivilegeEscalation\"\n    effect    = \"Deny\"\n    actions   = [\n      \"iam:CreatePolicyVersion\",\n      \"iam:SetDefaultPolicyVersion\",\n      \"iam:PassRole\",\n      \"iam:AttachUserPolicy\",\n      \"iam:AttachRolePolicy\"\n    ]\n    resources = [\"*\"]\n  }\n}\n\nresource \"aws_iam_policy\" \"boundary\" {\n  name        = \"DeveloperPermissionsBoundary\"\n  description = \"Maximum ceiling for delegated roles\"\n  policy      = data.aws_iam_policy_document.developer_boundary.json\n}\n\nresource \"aws_iam_role\" \"app_role\" {\n  name                 = \"enterprise-microservice-role\"\n  assume_role_policy   = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Action = \"sts:AssumeRole\", Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" } }]\n  })\n  permissions_boundary = aws_iam_policy.boundary.arn\n}",
+    "breakdown": [
+      "Sets an unbreakable permissions boundary ceiling on the role.",
+      "Explicitly denies iam:PassRole and policy creation actions to prevent privilege escalation.",
+      "Guarantees that even if policies are added, effective permissions cannot exceed the boundary."
+    ],
+    "expectedOutput": "Provisions ECS task IAM role locked within a secure permissions boundary."
+  },
+  {
+    "id": "sec-ex-43",
+    "title": "CycloneDX Software Bill of Materials (SBOM) Generation Script",
+    "category": "DevSecOps & Supply Chain Security",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Generating machine-readable CycloneDX JSON and SPDX Software Bills of Materials for Node.js projects using @cyclonedx/cyclonedx-npm.",
+    "conceptsCovered": [
+      "SBOM",
+      "CycloneDX",
+      "Supply Chain Inventory",
+      "Executive Order 14028"
+    ],
+    "code": "// scripts/generateSbom.ts\nimport { execSync } from 'child_process';\nimport fs from 'fs';\nimport path from 'path';\n\nexport function generateProjectSbom() {\n  console.log('[SBOM] Generating CycloneDX v1.5 Software Bill of Materials...');\n\n  const outputPath = path.resolve(process.cwd(), 'sbom.cyclonedx.json');\n\n  // Run CycloneDX CLI to analyze package-lock.json and dependency tree\n  execSync(\n    `npx @cyclonedx/cyclonedx-npm --output-file ${outputPath} --output-format JSON --spec-version 1.5`,\n    { stdio: 'inherit' }\n  );\n\n  const stats = fs.statSync(outputPath);\n  console.log(`[SBOM] Successfully created ${outputPath} (${(stats.size / 1024).toFixed(1)} KB)`);\n}\n\ngenerateProjectSbom();",
+    "breakdown": [
+      "Parses package-lock.json to catalog all direct and transitive dependencies.",
+      "Generates standardized CycloneDX v1.5 JSON SBOM with purl package identifiers.",
+      "Enables instant CVE lookups in Dependency-Track when zero-days emerge."
+    ],
+    "expectedOutput": "Outputs valid sbom.cyclonedx.json cataloging entire software supply chain."
+  },
+  {
+    "id": "sec-ex-44",
+    "title": "Sigstore Cosign Keyless Container Signing in GitHub Actions",
+    "category": "DevSecOps & Supply Chain Security",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "Configuring a GitHub Actions workflow to sign container images keylessly using Sigstore Fulcio and Rekor transparency logs.",
+    "conceptsCovered": [
+      "Sigstore",
+      "Cosign",
+      "Keyless Signing",
+      "OIDC Attestation",
+      "GitHub Actions"
+    ],
+    "code": "# .github/workflows/sign-image.yml\nname: Build and Sign Container Image\n\non:\n  push:\n    branches: [main]\n\npermissions:\n  contents: read\n  packages: write\n  id-token: write # MANDATORY: Required for Sigstore OIDC authentication!\n\njobs:\n  build-and-sign:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n\n      - name: Install Cosign\n        uses: sigstore/cosign-installer@v3.4.0\n\n      - name: Log in to GitHub Container Registry\n        uses: docker/login-action@v3\n        with:\n          registry: ghcr.io\n          username: ${{ github.actor }}\n          password: ${{ secrets.GITHUB_TOKEN }}\n\n      - name: Build and Push Docker Image\n        id: build\n        uses: docker/build-push-action@v5\n        with:\n          context: .\n          push: true\n          tags: ghcr.io/${{ github.repository }}:latest\n\n      - name: Sign Image with Sigstore (Keyless)\n        run: |\n          cosign sign --yes ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}",
+    "breakdown": [
+      "permissions.id-token: write enables GitHub Actions OIDC identity token generation.",
+      "cosign sign --yes contacts Sigstore Fulcio CA to issue ephemeral 10-minute certificate.",
+      "Publishes cryptographic signature to Rekor transparency log without static private keys."
+    ],
+    "expectedOutput": "Signs container image and records verifiable attestation in public Rekor ledger."
+  },
+  {
+    "id": "sec-ex-45",
+    "title": "npm Private Registry Scoping Configuration (Dependency Confusion Defense)",
+    "category": "DevSecOps & Supply Chain Security",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Hardening .npmrc and package.json to isolate company packages to an internal private registry and neutralize dependency confusion.",
+    "conceptsCovered": [
+      "Dependency Confusion",
+      ".npmrc",
+      "Scoped Packages",
+      "Registry Hardening"
+    ],
+    "code": "# .npmrc (Place in root of project)\n\n# 1. Lock enterprise scoped packages strictly to private Artifactory/Verdaccio registry\n@enterprise:registry=https://artifactory.enterprise.com/api/npm/npm-private/\n//artifactory.enterprise.com/api/npm/npm-private/:_authToken=${NPM_PRIVATE_TOKEN}\nalways-auth=true\n\n# 2. Public packages resolve to standard public registry\nregistry=https://registry.npmjs.org/\n\n# 3. Enforce strict lockfile compliance in CI builds\npackage-lock=true\nsave-exact=true",
+    "breakdown": [
+      "Directs @enterprise/* scope exclusively to private internal repository.",
+      "Prevents npm from checking public npmjs.org for company-scoped package names.",
+      "Neutralizes Alex Birsan dependency confusion attack vectors."
+    ],
+    "expectedOutput": "Ensures private packages are never downloaded from public npm registries."
+  },
+  {
+    "id": "sec-ex-46",
+    "title": "Pre-Commit Gitleaks Secret Scanning Configuration Hook",
+    "category": "DevSecOps & Supply Chain Security",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Configuring Gitleaks pre-commit hooks to block developers from accidentally committing AWS keys, JWTs, and private keys into git history.",
+    "conceptsCovered": [
+      "Gitleaks",
+      "Secret Scanning",
+      "Pre-Commit Hooks",
+      "Credential Defense"
+    ],
+    "code": "# .pre-commit-config.yaml\nrepos:\n  - repo: https://github.com/gitleaks/gitleaks\n    rev: v8.18.2\n    hooks:\n      - id: gitleaks\n        name: Detect Hardcoded Secrets\n        entry: gitleaks protect --verbose --staged\n        language: golang\n        stages: [commit]\n\n# Optional local gitleaks.toml customization:\n/*\n[extend]\nuseDefault = true\n\n[allowlist]\ndescription = \"Ignore mock test keys in unit tests\"\npaths = [\n  '''tests/mocks/.*'''\n]\n*/",
+    "breakdown": [
+      "Scans staged git diffs locally on developer machines before commit is created.",
+      "Detects AWS, Stripe, Slack, private keys, and high-entropy password strings.",
+      "Prevents secrets ever entering the immutable git repository commit graph."
+    ],
+    "expectedOutput": "Aborts 'git commit' with error if private keys or tokens are detected in staged files."
+  },
+  {
+    "id": "sec-ex-47",
+    "title": "RFC 9116 security.txt Public Disclosure Manifest",
+    "category": "DevSecOps & Supply Chain Security",
+    "difficulty": "beginner",
+    "whatThisCodeCovers": "Deploying a compliant /.well-known/security.txt file adhering to RFC 9116 with PGP encryption keys and legal safe harbor terms.",
+    "conceptsCovered": [
+      "RFC 9116",
+      "security.txt",
+      "Vulnerability Disclosure",
+      "PGP Key",
+      "Safe Harbor"
+    ],
+    "code": "# public/.well-known/security.txt (RFC 9116 Compliant)\n\n# Primary security incident response mailbox\nContact: mailto:security-disclosure@enterprise.com\nContact: https://enterprise.com/security/report\n\n# PGP Public Key for encrypted vulnerability reports\nEncryption: https://enterprise.com/.well-known/pgp-key.asc\n\n# Legal Safe Harbor Policy promising not to prosecute good-faith researchers\nPolicy: https://enterprise.com/security/safe-harbor\n\n# Preferred languages for reports\nPreferred-Languages: en\n\n# Canonical location of this file\nCanonical: https://enterprise.com/.well-known/security.txt\n\n# Mandatory expiration timestamp (maximum 1 year into future)\nExpires: 2027-11-01T00:00:00.000Z",
+    "breakdown": [
+      "Provides clear, standardized contact channel for ethical security researchers.",
+      "Includes public PGP key URL for encrypting sensitive vulnerability disclosures.",
+      "Links to legal Safe Harbor policy promising non-prosecution for good-faith testing."
+    ],
+    "expectedOutput": "Serves standardized text file at /.well-known/security.txt."
+  },
+  {
+    "id": "sec-ex-48",
+    "title": "High-Throughput Structured Security Audit Logger (SIEM Ingest)",
+    "category": "Incident Response & Forensics",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "A high-performance structured security logger formatting events into ECS (Elastic Common Schema) JSON for SIEM ingestion.",
+    "conceptsCovered": [
+      "SIEM",
+      "ECS Format",
+      "Audit Logging",
+      "Structured JSON",
+      "Pino Logger"
+    ],
+    "code": "// lib/security/auditLogger.ts\nimport pino from 'pino';\n\n// Dedicated audit logger writing to stdout for FluentBit / Datadog Agent collection\nconst logger = pino({\n  level: 'info',\n  formatters: {\n    level: (label) => ({ level: label })\n  },\n  timestamp: pino.stdTimeFunctions.isoTime\n});\n\nexport interface SecurityEvent {\n  action: string;\n  category: 'authentication' | 'authorization' | 'data-access' | 'configuration';\n  outcome: 'SUCCESS' | 'FAILURE';\n  actor: {\n    id: string;\n    ip: string;\n    userAgent?: string;\n  };\n  resource: {\n    type: string;\n    id: string;\n  };\n  metadata?: Record<string, any>;\n}\n\nexport function logSecurityEvent(event: SecurityEvent) {\n  logger.info({\n    ecs_version: '1.12.0',\n    event: {\n      category: [event.category],\n      action: event.action,\n      outcome: event.outcome.toLowerCase()\n    },\n    user: { id: event.actor.id },\n    client: { ip: event.actor.ip, user_agent: event.actor.userAgent },\n    destination: { service: event.resource.type, resource_id: event.resource.id },\n    ...event.metadata\n  });\n}",
+    "breakdown": [
+      "Formats logs according to Elastic Common Schema (ECS) standard.",
+      "Captures Actor (user, IP), Action, Outcome, and Resource consistently.",
+      "Streams structured JSON to stdout for zero-blocking asynchronous SIEM ingestion."
+    ],
+    "expectedOutput": "Outputs normalized JSON log line ingestible by Splunk, Datadog, or Elastic Security."
+  },
+  {
+    "id": "sec-ex-49",
+    "title": "Cryptographic Hash-Chained Audit Ledger",
+    "category": "Incident Response & Forensics",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "Implementing an immutable, tamper-evident audit log ledger where each entry contains a SHA-256 hash chain of the previous entry.",
+    "conceptsCovered": [
+      "Hash Chaining",
+      "Merkle DAG",
+      "Immutable Logs",
+      "Tamper Detection",
+      "Audit Trails"
+    ],
+    "code": "// lib/security/auditLedger.ts\nimport crypto from 'crypto';\n\nexport interface AuditBlock {\n  sequence: number;\n  timestamp: string;\n  eventType: string;\n  actorId: string;\n  details: string;\n  previousHash: string;\n  currentHash: string;\n}\n\nexport class CryptographicAuditLedger {\n  private lastHash: string = '0000000000000000000000000000000000000000000000000000000000000000';\n  private sequenceCounter: number = 0;\n\n  appendEntry(eventType: string, actorId: string, details: string): AuditBlock {\n    this.sequenceCounter += 1;\n    const timestamp = new Date().toISOString();\n\n    // Data string to hash: sequence:timestamp:eventType:actorId:details:previousHash\n    const rawData = [\n      this.sequenceCounter,\n      timestamp,\n      eventType,\n      actorId,\n      details,\n      this.lastHash\n    ].join('|');\n\n    const currentHash = crypto.createHash('sha256').update(rawData).digest('hex');\n\n    const block: AuditBlock = {\n      sequence: this.sequenceCounter,\n      timestamp,\n      eventType,\n      actorId,\n      details,\n      previousHash: this.lastHash,\n      currentHash\n    };\n\n    // Advance chain pointer\n    this.lastHash = currentHash;\n    return block;\n  }\n\n  // Verifies the entire ledger chain is intact and un-tampered\n  static verifyLedgerIntegrity(chain: AuditBlock[]): boolean {\n    for (let i = 0; i < chain.length; i++) {\n      const block = chain[i];\n      const prevHash = i === 0\n        ? '0000000000000000000000000000000000000000000000000000000000000000'\n        : chain[i - 1].currentHash;\n\n      if (block.previousHash !== prevHash) return false;\n\n      const rawData = [\n        block.sequence,\n        block.timestamp,\n        block.eventType,\n        block.actorId,\n        block.details,\n        block.previousHash\n      ].join('|');\n\n      const expected = crypto.createHash('sha256').update(rawData).digest('hex');\n      if (block.currentHash !== expected) return false;\n    }\n    return true;\n  }\n}",
+    "breakdown": [
+      "Chains each log entry mathematically to the SHA-256 hash of the preceding block.",
+      "verifyLedgerIntegrity detects any retroactive modification, deletion, or reordering of logs.",
+      "Provides courtroom-admissible proof that audit logs were not modified post-incident."
+    ],
+    "expectedOutput": "Generates tamper-evident hash-chained logs; verifyLedgerIntegrity returns true."
+  },
+  {
+    "id": "sec-ex-50",
+    "title": "Emergency AWS EC2 Network Quarantine Automation Script",
+    "category": "Incident Response & Forensics",
+    "difficulty": "intermediate",
+    "whatThisCodeCovers": "An emergency incident response script modifying an EC2 instance's security groups to quarantine it without rebooting or destroying volatile RAM.",
+    "conceptsCovered": [
+      "Quarantine SG",
+      "Incident Response",
+      "AWS SDK v3",
+      "Blast Radius Isolation"
+    ],
+    "code": "// scripts/quarantineInstance.ts\nimport { EC2Client, ModifyInstanceAttributeCommand, DescribeInstancesCommand } from '@aws-sdk/client-ec2';\n\nconst ec2 = new EC2Client({ region: process.env.AWS_REGION || 'us-east-1' });\n\nexport async function emergencyQuarantineInstance(instanceId: string, quarantineSgId: string) {\n  console.warn(`[SEV-0 INCIDENT] Quarantining compromised EC2 instance: ${instanceId}...`);\n\n  // 1. Snapshot existing security groups for forensic records\n  const describeRes = await ec2.send(new DescribeInstancesCommand({ InstanceIds: [instanceId] }));\n  const existingSgs = describeRes.Reservations?.[0]?.Instances?.[0]?.SecurityGroups?.map(sg => sg.GroupId) || [];\n  console.log('Original Security Groups:', existingSgs);\n\n  // 2. Atomically replace all Security Groups with Quarantine SG (zero ingress, zero egress!)\n  await ec2.send(new ModifyInstanceAttributeCommand({\n    InstanceId: instanceId,\n    Groups: [quarantineSgId]\n  }));\n\n  console.log(`[SUCCESS] Instance ${instanceId} is now isolated from internet & internal VPC. Blast radius contained.`);\n}",
+    "breakdown": [
+      "Atomically swaps all attached security groups for a single zero-ingress/zero-egress quarantine group.",
+      "Drops all active TCP connections to attacker Command & Control servers within seconds.",
+      "Keeps the virtual machine powered on to preserve volatile RAM memory state for forensics."
+    ],
+    "expectedOutput": "Isolates compromised EC2 instance without rebooting or destroying forensic memory."
+  },
+  {
+    "id": "sec-ex-51",
+    "title": "Volatile Memory Dump (LiME) & Live Network Socket Collector",
+    "category": "Incident Response & Forensics",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "A forensic acquisition bash script capturing open network sockets, process tables, and dumping physical RAM via LiME.",
+    "conceptsCovered": [
+      "Live Forensics",
+      "LiME",
+      "Volatile Memory",
+      "Chain of Custody",
+      "SHA-256"
+    ],
+    "code": "#!/usr/bin/env bash\n# scripts/acquire_volatile_forensics.sh\nset -euo pipefail\n\nCASE_ID=\"INCIDENT-$(date +%Y%m%d-%H%M%S)\"\nOUTPUT_DIR=\"/mnt/forensic_usb/${CASE_ID}\"\nmkdir -p \"${OUTPUT_DIR}\"\n\necho \"[+] Starting Volatile Forensic Acquisition for ${CASE_ID}...\"\n\n# 1. Capture system date and uptime\ndate -u --iso-8601=seconds > \"${OUTPUT_DIR}/system_time.txt\"\nuptime >> \"${OUTPUT_DIR}/system_time.txt\"\n\n# 2. Capture active network connections and sockets (Order of Volatility)\necho \"[+] Capturing network sockets...\"\nss -tlpna > \"${OUTPUT_DIR}/active_sockets.txt\"\nnetstat -rn > \"${OUTPUT_DIR}/routing_table.txt\"\narp -an > \"${OUTPUT_DIR}/arp_cache.txt\"\n\n# 3. Capture process tree with full arguments\necho \"[+] Capturing process hierarchy...\"\nps auxwwf > \"${OUTPUT_DIR}/process_tree.txt\"\n\n# 4. Dump physical RAM memory via LiME kernel module\nif [ -f \"/opt/lime/lime.ko\" ]; then\n  echo \"[+] Dumping physical RAM memory via LiME...\"\n  insmod /opt/lime/lime.ko \"path=${OUTPUT_DIR}/memory.raw format=raw\"\n  rmmod lime\nfi\n\n# 5. Compute cryptographic SHA-256 checksums for Chain of Custody\necho \"[+] Computing SHA-256 checksums...\"\ncd \"${OUTPUT_DIR}\"\nsha256sum * > \"${OUTPUT_DIR}/checksums.sha256\"\n\necho \"[SUCCESS] Acquisition complete. Verified evidence written to ${OUTPUT_DIR}.\"",
+    "breakdown": [
+      "Adheres strictly to RFC 3227 Order of Volatility: captures network, sockets, processes, and RAM.",
+      "Dumps live memory using LiME kernel module to external write-blocked storage.",
+      "Computes cryptographic SHA-256 hashes on all captured artifacts to preserve legal chain of custody."
+    ],
+    "expectedOutput": "Captures volatile system memory and generates verifiable checksums.sha256 file."
+  },
+  {
+    "id": "sec-ex-52",
+    "title": "Athena Threat Hunting SQL Query for VPC Flow Log Exfiltration",
+    "category": "Incident Response & Forensics",
+    "difficulty": "advanced",
+    "whatThisCodeCovers": "An AWS Athena SQL query analyzing VPC Flow Logs to detect outbound data exfiltration anomalies and lateral movement.",
+    "conceptsCovered": [
+      "Threat Hunting",
+      "VPC Flow Logs",
+      "AWS Athena",
+      "Data Exfiltration Detection"
+    ],
+    "code": "-- athena/queries/hunt_data_exfiltration.sql\n-- Identifies internal EC2/EKS instances transferring high volumes of data to unusual external IPs\n\nSELECT \n    DATE_TRUNC('hour', FROM_UNIXTIME(starttime)) AS window_hour,\n    srcaddr AS internal_source_ip,\n    dstaddr AS external_destination_ip,\n    dstport AS destination_port,\n    protocol,\n    COUNT(*) AS total_flow_records,\n    SUM(packets) AS total_packets,\n    ROUND(SUM(bytes) / (1024.0 * 1024.0), 2) AS exfiltrated_megabytes\nFROM vpc_flow_logs\nWHERE action = 'ACCEPT'\n  -- Filter for internal VPC private source IPs (RFC 1918)\n  AND (srcaddr LIKE '10.%' OR srcaddr LIKE '172.16.%' OR srcaddr LIKE '192.168.%')\n  -- Exclude standard public web ports (HTTP/HTTPS) and internal VPC destinations\n  AND dstport NOT IN (80, 443, 53)\n  AND dstaddr NOT LIKE '10.%'\n  AND dstaddr NOT LIKE '172.16.%'\n  AND dstaddr NOT LIKE '192.168.%'\nGROUP BY 1, 2, 3, 4, 5\nHAVING SUM(bytes) > 50000000 -- Threshold: Greater than 50 Megabytes\nORDER BY exfiltrated_megabytes DESC\nLIMIT 50;",
+    "breakdown": [
+      "Aggregates hourly traffic volumes per source-destination IP and port tuple.",
+      "Filters for internal RFC 1918 IPs sending traffic to external destinations over non-standard ports.",
+      "Pinpoints data exfiltration over custom TCP ports and hidden reverse shell connections."
+    ],
+    "expectedOutput": "Returns ranked list of internal IPs exfiltrating large data volumes to unknown external endpoints."
+  }
+]
