@@ -1,0 +1,264 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #fafaf8;
+  --surface: #ffffff;
+  --text: #20211f;
+  --muted: #777872;
+  --border: #e8e8e3;
+  --accent: #c25e38;
+  --accent-subtle: rgba(194, 94, 56, 0.10);
+  --tag: #efefeb;
+  --tag-text: #65675f;
+  --max-width: 1080px;
+}
+
+:root[data-accent="rust"] {
+  --accent: #c25e38;
+  --accent-subtle: rgba(194, 94, 56, 0.10);
+}
+:root[data-accent="sage"] {
+  --accent: #2d5a3f;
+  --accent-subtle: rgba(45, 90, 63, 0.10);
+}
+:root[data-accent="slate"] {
+  --accent: #2a4e6c;
+  --accent-subtle: rgba(42, 78, 108, 0.10);
+}
+:root[data-accent="olive"] {
+  --accent: #444a43;
+  --accent-subtle: rgba(68, 74, 67, 0.10);
+}
+
+html.dark {
+  --bg: #0c0d0e;
+  --surface: #131518;
+  --text: #f0f0eb;
+  --muted: #8e928d;
+  --border: #22252c;
+  --accent: #e07a52;
+  --accent-subtle: rgba(224, 122, 82, 0.15);
+  --tag: #1a1d23;
+  --tag-text: #b0b4ab;
+}
+
+html.dark[data-accent="rust"] {
+  --accent: #e07a52;
+  --accent-subtle: rgba(224, 122, 82, 0.15);
+}
+html.dark[data-accent="sage"] {
+  --accent: #5ea378;
+  --accent-subtle: rgba(94, 163, 120, 0.15);
+}
+html.dark[data-accent="slate"] {
+  --accent: #689cc5;
+  --accent-subtle: rgba(104, 156, 197, 0.15);
+}
+html.dark[data-accent="olive"] {
+  --accent: #9ba59a;
+  --accent-subtle: rgba(155, 165, 154, 0.15);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* Quiet background texture */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -12%;
+  z-index: -2;
+  pointer-events: none;
+  opacity: .16;
+  filter: blur(65px);
+  background:
+    radial-gradient(ellipse at 16% 24%, rgba(153,166,133,.16), transparent 36%),
+    radial-gradient(ellipse at 82% 32%, rgba(191,178,153,.13), transparent 34%),
+    radial-gradient(ellipse at 54% 88%, rgba(158,175,168,.12), transparent 40%);
+  transition: opacity 0.3s ease;
+}
+
+html.dark body::before {
+  opacity: .14;
+  background:
+    radial-gradient(ellipse at 16% 24%, rgba(216,255,97,.08), transparent 40%),
+    radial-gradient(ellipse at 82% 32%, rgba(120,135,145,.08), transparent 35%),
+    radial-gradient(ellipse at 54% 88%, rgba(90,105,115,.08), transparent 40%);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  opacity: .045;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.88' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.18'/%3E%3C/svg%3E");
+}
+
+.container-custom {
+  width: min(var(--max-width), calc(100% - 48px));
+  margin: auto;
+}
+
+/* Custom minimal scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+/* Restrained entrance & on-scroll reveal motion */
+.reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-delay-1 { transition-delay: 0.05s; }
+.reveal-delay-2 { transition-delay: 0.12s; }
+.reveal-delay-3 { transition-delay: 0.18s; }
+
+.hero-arrive {
+  animation: hero-arrive 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes hero-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .hero-arrive {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Continuous Left-to-Right Floating Boat Animation */
+.boat-sail-track {
+  left: 0;
+  width: max-content;
+  animation: boat-sail-across 32s linear infinite;
+  animation-delay: -17s; /* Pre-positions the boat in the upper-right quadrant on initial load */
+  will-change: transform, opacity;
+}
+
+@keyframes boat-sail-across {
+  0% {
+    transform: translateX(-105%);
+    opacity: 0;
+  }
+  6% {
+    opacity: 0.03;
+  }
+  92% {
+    opacity: 0.03;
+  }
+  100% {
+    transform: translateX(calc(100% + 260px));
+    opacity: 0;
+  }
+}
+
+/* Buoyant Water Wave Bob & Tilt */
+.boat-water-bob {
+  animation: boat-water-float 5s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes boat-water-float {
+  0% {
+    transform: translateY(0px) rotate(-1.5deg);
+  }
+  25% {
+    transform: translateY(-9px) rotate(1deg);
+  }
+  50% {
+    transform: translateY(5px) rotate(-1.2deg);
+  }
+  75% {
+    transform: translateY(-7px) rotate(2deg);
+  }
+  100% {
+    transform: translateY(0px) rotate(-1.5deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boat-sail-track,
+  .boat-water-bob {
+    animation: none !important;
+    transform: none !important;
+    left: auto;
+    right: -2rem;
+  }
+}
+
+/* Print Styles */
+@media print {
+  body::before,
+  body::after,
+  header {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #111111 !important;
+  }
+
+  article,
+  section {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  a {
+    text-decoration: underline !important;
+    color: #111111 !important;
+  }
+}
