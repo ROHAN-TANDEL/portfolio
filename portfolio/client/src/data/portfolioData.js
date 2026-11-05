@@ -2,7 +2,9 @@ export const portfolio = {
   identity: {
     name: "Rohan Tandel",
     title: "Platform Engineer & Senior Backend Architect",
-    location: "India / Remote",
+    phone: "+91 9591343150",
+    portfolioUrl: "https://rohan-tandel.github.io/portfolio",
+    location: "India (Open to Remote)",
     email: "r9591343@gmail.com",
     linkedin: "https://www.linkedin.com/in/rohan-devendra",
     github: "https://github.com/ROHAN-TANDEL"
@@ -39,7 +41,7 @@ export const portfolio = {
       subtitle: "Configurable Data Platform SaaS",
       category: "Platform Engineering",
       state: "Active Development",
-      link: "https://github.com/ROHAN-TANDEL/nexora",
+      link: "https://rohan-tandel.github.io/nexora-saas",
       problem:
         "Business software frequently requires bespoke, hard-coded UI tables, filter logic, and query adapters, creating continuous engineering maintenance overhead.",
       description:
@@ -65,7 +67,7 @@ export const portfolio = {
       formerName: "formerly Kooey Recover",
       category: "Product & Platform Architecture",
       state: "Active Development",
-      link: "https://github.com/ROHAN-TANDEL/relay",
+      link: "https://rohan-tandel.github.io/kooey-recover",
       problem:
         "Disjointed coordination, fragmented communication, and inflexible batch update mechanisms between financial institutions and debt recovery agencies.",
       description:
@@ -89,7 +91,7 @@ export const portfolio = {
   // Section 03: Career (Enterprise Experience & Contributions)
   experience: [
     {
-      period: "14 Jul 2022 — Present",
+      period: "14 Jul 2022 — 13 Jul 2026",
       role: "Lead Reliability & Engineering · Sr. Backend & Integration Engineer",
       company: "Fintua · European TaxTech & Fintech SaaS",
       location: "Remote",
@@ -279,5 +281,33 @@ export const portfolio = {
     title: "Have an interesting problem to solve?",
     description:
       "Interested in conversations around platform engineering, backend architecture, and building scalable, reliable software systems."
-  }
+  },
+
+  // Downloadable Tailored Résumé Formats
+  resumes: [
+    {
+      id: "fullstack-node",
+      label: "Full-Stack (Node.js)",
+      title: "Full-Stack (Backend-Heavy Node.js)",
+      role: "Senior Full-Stack Engineer (Node.js & Modern Web)",
+      filename: "Rohan_Tandel_Resume_FullStack_NodeJS.pdf",
+      highlight: "Node.js · TypeScript · Angular · React · Microservices"
+    },
+    {
+      id: "backend-node",
+      label: "Backend (Node.js)",
+      title: "Backend-Heavy (Node.js)",
+      role: "Senior Backend Engineer (Node.js & Distributed Systems)",
+      filename: "Rohan_Tandel_Resume_Backend_NodeJS.pdf",
+      highlight: "Distributed Systems · Transactional Outbox · SQS/DLQ · Redis"
+    },
+    {
+      id: "fullstack-php-laravel",
+      label: "Full-Stack (PHP/Laravel)",
+      title: "Full-Stack (Backend-Heavy PHP / Laravel)",
+      role: "Senior Full-Stack Engineer (PHP & Laravel / Modern Web)",
+      filename: "Rohan_Tandel_Resume_FullStack_PHP_Laravel.pdf",
+      highlight: "PHP 8+ · Laravel · MySQL Tuning · Modular Monoliths"
+    }
+  ]
 };

@@ -100,16 +100,17 @@ export default function App() {
         onToggleTheme={toggleTheme}
         currentAccent={accentColor}
         onSelectAccent={setAccentColor}
+        resumes={portfolio.resumes}
       />
 
       {/* Main Content */}
       <main className="container-custom">
-        <Hero hero={portfolio.hero} />
+        <Hero hero={portfolio.hero} resumes={portfolio.resumes} />
         <About about={portfolio.about} />
         <Projects projects={portfolio.personalProjects} />
         <Experience experience={portfolio.experience} />
         <Expertise expertise={portfolio.expertise} />
-        <Contact contact={portfolio.contact} identity={portfolio.identity} />
+        <Contact contact={portfolio.contact} identity={portfolio.identity} resumes={portfolio.resumes} />
       </main>
 
       {/* Footer */}

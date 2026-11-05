@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Rohan Tandel — Senior Full-Stack Engineer (Node.js & Modern Web)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --accent: #0284c7;
+    }
+
+    @page {
+      size: A4 portrait;
+      margin: 11mm 13mm;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #1a1a1a;
+      background: #ffffff;
+      line-height: 1.45;
+      font-size: 9.5pt;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a {
+      color: #1a1a1a;
+      text-decoration: none;
+    }
+
+    /* Header */
+    .header {
+      border-bottom: 1.5pt solid #1a1a1a;
+      padding-bottom: 8pt;
+      margin-bottom: 10pt;
+    }
+
+    .name-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 4pt;
+    }
+
+    h1 {
+      font-family: 'Manrope', sans-serif;
+      font-size: 20pt;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: #0f172a;
+    }
+
+    .title {
+      font-family: 'Manrope', sans-serif;
+      font-size: 10.5pt;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: -0.01em;
+    }
+
+    .contact-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10pt;
+      font-size: 8.5pt;
+      color: #4b5563;
+      margin-top: 2pt;
+    }
+
+    .contact-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 3pt;
+    }
+
+    .contact-item a {
+      color: #374151;
+      border-bottom: 1px dotted #9ca3af;
+    }
+
+    /* Sections */
+    .section {
+      margin-bottom: 10pt;
+    }
+
+    .section-title {
+      font-family: 'Manrope', sans-serif;
+      font-size: 9.5pt;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #0f172a;
+      border-bottom: 0.75pt solid #e5e7eb;
+      padding-bottom: 2pt;
+      margin-bottom: 6pt;
+    }
+
+    /* Summary */
+    .summary-text {
+      font-size: 9pt;
+      color: #374151;
+      line-height: 1.5;
+    }
+
+    /* Capabilities Matrix */
+    .skills-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 5pt 10pt;
+      margin-bottom: 2pt;
+    }
+
+    .skill-category {
+      font-size: 8.5pt;
+    }
+
+    .skill-category-title {
+      font-weight: 700;
+      font-family: 'Manrope', sans-serif;
+      color: #111827;
+      font-size: 8.5pt;
+      margin-bottom: 1pt;
+    }
+
+    .skill-list {
+      color: #4b5563;
+      line-height: 1.35;
+    }
+
+    /* Experience Items */
+    .job {
+      margin-bottom: 9pt;
+      page-break-inside: avoid;
+    }
+
+    .job-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 1pt;
+    }
+
+    .job-role {
+      font-family: 'Manrope', sans-serif;
+      font-weight: 700;
+      font-size: 10pt;
+      color: #0f172a;
+    }
+
+    .job-period {
+      font-size: 8pt;
+      font-family: 'DM Sans', sans-serif;
+      color: #6b7280;
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .job-company {
+      font-size: 8.5pt;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 3pt;
+    }
+
+    .job-summary {
+      font-size: 8.8pt;
+      color: #374151;
+      margin-bottom: 4pt;
+      line-height: 1.45;
+    }
+
+    .contributions {
+      list-style-type: none;
+      padding-left: 0;
+    }
+
+    .contributions li {
+      position: relative;
+      padding-left: 10pt;
+      font-size: 8.5pt;
+      color: #374151;
+      line-height: 1.42;
+      margin-bottom: 3pt;
+    }
+
+    .contributions li::before {
+      content: "•";
+      position: absolute;
+      left: 1pt;
+      color: var(--accent);
+      font-size: 10pt;
+      line-height: 1;
+      top: 0;
+    }
+
+    .contributions strong {
+      color: #111827;
+      font-weight: 600;
+    }
+
+    .tech-pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3pt;
+      margin-top: 3pt;
+    }
+
+    .tech-pill {
+      font-size: 7.5pt;
+      background: #f0f9ff;
+      color: #0369a1;
+      padding: 1pt 4pt;
+      border-radius: 2pt;
+      font-weight: 500;
+      border: 0.5pt solid #bae6fd;
+    }
+
+    /* Independent Platforms (Horizontal Full-Width) */
+    .project-item {
+      margin-bottom: 8pt;
+      page-break-inside: avoid;
+    }
+
+    .project-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 1pt;
+    }
+
+    .project-role {
+      font-family: 'Manrope', sans-serif;
+      font-weight: 700;
+      font-size: 9.8pt;
+      color: #0f172a;
+    }
+
+    .project-role a {
+      color: #0f172a;
+      text-decoration: none;
+    }
+
+    .project-role a:hover {
+      color: var(--accent);
+    }
+
+    .project-status {
+      font-size: 8pt;
+      font-family: 'DM Sans', sans-serif;
+      color: #6b7280;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .project-meta-row {
+      font-size: 8.3pt;
+      color: #4b5563;
+      margin-bottom: 3pt;
+    }
+
+    .project-meta-row a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      border-bottom: 0.75pt dotted var(--accent);
+    }
+
+    .project-desc {
+      font-size: 8.5pt;
+      color: #374151;
+      line-height: 1.42;
+      margin-bottom: 3pt;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="name-title">
+      <h1>Rohan Tandel</h1>
+      <span class="title">Senior Full-Stack Engineer (Node.js & Modern Web)</span>
+    </div>
+    <div class="contact-row">
+      <span class="contact-item"><strong>Phone:</strong> <a href="tel:+91 9591343150">+91 9591343150</a></span>
+      <span class="contact-item"><strong>Email:</strong> <a href="mailto:r9591343@gmail.com">r9591343@gmail.com</a></span>
+      <span class="contact-item"><strong>Portfolio:</strong> <a href="https://rohan-tandel.github.io/portfolio" target="_blank">rohan-tandel.github.io/portfolio</a></span>
+      <span class="contact-item"><strong>LinkedIn:</strong> <a href="https://www.linkedin.com/in/rohan-devendra" target="_blank">www.linkedin.com/in/rohan-devendra</a></span>
+      <span class="contact-item"><strong>GitHub:</strong> <a href="https://github.com/ROHAN-TANDEL" target="_blank">github.com/ROHAN-TANDEL</a></span>
+      <span class="contact-item"><strong>Location:</strong> India (Open to Remote)</span>
+    </div>
+  </header>
+
+  <!-- Executive Summary -->
+  <section class="section">
+    <div class="section-title">Professional Summary</div>
+    <p class="summary-text">Senior Full-Stack Engineer with 8+ years of experience engineering scalable, backend-heavy distributed platforms and rich data-driven web applications using Node.js, TypeScript, Angular, and React. Architected metadata-driven table frameworks cutting frontend-backend integration effort by ~70%, engineered transactional outbox auto-submission pipelines, implemented OIDC identity provider services with RS256 token signing, and delivered resilient multi-tenant SaaS platforms. Adept at bridging distributed backend microservices with modular frontend architectures.</p>
+  </section>
+
+  <!-- Capabilities (The 6-Category Matrix) -->
+  <section class="section">
+    <div class="section-title">Core Capabilities & Technical Expertise</div>
+    <div class="skills-grid">
+      
+      <div class="skill-category">
+        <div class="skill-category-title">Full-Stack & Backend</div>
+        <div class="skill-list">Node.js · Express · TypeScript · RESTful APIs · Modular Monoliths</div>
+      </div>
+      <div class="skill-category">
+        <div class="skill-category-title">Frontend Engineering</div>
+        <div class="skill-list">Angular · React · Next.js · Modern JavaScript · Dynamic UI Generation</div>
+      </div>
+      <div class="skill-category">
+        <div class="skill-category-title">Data & Distributed Systems</div>
+        <div class="skill-list">PostgreSQL · Redis · MongoDB · SQS / DLQ · Transactional Outbox</div>
+      </div>
+      <div class="skill-category">
+        <div class="skill-category-title">Architecture & Security</div>
+        <div class="skill-list">Multi-Tenancy · OpenID Connect / OAuth2 · RBAC · Metadata-Driven Systems</div>
+      </div>
+      <div class="skill-category">
+        <div class="skill-category-title">Cloud & Delivery</div>
+        <div class="skill-list">AWS (ECS, Lambda, SQS, CloudFront) · Docker · CI/CD Pipelines</div>
+      </div>
+      <div class="skill-category">
+        <div class="skill-category-title">AI Integration & Workflows</div>
+        <div class="skill-list">LLM Orchestration · Prompt Design · Structured Outputs · Tool Calling</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Professional Experience -->
+  <section class="section">
+    <div class="section-title">Professional Experience</div>
+
+    <!-- Fintua -->
+    <article class="job">
+      <div class="job-header">
+        <span class="job-role">Lead Reliability & Engineering · Sr. Full-Stack / Backend Engineer</span>
+        <span class="job-period">14 Jul 2022 — 13 Jul 2026</span>
+      </div>
+      <div class="job-company">Fintua · European TaxTech & Fintech SaaS (Remote)</div>
+      <p class="job-summary">Led reliability engineering and served as Scrum Lead. Architected core compliance infrastructure, OpenID Connect identity services, outbox submission engines, and metadata-driven frameworks across European jurisdictions.</p>
+      <ul class="contributions">
+        
+        <li>
+          <strong>Configurable Return Data & Table Framework:</strong> Designed and developed a backend-metadata-driven configuration framework for reusable data tables and return-specific XML data definitions. Standardized dependencies, filters, and field rules across countries and return types, reducing repetitive conditional development and cutting delivery time for new tables and return-data structures by approximately 70%.
+        </li>
+        <li>
+          <strong>Shared Transaction Ingestion Across Return Types:</strong> Reworked transaction ingestion to decouple raw transaction storage from individual return lifecycles. Enabled multiple related return types to process shared transaction data while maintaining independent catch rules, audit trails, editing permissions, and status transitions. Integrated SQS, DLQ recovery, Redis caching, and PostgreSQL query optimizations.
+        </li>
+        <li>
+          <strong>Automated Return Submission Service:</strong> Engineered an automated tax-return submission service using a scheduler-triggered transactional outbox pattern. Managed tax-office API submissions, response collection, exponential backoff retries with randomized jitter, and structured submission states, while retaining manual submission as a fallback.
+        </li>
+        <li>
+          <strong>OpenID Connect Identity Infrastructure & E-Invoice:</strong> Configured and implemented Fintua's OpenID Connect identity provider (OIDC discovery, Authorization Code flow, JWKS, UserInfo, and RS256 token signing). Developed supporting client data-upload APIs and authenticated navigation between Compliance and the E-Invoice product.
+        </li>
+        <li>
+          <strong>B2B Subdomain & Partner Onboarding:</strong> Implemented an end-to-end B2B partner onboarding and authentication workflow, supporting both subdomain-based and standard configurations with partner-specific login, email setup, and UI routing.
+        </li>
+        <li>
+          <strong>Standalone Expense Management Integration (Ramp):</strong> Independently developed an end-to-end integration with Ramp as a solo initiative, implementing OAuth authentication and API connectivity to ingest company expense transactions into the expense management workflow.
+        </li>
+        <li>
+          <strong>Return Lifecycle & 8-Stage Status Architecture:</strong> Restructured the return lifecycle status system into 8 deterministic states (Data provided → Prepare → Reviewed → Approve → Submit → Submitting / Submission failed → Submitted to Tax Authority) with country-specific event transitions.
+        </li>
+        <li>
+          <strong>Engineering Leadership & Reliability:</strong> Led the Reliability & Engineering team and served as Scrum Lead. Optimized CI/CD deployment pipelines, conducted low-level design (LLD) reviews, and mentored engineers through feature development and delivery.
+        </li>
+      </ul>
+      <div class="tech-pill-row">
+        <span class="tech-pill">TypeScript</span><span class="tech-pill">Node.js</span><span class="tech-pill">Angular</span><span class="tech-pill">AWS (Lambda, SQS, ECS)</span><span class="tech-pill">Redis</span><span class="tech-pill">PostgreSQL</span><span class="tech-pill">OpenID Connect</span><span class="tech-pill">Docker</span>
+      </div>
+    </article>
+
+    <!-- Tech Mahindra -->
+    <article class="job">
+      <div class="job-header">
+        <span class="job-role">Senior Full-Stack Software Engineer</span>
+        <span class="job-period">02 Jul 2020 — 31 May 2022</span>
+      </div>
+      <div class="job-company">Tech Mahindra Pvt Ltd</div>
+      <p class="job-summary">Engineered distributed synchronization systems for offline educational software and developed broadband customer onboarding workflows for British Telecom.</p>
+      <ul class="contributions">
+        
+        <li>
+          <strong>OfflineSync (Educational Initiative / Mindspark):</strong> Developed a bidirectional data synchronization system for offline Mindspark deployments in field schools with limited bandwidth. Engineered schedulers, retry logic, versioning, JSON data compression, remote updates/rollbacks, and an operational dashboard for remote monitoring and manual sync triggers.
+        </li>
+        <li>
+          <strong>Plusnet Broadband ISP (British Telecom):</strong> Developed customer-facing dashboard features for broadband connection requests, address validation support systems, and mini approval workflow engines.
+        </li>
+        <li>
+          <strong>Mindspark Core Maintenance:</strong> Delivered core learning feature enhancements, production bug resolutions, and legacy codebase migrations.
+        </li>
+      </ul>
+      <div class="tech-pill-row">
+        <span class="tech-pill">JavaScript</span><span class="tech-pill">Node.js</span><span class="tech-pill">PHP / Laravel</span><span class="tech-pill">MySQL</span><span class="tech-pill">REST APIs</span><span class="tech-pill">Web Dashboards</span>
+      </div>
+    </article>
+
+    <!-- Scriptbees -->
+    <article class="job">
+      <div class="job-header">
+        <span class="job-role">Software Developer (Full-Stack)</span>
+        <span class="job-period">04 Jun 2018 — 02 Jul 2020</span>
+      </div>
+      <div class="job-company">Scriptbees Pvt Ltd</div>
+      <p class="job-summary">Built authentication, academic credential systems, and enterprise Salesforce integrations.</p>
+      <ul class="contributions">
+        
+        <li>
+          <strong>Client Greenlight:</strong> Engineered JWT authentication systems, academic transcript management workflows, and multi-tenant organization onboarding.
+        </li>
+        <li>
+          <strong>VolunteerMarks:</strong> Integrated Salesforce APIs, implemented user check-in and check-out tracking mechanisms, and developed automated email and notification delivery engines.
+        </li>
+      </ul>
+      <div class="tech-pill-row">
+        <span class="tech-pill">JavaScript</span><span class="tech-pill">Node.js</span><span class="tech-pill">Express</span><span class="tech-pill">MongoDB</span><span class="tech-pill">Salesforce API</span><span class="tech-pill">JWT</span>
+      </div>
+    </article>
+  </section>
+
+  <!-- Independent Platforms (Data Driven & Fully Horizontal) -->
+  <section class="section">
+    <div class="section-title">Independent Platforms & Architecture Initiatives</div>
+    
+    <article class="project-item">
+      <div class="project-header">
+        <span class="project-role"><a href="https://rohan-tandel.github.io/nexora-saas" target="_blank">Nexora — Configurable Data Platform SaaS ↗</a></span>
+        <span class="project-status">Platform Engineering · Active Development</span>
+      </div>
+      <div class="project-meta-row">
+        Live Platform: <a href="https://rohan-tandel.github.io/nexora-saas" target="_blank">rohan-tandel.github.io/nexora-saas</a>
+      </div>
+      <p class="project-desc">A metadata-driven data platform that standardizes dynamic table rendering, column behaviors, filtering, sorting, permissions, and entity schemas across business applications—eliminating repetitive conditional development.</p>
+      <div class="tech-pill-row">
+        <span class="tech-pill">TypeScript</span><span class="tech-pill">Angular</span><span class="tech-pill">Node.js</span><span class="tech-pill">PostgreSQL</span><span class="tech-pill">Tailwind CSS</span><span class="tech-pill">API Design</span>
+      </div>
+    </article>
+
+    <article class="project-item">
+      <div class="project-header">
+        <span class="project-role"><a href="https://rohan-tandel.github.io/kooey-recover" target="_blank">Relay (formerly Kooey Recover) — Recovery Operations & Resolution Platform ↗</a></span>
+        <span class="project-status">Product & Platform Architecture · Active Development</span>
+      </div>
+      <div class="project-meta-row">
+        Live Platform: <a href="https://rohan-tandel.github.io/kooey-recover" target="_blank">rohan-tandel.github.io/kooey-recover</a>
+      </div>
+      <p class="project-desc">A capability-driven, multi-tenant recovery operations platform connecting financial institutions and recovery agencies. Focused on dispute tracking, batch workflows, automated scheduling rules, and payment resolution lifecycles.</p>
+      <div class="tech-pill-row">
+        <span class="tech-pill">Node.js</span><span class="tech-pill">TypeScript</span><span class="tech-pill">PostgreSQL</span><span class="tech-pill">Multi-tenancy</span><span class="tech-pill">Redis</span><span class="tech-pill">Modular Monolith</span>
+      </div>
+    </article>
+  </section>
+
+</body>
+</html>

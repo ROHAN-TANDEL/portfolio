@@ -1,6 +1,7 @@
 import React from 'react';
+import { Download } from 'lucide-react';
 
-export default function Hero({ hero }) {
+export default function Hero({ hero, resumes = [] }) {
   return (
     <div className="py-[100px] sm:py-[130px] max-w-[920px] hero-arrive relative overflow-x-clip">
       {/* Very light faded origami boat floating continuously from left to right */}
@@ -50,6 +51,29 @@ export default function Hero({ hero }) {
           </span>
         ))}
       </div>
+
+      {/* Tailored Résumé Downloads */}
+      {resumes.length > 0 && (
+        <div className="mt-10 pt-6 border-t border-[var(--border)]/70 max-w-[760px]">
+          <div className="text-[12px] uppercase tracking-[1.5px] font-semibold text-[var(--muted)] mb-3">
+            Download Tailored Résumé (PDF)
+          </div>
+          <div className="flex flex-wrap gap-2.5 sm:gap-3">
+            {resumes.map((resume) => (
+              <a
+                key={resume.id}
+                href={`/${resume.filename}`}
+                download={resume.filename}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-md border border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-hover)] hover:border-[var(--accent)] transition-all group text-[13px] font-medium text-[var(--text)]"
+                title={`Download ${resume.title} (${resume.role})`}
+              >
+                <span>{resume.label || resume.title}</span>
+                <Download className="w-3.5 h-3.5 text-[var(--accent)] transition-transform group-hover:translate-y-0.5" />
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

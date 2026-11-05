@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Sun, Moon, Palette } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Sun, Moon, Palette, Download, ChevronDown, FileText } from 'lucide-react';
 
 const ACCENT_OPTIONS = [
   { id: 'rust', label: 'Rust Oxide', lightHex: '#c25e38', darkHex: '#e07a52' },
@@ -13,9 +13,12 @@ export default function Navbar({
   darkMode,
   onToggleTheme,
   currentAccent,
-  onSelectAccent
+  onSelectAccent,
+  resumes = []
 }) {
   const [showPaletteMenu, setShowPaletteMenu] = useState(false);
+  const [showResumeMenu, setShowResumeMenu] = useState(false);
+  const resumeMenuRef = useRef(null);
 
   const handleCycleAccent = () => {
     const currentIndex = ACCENT_OPTIONS.findIndex((opt) => opt.id === currentAccent);
@@ -25,6 +28,17 @@ export default function Navbar({
 
   const currentOption =
     ACCENT_OPTIONS.find((opt) => opt.id === currentAccent) || ACCENT_OPTIONS[0];
+
+  // Close menus on outside click
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (resumeMenuRef.current && !resumeMenuRef.current.contains(event.target)) {
+        setShowResumeMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <header className="h-[76px] border-b border-[var(--border)] bg-[var(--bg)]/90 backdrop-blur-md sticky top-0 z-40 transition-colors duration-200">
@@ -67,6 +81,60 @@ export default function Navbar({
           >
             Contact
           </a>
+
+          {/* Tailored Résumé Dropdown */}
+          <div
+            ref={resumeMenuRef}
+            className="relative"
+            onMouseEnter={() => setShowResumeMenu(true)}
+            onMouseLeave={() => setShowResumeMenu(false)}
+          >
+            <button
+              onClick={() => setShowResumeMenu((prev) => !prev)}
+              className="text-[var(--text)] hover:text-[var(--accent)] transition-colors inline-flex items-center gap-1.5 font-medium py-1 focus:outline-none"
+              aria-haspopup="true"
+              aria-expanded={showResumeMenu}
+              title="Select tailored PDF résumé"
+            >
+              <span>Résumé</span>
+              <Download className="w-3.5 h-3.5 text-[var(--accent)]" />
+              <ChevronDown
+                className={`w-3 h-3 text-[var(--muted)] transition-transform duration-200 ${
+                  showResumeMenu ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
+
+            {/* Dropdown Menu */}
+            {showResumeMenu && (
+              <div className="absolute right-0 top-full mt-2 w-[280px] sm:w-[320px] bg-[var(--surface)] border border-[var(--border)] rounded-lg shadow-2xl p-2 z-50 animate-fade-slow">
+                <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[1px] text-[var(--muted)] border-b border-[var(--border)] mb-1">
+                  Tailored Résumés (PDF)
+                </div>
+                <div className="flex flex-col gap-1">
+                  {resumes.map((resume) => (
+                    <a
+                      key={resume.id}
+                      href={`/${resume.filename}`}
+                      download={resume.filename}
+                      className="group flex flex-col px-3 py-2 rounded-md hover:bg-[var(--surface-hover)] transition-colors text-left"
+                      title={`Download ${resume.title}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-manrope font-semibold text-[13px] text-[var(--text)] group-hover:text-[var(--accent)] transition-colors">
+                          {resume.label || resume.title}
+                        </span>
+                        <Download className="w-3.5 h-3.5 text-[var(--muted)] group-hover:text-[var(--accent)] transition-colors shrink-0" />
+                      </div>
+                      <span className="text-[11px] text-[var(--muted)] mt-0.5 line-clamp-1">
+                        {resume.highlight}
+                      </span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Clean borderless icon controls */}
           <div className="flex items-center gap-3 pl-3 sm:pl-4 border-l border-[var(--border)]">
